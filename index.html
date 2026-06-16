@@ -728,97 +728,98 @@ const QX=194, QY=LOS+36, BX=218, BY=LOS+58;
 // Boundary = LEFT. Field = RIGHT.
 // OL: LT=140, LG=167, C=194, RG=221, RT=248
 
+// Slot receivers (Y, H) line up ~1 yd off the LOS; X and Z are on the LOS.
+const SLOT_OFF = 10; // px ≈ 1 yard off LOS
+
 function drawBase() {
-  // 3×1 FIELD: X alone boundary | Y(inner) H(mid) Z(wide) trips field
+  // 3×1 FIELD: X(LOS) boundary | Y(off) H(off) Z(LOS) trips field
   return fieldSVG(
     olLine() +
     wrC(20, LOS, 'X') +
-    wrC(282, LOS, 'Y') +
-    wrC(322, LOS, 'H') +
+    wrC(282, LOS+SLOT_OFF, 'Y') +
+    wrC(322, LOS+SLOT_OFF, 'H') +
     wrC(376, LOS, 'Z') +
     qbC(QX,QY) + rbC(BX,BY),
     '(10) BASE — 3×1 FIELD'
   );
 }
 function drawDeuce() {
-  // 2×2: X(wide) Y(slot) BOUNDARY | H(slot) Z(wide) FIELD
-  // "Y goes to X side, H goes to RT side"
+  // 2×2: X(LOS) Y(off) BOUNDARY | H(off) Z(LOS) FIELD
   return fieldSVG(
     olLine() +
     wrC(20, LOS, 'X') +
-    wrC(106, LOS, 'Y') +
-    wrC(278, LOS, 'H') +
+    wrC(106, LOS+SLOT_OFF, 'Y') +
+    wrC(278, LOS+SLOT_OFF, 'H') +
     wrC(376, LOS, 'Z') +
     qbC(QX,QY) + rbC(BX,BY),
     '(10) DEUCE — 2×2'
   );
 }
 function drawRT() {
-  // H on BOUNDARY side (near LT). Y field slot. Z field wide. X far boundary.
+  // H(off) boundary slot. Y(off) field slot. X(LOS) boundary. Z(LOS) field wide.
   return fieldSVG(
     olLine() +
     wrC(20, LOS, 'X') +
-    wrC(106, LOS, 'H') +
-    wrC(278, LOS, 'Y') +
+    wrC(106, LOS+SLOT_OFF, 'H') +
+    wrC(278, LOS+SLOT_OFF, 'Y') +
     wrC(376, LOS, 'Z') +
     qbC(QX,QY) + rbC(BX,BY),
     '(10) RT — H BOUNDARY SLOT'
   );
 }
 function drawCluster() {
-  // 3×1 BOUNDARY: X H Y tight on LEFT. Z alone field right.
-  // "SETS TRIPS INTO BOUNDARY"
+  // 3×1 BOUNDARY: X(LOS) H(off) Y(off) tight LEFT. Z(LOS) alone field right.
   return fieldSVG(
     olLine() +
     wrC(20, LOS, 'X') +
-    wrC(62, LOS, 'H') +
-    wrC(104, LOS, 'Y') +
-    `<line x1="8" y1="${LOS-22}" x2="8" y2="${LOS+22}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
-     <line x1="118" y1="${LOS-22}" x2="118" y2="${LOS+22}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
-     <line x1="8" y1="${LOS-22}" x2="118" y2="${LOS-22}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
-     <text x="63" y="${LOS-26}" text-anchor="middle" font-size="8" fill="#E8C96A" opacity="0.7" font-family="sans-serif" font-weight="700">CLUSTER</text>` +
+    wrC(62, LOS+SLOT_OFF, 'H') +
+    wrC(104, LOS+SLOT_OFF, 'Y') +
+    `<line x1="8" y1="${LOS-18}" x2="8" y2="${LOS+SLOT_OFF+12}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <line x1="118" y1="${LOS-18}" x2="118" y2="${LOS+SLOT_OFF+12}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <line x1="8" y1="${LOS-18}" x2="118" y2="${LOS-18}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <text x="63" y="${LOS-22}" text-anchor="middle" font-size="8" fill="#E8C96A" opacity="0.7" font-family="sans-serif" font-weight="700">CLUSTER</text>` +
     wrC(376, LOS, 'Z') +
     qbC(QX,QY) + rbC(BX,BY),
     '(10) CLUSTER — 3×1 BOUNDARY'
   );
 }
 function drawBunch() {
-  // 3×1 FIELD BUNCH: X alone boundary | Z(point) with Y & H triangle ~5 yds from RT
-  // Point man on LOS, other two 1 yd off in triangle
+  // BUNCH: X(LOS) boundary | Z(LOS) point, Y & H each 1×1 off Z (1 yd back, 1 yd to each side)
+  const ZX=304, ZY=LOS, YX=ZX+10, YY=LOS+SLOT_OFF, HX=ZX-10, HY=LOS+SLOT_OFF;
   return fieldSVG(
     olLine() +
     wrC(20, LOS, 'X') +
-    wrC(304, LOS, 'Z') +
-    wrC(328, LOS-14, 'Y') +
-    wrC(328, LOS+14, 'H') +
-    `<line x1="290" y1="${LOS-28}" x2="290" y2="${LOS+28}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
-     <line x1="344" y1="${LOS-28}" x2="344" y2="${LOS+28}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
-     <line x1="290" y1="${LOS-28}" x2="344" y2="${LOS-28}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
-     <text x="317" y="${LOS-32}" text-anchor="middle" font-size="8" fill="#E8C96A" opacity="0.7" font-family="sans-serif" font-weight="700">BUNCH</text>` +
+    wrC(ZX, ZY, 'Z') +
+    wrC(YX, YY, 'Y') +
+    wrC(HX, HY, 'H') +
+    `<line x1="284" y1="${LOS-18}" x2="284" y2="${LOS+SLOT_OFF+12}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <line x1="326" y1="${LOS-18}" x2="326" y2="${LOS+SLOT_OFF+12}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <line x1="284" y1="${LOS-18}" x2="326" y2="${LOS-18}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <text x="305" y="${LOS-22}" text-anchor="middle" font-size="8" fill="#E8C96A" opacity="0.7" font-family="sans-serif" font-weight="700">BUNCH</text>` +
     qbC(QX,QY) + rbC(BX,BY),
     '(10) BUNCH — TIGHT 3×1 FIELD'
   );
 }
 function drawEmpty() {
-  // 00 personnel: 5 WRs, no B. A replaces B.
+  // 00 personnel: 5 WRs, no B. X(LOS) Z(LOS) outside; H(off) Y(off) A(off) slots.
   return fieldSVG(
     olLine() +
     wrC(20, LOS, 'X') +
-    wrC(106, LOS, 'H') +
-    wrC(278, LOS, 'Y') +
-    wrC(336, LOS, 'Z') +
-    wrC(376, LOS, 'A') +
+    wrC(106, LOS+SLOT_OFF, 'H') +
+    wrC(278, LOS+SLOT_OFF, 'Y') +
+    wrC(336, LOS+SLOT_OFF, 'A') +
+    wrC(376, LOS, 'Z') +
     qbC(QX,QY),
     '(00) BASE — 5 WIDE'
   );
 }
 function drawRay() {
-  // RAY (11 psnl): TE singled boundary (attached outside LT) | X H Z trips field
+  // RAY (11 psnl): TE(LOS) boundary | X(LOS) H(off) Z(LOS) trips field
   return fieldSVG(
     teC(122, LOS) +
     olLine() +
     wrC(280, LOS, 'X') +
-    wrC(320, LOS, 'H') +
+    wrC(320, LOS+SLOT_OFF, 'H') +
     wrC(376, LOS, 'Z') +
     qbC(QX,QY) + rbC(BX,BY),
     '(11) RAY — TE BOUNDARY SINGLE'
