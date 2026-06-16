@@ -666,178 +666,173 @@ function saveName() {
 document.getElementById('name-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveName(); });
 
 // ==================== SVG HELPERS ====================
-// Viewbox 400x260. LOS at y=170. Field flows upward (offense on bottom).
-const VW = 400, VH = 260, LOS = 170;
+// ViewBox 400x260. LOS at y=162. LEFT=boundary, RIGHT=field.
+// OL: LT(140) LG(167) C(194) RG(221) RT(248)  spaced 27px, centered at 194.
+const VW = 400, VH = 260, LOS = 162;
+const OL_CX = 194;
+const OL_POS = [{x:140,l:'LT'},{x:167,l:'LG'},{x:194,l:'C'},{x:221,l:'RG'},{x:248,l:'RT'}];
 
 function fieldSVG(players, label) {
-  // Yard lines above LOS (going upfield)
-  let yardLines = '';
-  for (let y = LOS - 30; y >= 20; y -= 30) {
-    yardLines += `<line x1="0" y1="${y}" x2="${VW}" y2="${y}" stroke="#3A7A1A" stroke-width="0.8" opacity="0.6"/>`;
-  }
-  // Hash marks on each yard line
+  let yLines = '';
+  for (let y = LOS-35; y >= 15; y -= 35)
+    yLines += `<line x1="0" y1="${y}" x2="${VW}" y2="${y}" stroke="#3A7A1A" stroke-width="0.8" opacity="0.45"/>`;
   let hashes = '';
-  for (let y = LOS - 30; y >= 20; y -= 30) {
-    for (let x = 60; x <= VW-60; x += 12) {
-      hashes += `<line x1="${x}" y1="${y-3}" x2="${x}" y2="${y+3}" stroke="#3A7A1A" stroke-width="1" opacity="0.5"/>`;
-    }
-  }
-  // Sideline indicators
-  const sides = `<line x1="8" y1="0" x2="8" y2="${VH}" stroke="#5A9A2A" stroke-width="2" opacity="0.4"/>
-    <line x1="${VW-8}" y1="0" x2="${VW-8}" y2="${VH}" stroke="#5A9A2A" stroke-width="2" opacity="0.4"/>`;
-  // LOS line
-  const los = `<line x1="0" y1="${LOS}" x2="${VW}" y2="${LOS}" stroke="#AAFFAA" stroke-width="2" stroke-dasharray="10 6" opacity="0.8"/>
-    <text x="6" y="${LOS-4}" font-size="9" fill="#AAFFAA" opacity="0.7" font-family="sans-serif" font-weight="700">LOS</text>`;
-  // Formation name label
-  const lbl = label ? `<text x="${VW/2}" y="${VH-6}" text-anchor="middle" font-size="11" fill="#E8C96A" opacity="0.6" font-family="sans-serif" font-weight="700" letter-spacing="2">${label}</text>` : '';
+  [LOS-35, LOS-70].forEach(y => {
+    for (let x = 55; x <= VW-55; x += 14)
+      hashes += `<line x1="${x}" y1="${y-3}" x2="${x}" y2="${y+3}" stroke="#3A7A1A" stroke-width="1" opacity="0.35"/>`;
+  });
+  const sides = `<line x1="8" y1="0" x2="8" y2="${VH}" stroke="#4A8A2A" stroke-width="2" opacity="0.3"/>
+    <line x1="${VW-8}" y1="0" x2="${VW-8}" y2="${VH}" stroke="#4A8A2A" stroke-width="2" opacity="0.3"/>`;
+  const los = `<line x1="0" y1="${LOS}" x2="${VW}" y2="${LOS}" stroke="#AAFFAA" stroke-width="2" stroke-dasharray="10 5" opacity="0.7"/>
+    <text x="5" y="${LOS-4}" font-size="8" fill="#AAFFAA" opacity="0.6" font-family="sans-serif" font-weight="700">LOS</text>`;
+  const bndry = `<text x="14" y="20" font-size="7" fill="#E8C96A" opacity="0.4" font-family="sans-serif" font-weight="700">◀ BNDRY</text>`;
+  const field = `<text x="${VW-14}" y="20" text-anchor="end" font-size="7" fill="#E8C96A" opacity="0.4" font-family="sans-serif" font-weight="700">FIELD ▶</text>`;
+  const lbl = label ? `<text x="${VW/2}" y="${VH-5}" text-anchor="middle" font-size="11" fill="#E8C96A" opacity="0.55" font-family="sans-serif" font-weight="800" letter-spacing="1">${label}</text>` : '';
   return `<svg viewBox="0 0 ${VW} ${VH}" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <filter id="glow"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    <marker id="arrowG" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L9,3 z" fill="#E8C96A"/>
-    </marker>
-    <marker id="arrowW" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L9,3 z" fill="white"/>
-    </marker>
+    <filter id="glow"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <marker id="arrowG" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#E8C96A"/></marker>
   </defs>
   <rect width="${VW}" height="${VH}" fill="#2A5C14"/>
-  ${yardLines}${hashes}${sides}${los}
-  ${players}
-  ${lbl}
-</svg>`;
+  ${yLines}${hashes}${sides}${los}${bndry}${field}${players}${lbl}</svg>`;
 }
 
-// Player circle builders
-function olCircle(x, y, lbl) {
-  // OL: red filled, white border, larger
-  return `<circle cx="${x}" cy="${y}" r="13" fill="#CC0000" stroke="white" stroke-width="2"/>
-    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="900" fill="white" font-family="sans-serif">${lbl}</text>`;
+function olC(x,y,l) {
+  return `<circle cx="${x}" cy="${y}" r="13" fill="#CC0000" stroke="white" stroke-width="2.5"/>
+    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="900" fill="white" font-family="sans-serif">${l}</text>`;
 }
-function wrCircle(x, y, lbl) {
-  // WR: white fill, red border — larger, easy to spot
+function wrC(x,y,l) {
   return `<circle cx="${x}" cy="${y}" r="12" fill="white" stroke="#CC0000" stroke-width="2.5"/>
-    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="900" fill="#CC0000" font-family="sans-serif">${lbl}</text>`;
+    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="11" font-weight="900" fill="#CC0000" font-family="sans-serif">${l}</text>`;
 }
-function qbCircle(x, y) {
-  // QB: bright red fill, gold border
+function qbC(x,y) {
   return `<circle cx="${x}" cy="${y}" r="13" fill="#CC0000" stroke="#E8C96A" stroke-width="3" filter="url(#glow)"/>
-    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="900" fill="white" font-family="sans-serif">QB</text>`;
+    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="900" fill="white" font-family="sans-serif">Q</text>`;
 }
-function rbCircle(x, y) {
-  // B (running back): white fill, red border
+function rbC(x,y) {
   return `<circle cx="${x}" cy="${y}" r="11" fill="#FFEEEE" stroke="#CC0000" stroke-width="2.5"/>
     <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="11" font-weight="900" fill="#CC0000" font-family="sans-serif">B</text>`;
 }
-function teCircle(x, y, lbl) {
-  // TE: gold fill, dark border
+function teC(x,y) {
   return `<circle cx="${x}" cy="${y}" r="13" fill="#E8C96A" stroke="#8B6914" stroke-width="2.5"/>
-    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="900" fill="#111" font-family="sans-serif">${lbl||'TE'}</text>`;
+    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="900" fill="#111" font-family="sans-serif">TE</text>`;
+}
+function olLine() {
+  return OL_POS.map(p => olC(p.x, LOS, p.l)).join('');
 }
 
-// OL line: 5 linemen centered at cx, spaced 30px
-function olLine(cx) {
-  const labels = ['LT','LG','C','RG','RT'];
-  const offsets = [-60,-30,0,30,60];
-  return offsets.map((dx,i) => olCircle(cx+dx, LOS, labels[i])).join('');
-}
+// Q shotgun ~3 yds back, B sidecar offset right
+const QX=194, QY=LOS+36, BX=218, BY=LOS+58;
 
-const CX = 200; // center x of the 400px viewbox
+// ── FORMATIONS (from 2025 OHS playbook) ─────────────────────────────────
+// Boundary = LEFT. Field = RIGHT.
+// OL: LT=140, LG=167, C=194, RG=221, RT=248
 
-// Receivers line up ON the LOS (same y as OL), spreading outward from the tackles.
-// OL occupies CX±60 (LT=140, RT=260). Slots ~28px outside tackles, wides near edges.
-// Position labels: X (boundary wide), H (boundary slot or inner), Y (field slot), Z (field wide)
-// RB label = B
-
-function drawDeuce() {
-  // 2x2: X wide left, H slot left | Y slot right, Z wide right
-  return fieldSVG(
-    olLine(CX) +
-    wrCircle(20, LOS, 'X') +       // boundary wide left
-    wrCircle(112, LOS, 'H') +      // left slot (outside LT at 140, leave gap)
-    wrCircle(288, LOS, 'Y') +      // right slot (outside RT at 260)
-    wrCircle(380, LOS, 'Z') +      // field wide right
-    qbCircle(CX, LOS+32) +
-    rbCircle(CX, LOS+62),
-    'DEUCE — 2×2'
-  );
-}
 function drawBase() {
-  // 3x1: X isolated boundary left | H/Y/Z trips right
+  // 3×1 FIELD: X alone boundary | Y(inner) H(mid) Z(wide) trips field
   return fieldSVG(
-    olLine(CX) +
-    wrCircle(20, LOS, 'X') +       // boundary single
-    wrCircle(288, LOS, 'H') +      // inner trips
-    wrCircle(330, LOS, 'Y') +      // middle trips
-    wrCircle(380, LOS, 'Z') +      // outer trips
-    qbCircle(CX, LOS+32) +
-    rbCircle(CX, LOS+62),
-    'BASE — 3×1'
+    olLine() +
+    wrC(20, LOS, 'X') +
+    wrC(282, LOS, 'Y') +
+    wrC(322, LOS, 'H') +
+    wrC(376, LOS, 'Z') +
+    qbC(QX,QY) + rbC(BX,BY),
+    '(10) BASE — 3×1 FIELD'
   );
 }
-function drawBunch() {
-  // Tight 3x1 right — all within ~9 yds of each other
+function drawDeuce() {
+  // 2×2: X(wide) Y(slot) BOUNDARY | H(slot) Z(wide) FIELD
+  // "Y goes to X side, H goes to RT side"
   return fieldSVG(
-    olLine(CX) +
-    wrCircle(20, LOS, 'X') +
-    wrCircle(280, LOS+4, 'H') +    // staggered slightly for readability
-    wrCircle(307, LOS-6, 'Y') +
-    wrCircle(334, LOS+4, 'Z') +
-    qbCircle(CX, LOS+32) +
-    rbCircle(CX, LOS+62),
-    'BUNCH — TIGHT 3×1'
-  );
-}
-function drawCluster() {
-  // Very tight 3x1 — almost stacked, 1-2 yds apart
-  return fieldSVG(
-    olLine(CX) +
-    wrCircle(20, LOS, 'X') +
-    wrCircle(284, LOS+5, 'H') +
-    wrCircle(308, LOS-5, 'Y') +
-    wrCircle(332, LOS+5, 'Z') +
-    // bracket showing tightness
-    `<line x1="270" y1="${LOS-18}" x2="270" y2="${LOS+18}" stroke="#E8C96A" stroke-width="1.5" opacity="0.5"/>
-     <line x1="346" y1="${LOS-18}" x2="346" y2="${LOS+18}" stroke="#E8C96A" stroke-width="1.5" opacity="0.5"/>
-     <line x1="270" y1="${LOS-18}" x2="346" y2="${LOS-18}" stroke="#E8C96A" stroke-width="1.5" opacity="0.5"/>` +
-    qbCircle(CX, LOS+32) +
-    rbCircle(CX, LOS+62),
-    'CLUSTER — VERY TIGHT 3×1'
-  );
-}
-function drawEmpty() {
-  // 5 WRs, no B — spread across the field
-  return fieldSVG(
-    olLine(CX) +
-    wrCircle(20, LOS, 'X') +
-    wrCircle(112, LOS, 'H') +
-    wrCircle(288, LOS, 'Y') +
-    wrCircle(340, LOS, 'Z') +
-    wrCircle(380, LOS, 'W') +
-    qbCircle(CX, LOS+32),
-    'EMPTY — 5 WIDE'
+    olLine() +
+    wrC(20, LOS, 'X') +
+    wrC(106, LOS, 'Y') +
+    wrC(278, LOS, 'H') +
+    wrC(376, LOS, 'Z') +
+    qbC(QX,QY) + rbC(BX,BY),
+    '(10) DEUCE — 2×2'
   );
 }
 function drawRT() {
-  // 11 personnel: X boundary, TE attached right of RT, Y/Z field side
+  // H on BOUNDARY side (near LT). Y field slot. Z field wide. X far boundary.
   return fieldSVG(
-    olLine(CX) +
-    wrCircle(20, LOS, 'X') +
-    teCircle(274, LOS, 'TE') +     // attached to RT (at 260), tight
-    wrCircle(316, LOS, 'Y') +
-    wrCircle(375, LOS, 'Z') +
-    qbCircle(CX, LOS+32) +
-    rbCircle(CX, LOS+62),
-    'RT — 11 PERSONNEL'
+    olLine() +
+    wrC(20, LOS, 'X') +
+    wrC(106, LOS, 'H') +
+    wrC(278, LOS, 'Y') +
+    wrC(376, LOS, 'Z') +
+    qbC(QX,QY) + rbC(BX,BY),
+    '(10) RT — H BOUNDARY SLOT'
+  );
+}
+function drawCluster() {
+  // 3×1 BOUNDARY: X H Y tight on LEFT. Z alone field right.
+  // "SETS TRIPS INTO BOUNDARY"
+  return fieldSVG(
+    olLine() +
+    wrC(20, LOS, 'X') +
+    wrC(62, LOS, 'H') +
+    wrC(104, LOS, 'Y') +
+    `<line x1="8" y1="${LOS-22}" x2="8" y2="${LOS+22}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <line x1="118" y1="${LOS-22}" x2="118" y2="${LOS+22}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <line x1="8" y1="${LOS-22}" x2="118" y2="${LOS-22}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <text x="63" y="${LOS-26}" text-anchor="middle" font-size="8" fill="#E8C96A" opacity="0.7" font-family="sans-serif" font-weight="700">CLUSTER</text>` +
+    wrC(376, LOS, 'Z') +
+    qbC(QX,QY) + rbC(BX,BY),
+    '(10) CLUSTER — 3×1 BOUNDARY'
+  );
+}
+function drawBunch() {
+  // 3×1 FIELD BUNCH: X alone boundary | Z(point) with Y & H triangle ~5 yds from RT
+  // Point man on LOS, other two 1 yd off in triangle
+  return fieldSVG(
+    olLine() +
+    wrC(20, LOS, 'X') +
+    wrC(304, LOS, 'Z') +
+    wrC(328, LOS-14, 'Y') +
+    wrC(328, LOS+14, 'H') +
+    `<line x1="290" y1="${LOS-28}" x2="290" y2="${LOS+28}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <line x1="344" y1="${LOS-28}" x2="344" y2="${LOS+28}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <line x1="290" y1="${LOS-28}" x2="344" y2="${LOS-28}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <text x="317" y="${LOS-32}" text-anchor="middle" font-size="8" fill="#E8C96A" opacity="0.7" font-family="sans-serif" font-weight="700">BUNCH</text>` +
+    qbC(QX,QY) + rbC(BX,BY),
+    '(10) BUNCH — TIGHT 3×1 FIELD'
+  );
+}
+function drawEmpty() {
+  // 00 personnel: 5 WRs, no B. A replaces B.
+  return fieldSVG(
+    olLine() +
+    wrC(20, LOS, 'X') +
+    wrC(106, LOS, 'H') +
+    wrC(278, LOS, 'Y') +
+    wrC(336, LOS, 'Z') +
+    wrC(376, LOS, 'A') +
+    qbC(QX,QY),
+    '(00) BASE — 5 WIDE'
+  );
+}
+function drawRay() {
+  // RAY (11 psnl): TE singled boundary (attached outside LT) | X H Z trips field
+  return fieldSVG(
+    teC(122, LOS) +
+    olLine() +
+    wrC(280, LOS, 'X') +
+    wrC(320, LOS, 'H') +
+    wrC(376, LOS, 'Z') +
+    qbC(QX,QY) + rbC(BX,BY),
+    '(11) RAY — TE BOUNDARY SINGLE'
   );
 }
 
 const formations = {
-  'DEUCE': drawDeuce,
   'BASE': drawBase,
-  'BUNCH': drawBunch,
-  'CLUSTER': drawCluster,
-  'EMPTY': drawEmpty,
+  'DEUCE': drawDeuce,
   'RT': drawRT,
+  'CLUSTER': drawCluster,
+  'BUNCH': drawBunch,
+  'EMPTY': drawEmpty,
+  'RAY': drawRay,
 };
 
 // ==================== FORMATION QUIZ ====================
