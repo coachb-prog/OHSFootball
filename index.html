@@ -244,6 +244,44 @@ body {
   .home-hero { padding: 16px 20px; }
   .home-team { font-size: 22px; }
 }
+
+/* PLAY DIAGRAMS */
+.pb-wrap { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
+.pb-filter-row { display: flex; gap: 0; border-bottom: 2px solid var(--red); }
+.pb-filter {
+  flex: 1; padding: 12px; background: var(--black2); border: none; color: var(--gray);
+  font-size: 13px; font-weight: 800; letter-spacing: 1px; cursor: pointer;
+  border-bottom: 3px solid transparent; margin-bottom: -2px;
+}
+.pb-filter.active { color: var(--white); border-bottom-color: var(--gold); background: var(--black3); }
+.pb-play-list { display: flex; flex-direction: column; gap: 0; padding: 8px 0; }
+.pb-play-item {
+  padding: 16px 20px; border-bottom: 1px solid #222; cursor: pointer;
+  display: flex; align-items: center; gap: 12px; background: var(--black2);
+}
+.pb-play-item:active { background: var(--black3); }
+.pb-play-item-name { font-size: 15px; font-weight: 800; flex: 1; }
+.pb-play-item-sub { font-size: 11px; color: var(--gray); margin-top: 2px; }
+.pb-play-item-family { font-size: 11px; color: var(--gold); font-weight: 700; }
+.pb-diagram-area { padding: 12px 16px 24px; display: flex; flex-direction: column; gap: 10px; }
+.pb-play-title { font-size: 18px; font-weight: 900; letter-spacing: 1px; color: var(--white); }
+.pb-formation-label { font-size: 11px; color: var(--gold); font-weight: 700; letter-spacing: 2px; }
+#pb-svg-wrap svg { width: 100%; height: auto; border-radius: 8px; overflow: hidden; }
+.pb-legend { display: flex; flex-wrap: wrap; gap: 8px; }
+.pb-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; }
+.pb-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.pb-route-table { background: var(--black2); border-radius: 10px; overflow: hidden; }
+.pb-route-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pb-route-table th { background: var(--red); color: white; padding: 8px 10px; text-align: left; font-size: 11px; letter-spacing: 1px; }
+.pb-route-table td { padding: 10px; border-bottom: 1px solid #2a2a2a; vertical-align: top; }
+.pb-route-table tr:last-child td { border-bottom: none; }
+.pb-route-table tr:hover td { background: var(--black3); }
+.pb-pos-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.pb-qb-notes { background: var(--black2); border-radius: 10px; padding: 14px; border-left: 3px solid var(--gold); }
+.pb-qb-notes-title { font-size: 11px; color: var(--gold); font-weight: 800; letter-spacing: 2px; margin-bottom: 8px; }
+.pb-qb-notes ul { padding-left: 16px; display: flex; flex-direction: column; gap: 5px; }
+.pb-qb-notes li { font-size: 13px; color: #ccc; line-height: 1.4; }
+.pb-back-btn { background: var(--black3); border: 1px solid #444; border-radius: 10px; color: var(--white); padding: 14px; font-size: 14px; font-weight: 800; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -321,6 +359,14 @@ body {
         <div class="mode-desc">Name the motion & read coverage</div>
       </div>
       <div class="mode-badge" id="badge-motion">▶</div>
+    </button>
+    <button class="mode-btn" onclick="showPlaybook()">
+      <div class="mode-icon">📖</div>
+      <div class="mode-info">
+        <div class="mode-name">PLAY DIAGRAMS</div>
+        <div class="mode-desc">Browse plays with route diagrams</div>
+      </div>
+      <div class="mode-badge">▶</div>
     </button>
   </div>
   <button class="lb-btn" onclick="showLeaderboard()">🏆 LEADERBOARD</button>
@@ -451,6 +497,31 @@ body {
     <div class="choices" id="mq-choices"></div>
     <div class="feedback-box" id="mq-feedback"></div>
     <button class="next-btn" id="mq-next" onclick="mqNext()" style="display:none">NEXT →</button>
+  </div>
+</div>
+
+<!-- PLAY DIAGRAMS -->
+<div id="playbook-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">PLAY DIAGRAMS</div>
+    <div class="header-xp"></div>
+  </div>
+  <div class="pb-wrap">
+    <div class="pb-filter-row">
+      <button class="pb-filter active" onclick="pbFilter('passing',this)">PASSING</button>
+      <button class="pb-filter" onclick="pbFilter('screens',this)">SCREENS</button>
+    </div>
+    <div class="pb-play-list" id="pb-play-list"></div>
+    <div class="pb-diagram-area" id="pb-diagram-area" style="display:none">
+      <div class="pb-play-title" id="pb-play-title"></div>
+      <div class="pb-formation-label" id="pb-formation-label"></div>
+      <div id="pb-svg-wrap"></div>
+      <div class="pb-legend" id="pb-legend"></div>
+      <div class="pb-route-table" id="pb-route-table"></div>
+      <div class="pb-qb-notes" id="pb-qb-notes"></div>
+      <button class="pb-back-btn" onclick="pbShowList()">← BACK TO PLAYS</button>
+    </div>
   </div>
 </div>
 
@@ -1252,6 +1323,372 @@ function mqNext() {
 // ==================== INIT ====================
 updateXPDisplay();
 setPosition(position);
+
+// ==================== PLAY DIAGRAMS ====================
+// Route color palette (one per player)
+const ROUTE_COLORS = { Z:'#FF4444', H:'#E8C96A', Y:'#4488FF', X:'#44DD88', B:'#FF8844', T:'#CC88FF' };
+
+// Route path generator: returns SVG path 'd' attribute
+// ox,oy = player center. field=true means player is on field (right) side
+function routePath(ox, oy, route, field) {
+  const R = route.toUpperCase();
+  const dir = field ? -1 : 1; // field side routes break toward center (left), boundary side break right
+  const mid = 194; // center of field
+  const toCtr = ox > mid ? -1 : 1; // direction toward center
+
+  switch(R) {
+    case 'GO':
+      return `M${ox},${oy} L${ox},20`;
+    case 'HITCH': case 'WIDE HITCH':
+      return `M${ox},${oy} L${ox},${oy-44} Q${ox},${oy-52} ${ox+toCtr*12},${oy-44}`;
+    case '3 SLANT': case 'SLANT':
+      return `M${ox},${oy} L${ox},${oy-18} L${ox+toCtr*38},${oy-50}`;
+    case '1 SLANT':
+      return `M${ox},${oy} L${ox},${oy-12} L${ox+toCtr*28},${oy-36}`;
+    case 'ARROW': case 'FLAT':
+      return `M${ox},${oy} L${ox+toCtr*10},${oy-8} L${ox+toCtr*40},${oy-14}`;
+    case 'FALLOUT':
+      return `M${ox},${oy} L${ox+toCtr*14},${oy-6} L${ox+toCtr*36},${oy-10}`;
+    case 'CORNER':
+      return `M${ox},${oy} L${ox},${oy-68} Q${ox},${oy-82} ${ox-toCtr*30},${oy-105}`;
+    case 'POST': case 'SKINNY POST':
+      return `M${ox},${oy} L${ox},${oy-68} Q${ox},${oy-82} ${ox+toCtr*30},${oy-105}`;
+    case 'WHEEL':
+      // Slot goes flat outside then turns up sideline
+      return `M${ox},${oy} L${ox-toCtr*24},${oy-10} L${ox-toCtr*24},20`;
+    case 'SLOT FADE':
+      return `M${ox},${oy} L${ox-toCtr*14},20`;
+    case 'BEND SEAM':
+      return `M${ox},${oy} L${ox},${oy-68} Q${ox},${oy-90} ${ox+toCtr*22},${oy-110}`;
+    case 'CROSS': case 'HI CROSS':
+      return `M${ox},${oy} L${ox},${oy-55} L${ox+toCtr*160},${oy-65}`;
+    case 'MESH OVER':
+      return `M${ox},${oy} L${ox},${oy-32} L${ox+toCtr*145},${oy-40}`;
+    case 'MESH UNDER':
+      return `M${ox},${oy} L${ox},${oy-22} L${ox+toCtr*145},${oy-28}`;
+    case 'SPOT':
+      return `M${ox},${oy} L${ox},${oy-42}`;
+    case 'SWING': case 'RAIL':
+      // RB routes
+      return R === 'RAIL'
+        ? `M${ox},${oy} L${ox},${oy-70}`
+        : `M${ox},${oy} L${ox+60},${oy-8}`;
+    case 'TUNNEL SCREEN':
+      return `M${ox},${oy} L${ox},${oy+12} L${ox-toCtr*30},${oy+16}`;
+    case 'BLOCK MDM': case 'BLOCK #1': case 'BLOCK #2':
+      return `M${ox},${oy} L${ox+toCtr*18},${oy-14}`;
+    case 'CRACK':
+      return `M${ox},${oy} L${ox+toCtr*30},${oy-18}`;
+    case 'RUN OFF STALK': case 'STALK':
+      return `M${ox},${oy} L${ox},${oy-50}`;
+    case 'PUSH 3 VERTICAL KICK OUT #1': case 'PUSH VERTICAL FOR 3 & KICK OUT #2': case 'PUSH 3 VERTICAL KICK OUT #2':
+      return `M${ox},${oy} L${ox},${oy-24} L${ox+toCtr*22},${oy-30}`;
+    case '3 STEPS VERTICAL/ RETRACE/ ATTACK BALL/ "RIDE THE WAVE"': case 'RETRACE':
+      return `M${ox},${oy} L${ox},${oy-22} L${ox+toCtr*30},${oy-30}`;
+    default:
+      return `M${ox},${oy} L${ox},${oy-35}`; // generic upfield
+  }
+}
+
+// Is this player on the field side (right)?
+function isFieldSide(x) { return x > 194; }
+
+// Draw a complete play SVG with routes
+function drawPlaySVG(formation, routes, selectedPos) {
+  const base = formations[formation]();
+  // Extract just the inner SVG content (strip outer <svg...> wrapper)
+  const inner = base.replace(/<svg[^>]*>/, '').replace(/<\/svg>$/, '');
+  // Get player positions from the formation function
+  const playerPositions = getPlayerPositions(formation);
+  let arrows = '';
+  let highlight = '';
+  Object.entries(routes).forEach(([pos, info]) => {
+    const pp = playerPositions[pos];
+    if (!pp || !info.route || info.route === '-') return;
+    const col = ROUTE_COLORS[pos] || '#fff';
+    const fside = isFieldSide(pp.x);
+    const d = routePath(pp.x, pp.y, info.route, fside);
+    const isSelected = (selectedPos === null || selectedPos === pos);
+    const opacity = selectedPos === null ? 1 : (selectedPos === pos ? 1 : 0.15);
+    arrows += `<path d="${d}" stroke="${col}" stroke-width="${selectedPos===pos?3:2}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}" marker-end="url(#arrowR${pos})"/>`;
+    // Arrowhead marker per player color
+    highlight += `<defs><marker id="arrowR${pos}" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0 0, 7 3.5, 0 7" fill="${col}"/></marker></defs>`;
+  });
+  return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg" style="display:block">${inner}${highlight}${arrows}</svg>`;
+}
+
+// Returns {Z:{x,y}, H:{x,y}, ...} for each formation
+function getPlayerPositions(formation) {
+  const L = LOS, S = SLOT_OFF;
+  const QX_=194, QY_=L+36, BX_=218, BY_=L+58;
+  const pos = {
+    BASE:    { X:{x:20,y:L}, Y:{x:282,y:L+S}, H:{x:322,y:L+S}, Z:{x:376,y:L}, B:{x:BX_,y:BY_} },
+    DEUCE:   { X:{x:20,y:L}, Y:{x:106,y:L+S}, H:{x:278,y:L+S}, Z:{x:376,y:L}, B:{x:BX_,y:BY_} },
+    RT:      { X:{x:20,y:L}, H:{x:106,y:L+S}, Y:{x:278,y:L+S}, Z:{x:376,y:L}, B:{x:BX_,y:BY_} },
+    CLUSTER: { X:{x:20,y:L}, H:{x:62,y:L+S},  Y:{x:104,y:L+S}, Z:{x:376,y:L}, B:{x:BX_,y:BY_} },
+    BUNCH:   { X:{x:20,y:L}, Z:{x:304,y:L},   Y:{x:328,y:L+20},H:{x:280,y:L+20},B:{x:BX_,y:BY_} },
+  };
+  return pos[formation] || pos['BASE'];
+}
+
+// ---- Play data ----
+const playbookData = {
+  passing: [
+    {
+      name: 'CLEMSON', surface: '3×1', formation: 'BASE', family: 'INSIDE-OUT',
+      routes: {
+        Z: { route: '3 SLANT', assignment: 'Field #1 slant' },
+        H: { route: '1 SLANT', assignment: 'Field #2 slant' },
+        Y: { route: 'ARROW', assignment: 'Arrow flat' },
+        X: { route: '3 SLANT', assignment: 'Boundary slant' },
+        B: { route: '-', assignment: 'Pass protection' },
+      },
+      qbNotes: ['RPO or dropback concept','RPO: follow RPO rules','Progression: Inside / Outside / Arrow','Alert best matchup vs. Man'],
+    },
+    {
+      name: 'CLEMSON', surface: '2×2', formation: 'DEUCE', family: 'INSIDE-OUT',
+      routes: {
+        Z: { route: '3 SLANT', assignment: 'Field #1 slant' },
+        H: { route: 'ARROW', assignment: 'Field #2 arrow flat' },
+        Y: { route: 'ARROW', assignment: 'Boundary #2 arrow flat' },
+        X: { route: '3 SLANT', assignment: 'Boundary #1 slant' },
+        B: { route: '-', assignment: 'Pass protection' },
+      },
+      qbNotes: ['Same concept as 3×1 Clemson','Progression: Inside / Outside / Arrow'],
+    },
+    {
+      name: 'MIAMI', surface: '3×1', formation: 'BASE', family: 'INSIDE-OUT',
+      routes: {
+        Z: { route: '3 SLANT', assignment: 'Field #1 slant' },
+        H: { route: 'WHEEL', assignment: 'Wheel — alert vs. Man' },
+        Y: { route: '1 SLANT', assignment: 'Field #3 slant' },
+        X: { route: '3 SLANT', assignment: 'Boundary slant' },
+        B: { route: '-', assignment: 'Pass protection' },
+      },
+      qbNotes: ['RPO or dropback concept','Adjust from Clemson: outside slant / wheel','Alert wheel vs. Man coverage'],
+    },
+    {
+      name: 'MIAMI FALLOUT', surface: '2×2', formation: 'DEUCE', family: 'INSIDE-OUT',
+      routes: {
+        Z: { route: '3 SLANT', assignment: 'Field #1 slant-sit' },
+        H: { route: 'FALLOUT', assignment: 'Fallout flat' },
+        Y: { route: 'FALLOUT', assignment: 'Fallout flat' },
+        X: { route: '3 SLANT', assignment: 'Boundary slant-sit' },
+        B: { route: '-', assignment: 'Pass protection' },
+      },
+      qbNotes: ['RPO or dropback concept','Progression: Slant-Sit / Fallout'],
+    },
+    {
+      name: 'KENTUCKY', surface: '3×1', formation: 'BASE', family: 'VERTICAL',
+      routes: {
+        Z: { route: 'GO', assignment: 'Go route (field #1)' },
+        H: { route: 'BEND SEAM', assignment: 'Bend seam — skinny post vs. 2 Hi' },
+        Y: { route: 'CROSS', assignment: 'Cross — same as Tennessee' },
+        X: { route: 'GO', assignment: 'Go route (boundary)' },
+        B: { route: 'SWING', assignment: 'Swing to field' },
+      },
+      qbNotes: ['Dropback concept','Progression: Inside / Outside / Back','Alert seam bend vs. 1-high safety'],
+    },
+    {
+      name: 'MICHIGAN (MESH)', surface: '3×1', formation: 'BASE', family: 'MESH',
+      routes: {
+        Z: { route: 'POST', assignment: 'Post — backside clear' },
+        H: { route: 'WHEEL', assignment: 'Wheel — from slot' },
+        Y: { route: 'MESH OVER', assignment: 'Mesh over (5 yds)' },
+        X: { route: 'MESH UNDER', assignment: 'Mesh under (3 yds)' },
+        B: { route: 'RAIL', assignment: 'Rail — straight upfield' },
+      },
+      qbNotes: ['3 step drop, 1 big if throwing presnap read','Protection: 80/90','Alert post vs. single-high','Biggest variation from 12 personnel'],
+    },
+    {
+      name: 'PITTSBURGH', surface: '3×1', formation: 'BASE', family: 'HOLE',
+      routes: {
+        Z: { route: 'SPOT', assignment: 'Replace alley defender @ 6 yds' },
+        H: { route: 'CORNER', assignment: '7 steps & stick — 25&in: back pylon / 26+: front pylon' },
+        Y: { route: 'ARROW', assignment: '2 steps at 45° then flatten' },
+        X: { route: 'SPOT', assignment: 'Replace alley defender @ 6 yds' },
+        B: { route: 'ARROW', assignment: 'Arrow — aiming point 6 yds out of bounds' },
+      },
+      qbNotes: ['RPO & dropback concept','Progression: Spot / Arrow','Pick side based on pre-snap rule','Alert corner vs. Man & corner crash on Spot'],
+    },
+    {
+      name: 'TEXAS', surface: '2×2', formation: 'DEUCE', family: 'STACKING-OUTSIDE',
+      routes: {
+        Z: { route: 'HITCH', assignment: '6 yd turn to QB' },
+        H: { route: 'SLOT FADE', assignment: 'Press vertical & fade to numbers' },
+        Y: { route: 'SLOT FADE', assignment: 'Press vertical & fade to numbers' },
+        X: { route: 'HITCH', assignment: '6 yd turn to QB' },
+        B: { route: '-', assignment: 'Pass protection' },
+      },
+      qbNotes: ['Dropback concept','Progression: Hitch — High — Back','Pick a side based on leverage','Alert slot fade vs. Man coverage'],
+    },
+    {
+      name: 'INDIANA', surface: '3×1', formation: 'BASE', family: 'STACKING-OUTSIDE',
+      routes: {
+        Z: { route: 'WIDE HITCH', assignment: '6×1 wide hitch' },
+        H: { route: 'CORNER', assignment: '7 steps & stick — 25&in: back pylon / 26+: front pylon' },
+        Y: { route: 'SKINNY POST', assignment: 'Attack safety & stay skinny' },
+        X: { route: 'HITCH', assignment: '6 yd turn to QB' },
+        B: { route: 'SPOT', assignment: 'Replace alley defender' },
+      },
+      qbNotes: ['Dropback concept','Progression: Low / High / Back','Alert skinny post vs. 2 Hi safety off hash','Alert corner vs. Man coverage'],
+    },
+  ],
+  screens: [
+    {
+      name: 'SMU (TUNNEL)', surface: '3×1', formation: 'BASE', family: 'TUNNEL SCREEN',
+      routes: {
+        Z: { route: 'BLOCK #1', assignment: 'Block #1 (CB)' },
+        H: { route: 'TUNNEL SCREEN', assignment: 'Tunnel screen — come back to receive' },
+        Y: { route: 'PUSH 3 VERTICAL KICK OUT #1', assignment: 'Push 3 vertical then kick out #2' },
+        X: { route: 'CRACK', assignment: 'Crack first defender inside' },
+        B: { route: 'SWING', assignment: '1 shuffle toward Q, run swing — look for tackle kickout' },
+      },
+      qbNotes: ['3 step drop — read the field EMOL','EMOL rushes → throw RB swing','EMOL chases back → throw tunnel to H','PST/PSG release; C/BSG set & release'],
+    },
+    {
+      name: 'LSU 1 (BOUNDARY)', surface: '3×1', formation: 'BASE', family: 'ALLEY SCREEN',
+      routes: {
+        Z: { route: 'BLOCK MDM', assignment: 'Block most dangerous man' },
+        H: { route: 'TUNNEL SCREEN', assignment: 'Tunnel screen — ride the wave' },
+        Y: { route: 'PUSH 3 VERTICAL KICK OUT #1', assignment: 'Push 3 vertical, kick out #1' },
+        X: { route: '3 STEPS VERTICAL/ RETRACE/ ATTACK BALL/ "RIDE THE WAVE"', assignment: '3 steps vertical, retrace, attack ball' },
+        B: { route: 'SWING', assignment: 'Swing OPPOSITE of call — expect a throw' },
+      },
+      qbNotes: ['Presnap swing — one step, eyes to swing','Retreat and throw alley','PST: High wall; PSG: Set & kick #2','C: Set & block #3; BSG: Rat kill'],
+    },
+    {
+      name: 'FSU 1 (BOUNDARY)', surface: '3×1', formation: 'BASE', family: 'OL SCREEN',
+      routes: {
+        Z: { route: 'BLOCK MDM', assignment: 'Block most dangerous man' },
+        H: { route: 'BLOCK MDM', assignment: 'Block most dangerous man' },
+        Y: { route: 'PUSH 3 VERTICAL KICK OUT #1', assignment: 'Push 3 vertical, kick out #1' },
+        X: { route: '3 STEPS VERTICAL/ RETRACE/ ATTACK BALL/ "RIDE THE WAVE"', assignment: '3 steps vertical, retrace, catch ball' },
+        B: { route: 'SWING', assignment: 'Fake Chargers away from screen' },
+      },
+      qbNotes: ['Fake Chargers away / retreat / throw screen','PST: Chargers opposite 2 steps / kick out #2','PSG: Chargers opposite / block #3','C: Chargers opposite / rat kill'],
+    },
+    {
+      name: 'USC (ARROW)', surface: '3×1', formation: 'BASE', family: 'ARROW SCREEN',
+      routes: {
+        Z: { route: 'RUN OFF STALK', assignment: 'Run off stalk (CB)' },
+        H: { route: 'RUN OFF STALK', assignment: 'Run off stalk' },
+        Y: { route: 'PUSH 3 VERTICAL KICK OUT #1', assignment: 'Push 3 vertical, kick out #1' },
+        X: { route: 'RUN OFF STALK', assignment: 'Run off stalk' },
+        B: { route: 'ARROW', assignment: '6 steps on arrow, stop, face QB' },
+      },
+      qbNotes: ['1 step, sell pass, drift back','1. Throw arrow screen to B','2. Throw tunnel if needed','PST: High wall; PSG/C: Set & release on tunnel'],
+    },
+  ],
+};
+
+let pbCurrentCategory = 'passing';
+let pbSelectedPlay = null;
+let pbSelectedPos = null;
+
+function showPlaybook() {
+  showScreen('playbook-screen');
+  pbShowList();
+}
+
+function pbFilter(cat, btn) {
+  pbCurrentCategory = cat;
+  document.querySelectorAll('.pb-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  pbShowList();
+}
+
+function pbShowList() {
+  pbSelectedPlay = null;
+  pbSelectedPos = null;
+  document.getElementById('pb-play-list').style.display = '';
+  document.getElementById('pb-diagram-area').style.display = 'none';
+  const plays = playbookData[pbCurrentCategory];
+  document.getElementById('pb-play-list').innerHTML = plays.map((p, i) =>
+    `<div class="pb-play-item" onclick="pbShowPlay(${i})">
+      <div style="flex:1">
+        <div class="pb-play-item-name">${p.name}</div>
+        <div class="pb-play-item-sub">${p.surface} • ${p.formation}</div>
+      </div>
+      <div class="pb-play-item-family">${p.family}</div>
+      <div style="color:var(--gray);font-size:18px;margin-left:4px">›</div>
+    </div>`
+  ).join('');
+}
+
+function pbShowPlay(idx) {
+  pbSelectedPlay = idx;
+  pbSelectedPos = null;
+  const p = playbookData[pbCurrentCategory][idx];
+  document.getElementById('pb-play-list').style.display = 'none';
+  const area = document.getElementById('pb-diagram-area');
+  area.style.display = '';
+  document.getElementById('pb-play-title').textContent = p.name;
+  document.getElementById('pb-formation-label').textContent = `${p.surface} • ${p.formation} • ${p.family}`;
+  pbRenderDiagram(p, null);
+}
+
+function pbRenderDiagram(p, selectedPos) {
+  // SVG
+  document.getElementById('pb-svg-wrap').innerHTML = drawPlaySVG(p.formation, p.routes, selectedPos);
+  // Make player circles tappable
+  setTimeout(() => {
+    const svg = document.querySelector('#pb-svg-wrap svg');
+    if (!svg) return;
+    // Find all text labels in SVG that match position names
+    svg.querySelectorAll('text').forEach(t => {
+      const label = t.textContent.trim();
+      if (ROUTE_COLORS[label]) {
+        t.style.cursor = 'pointer';
+        t.parentElement.style.cursor = 'pointer';
+        t.parentElement.onclick = () => pbSelectPos(label);
+      }
+    });
+    // Also make circles tappable via circle elements
+    svg.querySelectorAll('circle').forEach(c => {
+      // Find the nearest text sibling
+      const parent = c.parentElement;
+      if (parent) {
+        const txt = parent.querySelector('text');
+        if (txt && ROUTE_COLORS[txt.textContent.trim()]) {
+          const lbl = txt.textContent.trim();
+          parent.style.cursor = 'pointer';
+          parent.onclick = () => pbSelectPos(lbl);
+        }
+      }
+    });
+  }, 50);
+
+  // Legend
+  document.getElementById('pb-legend').innerHTML = Object.entries(p.routes)
+    .filter(([pos, info]) => info.route && info.route !== '-')
+    .map(([pos, info]) =>
+      `<div class="pb-legend-item"><div class="pb-legend-dot" style="background:${ROUTE_COLORS[pos]||'#fff'}"></div><span>${pos}</span></div>`
+    ).join('');
+
+  // Route table
+  document.getElementById('pb-route-table').innerHTML =
+    `<table><tr><th>POS</th><th>ROUTE</th><th>ASSIGNMENT</th></tr>` +
+    Object.entries(p.routes).map(([pos, info]) => {
+      const isActive = selectedPos === null || selectedPos === pos;
+      const col = ROUTE_COLORS[pos] || '#fff';
+      return `<tr style="opacity:${isActive?1:0.35};cursor:pointer" onclick="pbSelectPos('${pos}')">
+        <td><span class="pb-pos-dot" style="background:${col}"></span><strong>${pos}</strong></td>
+        <td style="color:${col};font-weight:700">${info.route || '—'}</td>
+        <td style="color:#ccc;font-size:12px">${info.assignment}</td>
+      </tr>`;
+    }).join('') + `</table>`;
+
+  // QB notes
+  document.getElementById('pb-qb-notes').innerHTML =
+    `<div class="pb-qb-notes-title">QB NOTES</div><ul>${p.qbNotes.map(n=>`<li>${n}</li>`).join('')}</ul>`;
+}
+
+function pbSelectPos(pos) {
+  const p = playbookData[pbCurrentCategory][pbSelectedPlay];
+  pbSelectedPos = (pbSelectedPos === pos) ? null : pos;
+  pbRenderDiagram(p, pbSelectedPos);
+}
 </script>
 </body>
 </html>
