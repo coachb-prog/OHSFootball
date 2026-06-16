@@ -666,83 +666,169 @@ function saveName() {
 document.getElementById('name-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveName(); });
 
 // ==================== SVG HELPERS ====================
-function makeSVG(content) {
-  return `<svg viewBox="0 0 360 240" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-        <path d="M0,0 L0,6 L8,3 z" fill="#E8C96A"/>
-      </marker>
-    </defs>
-    <rect width="360" height="240" fill="#2A5C14"/>
-    <line x1="0" y1="80" x2="360" y2="80" stroke="#3A7A1A" stroke-width="1" opacity="0.5"/>
-    <line x1="0" y1="120" x2="360" y2="120" stroke="#3A7A1A" stroke-width="1" opacity="0.5"/>
-    <line x1="0" y1="155" x2="360" y2="155" stroke="#88FF88" stroke-width="1.5" stroke-dasharray="8 6" opacity="0.7"/>
-    ${content}
-  </svg>`;
+// Viewbox 400x260. LOS at y=170. Field flows upward (offense on bottom).
+const VW = 400, VH = 260, LOS = 170;
+
+function fieldSVG(players, label) {
+  // Yard lines above LOS (going upfield)
+  let yardLines = '';
+  for (let y = LOS - 30; y >= 20; y -= 30) {
+    yardLines += `<line x1="0" y1="${y}" x2="${VW}" y2="${y}" stroke="#3A7A1A" stroke-width="0.8" opacity="0.6"/>`;
+  }
+  // Hash marks on each yard line
+  let hashes = '';
+  for (let y = LOS - 30; y >= 20; y -= 30) {
+    for (let x = 60; x <= VW-60; x += 12) {
+      hashes += `<line x1="${x}" y1="${y-3}" x2="${x}" y2="${y+3}" stroke="#3A7A1A" stroke-width="1" opacity="0.5"/>`;
+    }
+  }
+  // Sideline indicators
+  const sides = `<line x1="8" y1="0" x2="8" y2="${VH}" stroke="#5A9A2A" stroke-width="2" opacity="0.4"/>
+    <line x1="${VW-8}" y1="0" x2="${VW-8}" y2="${VH}" stroke="#5A9A2A" stroke-width="2" opacity="0.4"/>`;
+  // LOS line
+  const los = `<line x1="0" y1="${LOS}" x2="${VW}" y2="${LOS}" stroke="#AAFFAA" stroke-width="2" stroke-dasharray="10 6" opacity="0.8"/>
+    <text x="6" y="${LOS-4}" font-size="9" fill="#AAFFAA" opacity="0.7" font-family="sans-serif" font-weight="700">LOS</text>`;
+  // Formation name label
+  const lbl = label ? `<text x="${VW/2}" y="${VH-6}" text-anchor="middle" font-size="11" fill="#E8C96A" opacity="0.6" font-family="sans-serif" font-weight="700" letter-spacing="2">${label}</text>` : '';
+  return `<svg viewBox="0 0 ${VW} ${VH}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="glow"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <marker id="arrowG" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#E8C96A"/>
+    </marker>
+    <marker id="arrowW" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="white"/>
+    </marker>
+  </defs>
+  <rect width="${VW}" height="${VH}" fill="#2A5C14"/>
+  ${yardLines}${hashes}${sides}${los}
+  ${players}
+  ${lbl}
+</svg>`;
 }
-function circle(x, y, r, fill, stroke, label, textColor) {
-  return `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>
-    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="900" fill="${textColor}" font-family="sans-serif">${label}</text>`;
+
+// Player circle builders
+function olCircle(x, y, lbl) {
+  // OL: red filled, white border, larger
+  return `<circle cx="${x}" cy="${y}" r="13" fill="#CC0000" stroke="white" stroke-width="2"/>
+    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="900" fill="white" font-family="sans-serif">${lbl}</text>`;
 }
+function wrCircle(x, y, lbl) {
+  // WR: white fill, red border — larger, easy to spot
+  return `<circle cx="${x}" cy="${y}" r="12" fill="white" stroke="#CC0000" stroke-width="2.5"/>
+    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="900" fill="#CC0000" font-family="sans-serif">${lbl}</text>`;
+}
+function qbCircle(x, y) {
+  // QB: bright red fill, gold border
+  return `<circle cx="${x}" cy="${y}" r="13" fill="#CC0000" stroke="#E8C96A" stroke-width="3" filter="url(#glow)"/>
+    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="900" fill="white" font-family="sans-serif">QB</text>`;
+}
+function rbCircle(x, y) {
+  // B (running back): white fill, red border
+  return `<circle cx="${x}" cy="${y}" r="11" fill="#FFEEEE" stroke="#CC0000" stroke-width="2.5"/>
+    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="11" font-weight="900" fill="#CC0000" font-family="sans-serif">B</text>`;
+}
+function teCircle(x, y, lbl) {
+  // TE: gold fill, dark border
+  return `<circle cx="${x}" cy="${y}" r="13" fill="#E8C96A" stroke="#8B6914" stroke-width="2.5"/>
+    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="900" fill="#111" font-family="sans-serif">${lbl||'TE'}</text>`;
+}
+
+// OL line: 5 linemen centered at cx, spaced 30px
 function olLine(cx) {
-  const pos = [[-52,'LT'],[-26,'LG'],[0,'C'],[26,'RG'],[52,'RT']];
-  return pos.map(([dx,lbl]) => circle(cx+dx, 155, 11, '#CC0000', '#FF6666', lbl, 'white')).join('');
+  const labels = ['LT','LG','C','RG','RT'];
+  const offsets = [-60,-30,0,30,60];
+  return offsets.map((dx,i) => olCircle(cx+dx, LOS, labels[i])).join('');
 }
-const CX = 180;
+
+const CX = 200; // center x of the 400px viewbox
+
+// Receivers line up ON the LOS (same y as OL), spreading outward from the tackles.
+// OL occupies CX±60 (LT=140, RT=260). Slots ~28px outside tackles, wides near edges.
+// Position labels: X (boundary wide), H (boundary slot or inner), Y (field slot), Z (field wide)
+// RB label = B
+
 function drawDeuce() {
-  return makeSVG(olLine(CX) +
-    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
-    circle(88, 152, 10, 'white', '#CC0000', 'H', 'black') +
-    circle(338, 148, 10, 'white', '#CC0000', 'Z', 'black') +
-    circle(272, 152, 10, 'white', '#CC0000', 'Y', 'black') +
-    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white') +
-    circle(CX, 213, 10, 'white', '#CC0000', 'RB', '#CC0000'));
+  // 2x2: X wide left, H slot left | Y slot right, Z wide right
+  return fieldSVG(
+    olLine(CX) +
+    wrCircle(20, LOS, 'X') +       // boundary wide left
+    wrCircle(112, LOS, 'H') +      // left slot (outside LT at 140, leave gap)
+    wrCircle(288, LOS, 'Y') +      // right slot (outside RT at 260)
+    wrCircle(380, LOS, 'Z') +      // field wide right
+    qbCircle(CX, LOS+32) +
+    rbCircle(CX, LOS+62),
+    'DEUCE — 2×2'
+  );
 }
 function drawBase() {
-  return makeSVG(olLine(CX) +
-    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
-    circle(258, 152, 10, 'white', '#CC0000', 'H', 'black') +
-    circle(290, 148, 10, 'white', '#CC0000', 'Y', 'black') +
-    circle(338, 152, 10, 'white', '#CC0000', 'Z', 'black') +
-    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white') +
-    circle(CX, 213, 10, 'white', '#CC0000', 'RB', '#CC0000'));
+  // 3x1: X isolated boundary left | H/Y/Z trips right
+  return fieldSVG(
+    olLine(CX) +
+    wrCircle(20, LOS, 'X') +       // boundary single
+    wrCircle(288, LOS, 'H') +      // inner trips
+    wrCircle(330, LOS, 'Y') +      // middle trips
+    wrCircle(380, LOS, 'Z') +      // outer trips
+    qbCircle(CX, LOS+32) +
+    rbCircle(CX, LOS+62),
+    'BASE — 3×1'
+  );
 }
 function drawBunch() {
-  return makeSVG(olLine(CX) +
-    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
-    circle(248, 155, 10, 'white', '#CC0000', 'H', 'black') +
-    circle(272, 145, 10, 'white', '#CC0000', 'Y', 'black') +
-    circle(296, 155, 10, 'white', '#CC0000', 'Z', 'black') +
-    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white') +
-    circle(CX, 213, 10, 'white', '#CC0000', 'RB', '#CC0000'));
+  // Tight 3x1 right — all within ~9 yds of each other
+  return fieldSVG(
+    olLine(CX) +
+    wrCircle(20, LOS, 'X') +
+    wrCircle(280, LOS+4, 'H') +    // staggered slightly for readability
+    wrCircle(307, LOS-6, 'Y') +
+    wrCircle(334, LOS+4, 'Z') +
+    qbCircle(CX, LOS+32) +
+    rbCircle(CX, LOS+62),
+    'BUNCH — TIGHT 3×1'
+  );
 }
 function drawCluster() {
-  return makeSVG(olLine(CX) +
-    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
-    circle(246, 155, 10, 'white', '#CC0000', 'H', 'black') +
-    circle(262, 145, 10, 'white', '#CC0000', 'Y', 'black') +
-    circle(278, 155, 10, 'white', '#CC0000', 'Z', 'black') +
-    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white') +
-    circle(CX, 213, 10, 'white', '#CC0000', 'RB', '#CC0000'));
+  // Very tight 3x1 — almost stacked, 1-2 yds apart
+  return fieldSVG(
+    olLine(CX) +
+    wrCircle(20, LOS, 'X') +
+    wrCircle(284, LOS+5, 'H') +
+    wrCircle(308, LOS-5, 'Y') +
+    wrCircle(332, LOS+5, 'Z') +
+    // bracket showing tightness
+    `<line x1="270" y1="${LOS-18}" x2="270" y2="${LOS+18}" stroke="#E8C96A" stroke-width="1.5" opacity="0.5"/>
+     <line x1="346" y1="${LOS-18}" x2="346" y2="${LOS+18}" stroke="#E8C96A" stroke-width="1.5" opacity="0.5"/>
+     <line x1="270" y1="${LOS-18}" x2="346" y2="${LOS-18}" stroke="#E8C96A" stroke-width="1.5" opacity="0.5"/>` +
+    qbCircle(CX, LOS+32) +
+    rbCircle(CX, LOS+62),
+    'CLUSTER — VERY TIGHT 3×1'
+  );
 }
 function drawEmpty() {
-  return makeSVG(olLine(CX) +
-    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
-    circle(88, 152, 10, 'white', '#CC0000', 'H', 'black') +
-    circle(120, 162, 10, 'white', '#CC0000', 'W', 'black') +
-    circle(272, 152, 10, 'white', '#CC0000', 'Y', 'black') +
-    circle(338, 148, 10, 'white', '#CC0000', 'Z', 'black') +
-    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white'));
+  // 5 WRs, no B — spread across the field
+  return fieldSVG(
+    olLine(CX) +
+    wrCircle(20, LOS, 'X') +
+    wrCircle(112, LOS, 'H') +
+    wrCircle(288, LOS, 'Y') +
+    wrCircle(340, LOS, 'Z') +
+    wrCircle(380, LOS, 'W') +
+    qbCircle(CX, LOS+32),
+    'EMPTY — 5 WIDE'
+  );
 }
 function drawRT() {
-  return makeSVG(olLine(CX) +
-    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
-    circle(258, 152, 10, 'white', '#CC0000', 'Y', 'black') +
-    circle(258, 152, 10, 'white', '#CC0000', 'Y', 'black') +
-    circle(300, 148, 10, 'white', '#CC0000', 'Z', 'black') +
-    circle(244, 155, 11, '#E8C96A', '#C9A84C', 'TE', 'black') +
-    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white') +
-    circle(CX, 213, 10, 'white', '#CC0000', 'RB', '#CC0000'));
+  // 11 personnel: X boundary, TE attached right of RT, Y/Z field side
+  return fieldSVG(
+    olLine(CX) +
+    wrCircle(20, LOS, 'X') +
+    teCircle(274, LOS, 'TE') +     // attached to RT (at 260), tight
+    wrCircle(316, LOS, 'Y') +
+    wrCircle(375, LOS, 'Z') +
+    qbCircle(CX, LOS+32) +
+    rbCircle(CX, LOS+62),
+    'RT — 11 PERSONNEL'
+  );
 }
 
 const formations = {
@@ -1081,42 +1167,44 @@ function pbNext() {
 }
 
 // ==================== MOTION QUIZ ====================
-function drawMotion(baseFormation, fromX, fromY, toX, toY, arc) {
-  let arrow = '';
+// Coordinates use VW=400, LOS=170 (same system as formation diagrams).
+// H slot left is at x=112, Z wide right is at x=380, etc.
+function motionArrow(x1, y1, x2, y2, arc) {
   if (arc) {
-    const mx = (fromX+toX)/2; const my = Math.min(fromY,toY) - 40;
-    arrow = `<path d="M${fromX},${fromY} Q${mx},${my} ${toX},${toY}" stroke="#E8C96A" fill="none" stroke-width="2.5" stroke-dasharray="5 3" marker-end="url(#arrow)"/>`;
-  } else {
-    arrow = `<line x1="${fromX}" y1="${fromY}" x2="${toX}" y2="${toY}" stroke="#E8C96A" stroke-width="2.5" stroke-dasharray="5 3" marker-end="url(#arrow)"/>`;
+    const mx = (x1+x2)/2;
+    const my = Math.min(y1,y2) - 50;
+    return `<path d="M${x1},${y1} Q${mx},${my} ${x2},${y2}" stroke="#E8C96A" fill="none" stroke-width="3" stroke-dasharray="7 4" marker-end="url(#arrowG)"/>`;
   }
-  return makeSVG(formations[baseFormation]().replace(/<svg[^>]+>[\s\S]*?<defs>[\s\S]*?<\/defs>/, '').replace('</svg>','') + arrow + '</svg>').replace('<svg','<svg');
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#E8C96A" stroke-width="3" stroke-dasharray="7 4" marker-end="url(#arrowG)"/>`;
 }
-// Rebuild with arrow properly
-function drawMotionSVG(baseKey, from, to, arc) {
-  const base = { DEUCE: drawDeuce, BASE: drawBase }[baseKey] || drawDeuce;
-  let arrowEl = '';
-  if (arc) {
-    const mx = (from[0]+to[0])/2; const my = Math.min(from[1],to[1]) - 45;
-    arrowEl = `<path d="M${from[0]},${from[1]} Q${mx},${my} ${to[0]},${to[1]}" stroke="#E8C96A" fill="none" stroke-width="3" stroke-dasharray="6 3" marker-end="url(#arrow)"/>`;
-  } else {
-    arrowEl = `<line x1="${from[0]}" y1="${from[1]}" x2="${to[0]}" y2="${to[1]}" stroke="#E8C96A" stroke-width="3" stroke-dasharray="6 3" marker-end="url(#arrow)"/>`;
-  }
-  const inner = base().replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
-  return `<svg viewBox="0 0 360 240" xmlns="http://www.w3.org/2000/svg">
-    <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#E8C96A"/></marker></defs>
-    ${inner}${arrowEl}</svg>`;
+function drawMotionSVG(baseDrawFn, arrow, motionLabel) {
+  // Strip outer <svg> tags from base, inject arrow inside
+  const baseHTML = baseDrawFn();
+  const inner = baseHTML.replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
+  // Replace the formation label with motion label
+  const labeled = motionLabel
+    ? inner.replace(/(<text[^>]*letter-spacing[^>]*>)[^<]*(<\/text>)/, `$1${motionLabel}$2`)
+    : inner;
+  return `<svg viewBox="0 0 ${VW} ${VH}" xmlns="http://www.w3.org/2000/svg">${labeled}${arrow}</svg>`;
 }
 
 const mqQuestions = [
-  { diagramFn: () => drawMotionSVG('DEUCE',[88,152],[310,152],false), q:'H crosses all the way behind QB to opposite side. What motion is this?', correct:'ZOOM', choices:['ZOOM','ZIP','YOYO','TRADE'], fb:'ZOOM = receiver crosses all the way to the opposite side behind the QB. Watch the CB — does he follow? Man coverage.' },
-  { diagramFn: () => drawMotionSVG('DEUCE',[88,152],[120,152],false), q:'H moves slightly tighter to the same side. What motion is this?', correct:'ZIP', choices:['ZOOM','ZIP','HOP','SHUFFLE'], fb:'ZIP = receiver tightens to the same side. Creates a surface overload.' },
-  { diagramFn: () => drawMotionSVG('DEUCE',[88,152],[88,170],true), q:'Receiver goes deep, arcs back to same side. What motion is this?', correct:'YOYO', choices:['ZOOM','TRADE','YOYO','BOUNCE'], fb:'YOYO = out to tackle depth, arc back. Creates jet sweep threat — forces defense to declare.' },
-  { diagramFn: () => drawMotionSVG('BASE',[338,152],[80,152],false), q:'Z crosses from far right all the way to the left side. What motion is this?', correct:'TRADE', choices:['ZOOM','ZIP','TRADE','TIP'], fb:'TRADE = receiver starts opposite side and crosses to own side. Different from ZOOM — this is a formation shift.' },
-  { diagramFn: () => drawMotionSVG('BASE',[338,152],[210,155],false), q:'Z crosses and lands tight to the OL. What motion is this?', correct:'TIP', choices:['TRADE','TIP','ZIP','HOP'], fb:'TIP = TRADE but the receiver lands as a sniffer tight to the OL (2-3 yards off). Can lead-block on run.' },
-  { diagramFn: () => drawMotionSVG('DEUCE',[88,152],[98,152],false), q:'H takes a very short inside hop. What motion is this?', correct:'HOP', choices:['ZIP','HOP','SHUFFLE','BOUNCE'], fb:'HOP = short motion hop inside. Often used as RPO read trigger.' },
-  { diagramFn: () => drawMotionSVG('DEUCE',[88,152],[55,152],false), q:'H moves toward the boundary. What motion is this?', correct:'BAM', choices:['ZOOM','BAM','TIP','BOUNCE'], fb:'BAM = receiver goes in motion toward the boundary. Creates boundary overload.' },
-  { diagramFn: null, q:'On ZOOM motion — the CB does NOT follow the receiver. What coverage is this?', correct:'Zone coverage', choices:['Man coverage','Zone coverage','Cover 0','Blitz'], fb:'Zone CBs stay in their zone — they do NOT follow motion. If the CB stays = ZONE (SKY/SHARK/GOLD/SUN).' },
-  { diagramFn: null, q:'On ZOOM motion — the CB DOES follow the receiver. What coverage is this?', correct:'Man coverage', choices:['Zone coverage','Man coverage','Cover 2','Cover 4'], fb:'Man CBs follow their assigned receiver everywhere. CB follows ZOOM = MAN (RED/MARS/MOON).' },
+  // ZOOM: H (x=112) crosses all the way to right side (x=345, behind QB at x=200)
+  { diagramFn: () => drawMotionSVG(drawDeuce, motionArrow(112, LOS, 345, LOS, false), 'ZOOM MOTION'), q:'H crosses all the way behind QB to the opposite side. What motion is this?', correct:'ZOOM', choices:['ZOOM','ZIP','YOYO','TRADE'], fb:'ZOOM = receiver crosses ALL THE WAY to the opposite side behind the QB. Watch the CB — follows = MAN, stays = ZONE.' },
+  // ZIP: H (112) moves slightly tighter same side (140 = just inside)
+  { diagramFn: () => drawMotionSVG(drawDeuce, motionArrow(112, LOS, 152, LOS, false), 'ZIP MOTION'), q:'H moves slightly tighter to the same side. What motion is this?', correct:'ZIP', choices:['ZOOM','ZIP','HOP','SHUFFLE'], fb:'ZIP = receiver tightens to the SAME side — short motion inside. Creates a surface overload.' },
+  // YOYO: H arcs out to tackle depth and back
+  { diagramFn: () => drawMotionSVG(drawDeuce, motionArrow(112, LOS, 112, LOS, true), 'YOYO MOTION'), q:'Receiver goes out to tackle depth, then arcs back to the same spot. What motion is this?', correct:'YOYO', choices:['ZOOM','TRADE','YOYO','BOUNCE'], fb:'YOYO = arc out to tackle depth, come back to same side. Creates jet sweep threat — forces defense to declare.' },
+  // TRADE: Z (x=380, BASE right) crosses all the way to left side
+  { diagramFn: () => drawMotionSVG(drawBase, motionArrow(380, LOS, 55, LOS, false), 'TRADE MOTION'), q:'Z starts on the right and crosses all the way to the left side. What motion is this?', correct:'TRADE', choices:['ZOOM','ZIP','TRADE','TIP'], fb:'TRADE = starts opposite side, crosses to formation side. Shifts the surface — forces defensive adjustment.' },
+  // TIP: Z (380) crosses and lands tight to OL (220 = near OL)
+  { diagramFn: () => drawMotionSVG(drawBase, motionArrow(380, LOS, 225, LOS, false), 'TIP MOTION'), q:'Z crosses and lands tight to the offensive line (sniffer). What motion is this?', correct:'TIP', choices:['TRADE','TIP','ZIP','HOP'], fb:'TIP = TRADE but lands as a sniffer 2-3 yards off the OL. Can lead-block on run.' },
+  // HOP: H (112) takes tiny inside hop
+  { diagramFn: () => drawMotionSVG(drawDeuce, motionArrow(112, LOS, 128, LOS, false), 'HOP MOTION'), q:'H takes a very short inside hop — just a step or two. What motion is this?', correct:'HOP', choices:['ZIP','HOP','SHUFFLE','BOUNCE'], fb:'HOP = tiny hop inside. Often used as an RPO read trigger — simple pre-snap motion.' },
+  // BAM: H (112) goes toward boundary (to the left)
+  { diagramFn: () => drawMotionSVG(drawDeuce, motionArrow(112, LOS, 50, LOS, false), 'BAM MOTION'), q:'H moves toward the boundary (away from the field). What motion is this?', correct:'BAM', choices:['ZOOM','BAM','TIP','BOUNCE'], fb:'BAM = receiver goes in motion toward the boundary. Creates a boundary overload.' },
+  { diagramFn: null, q:'On ZOOM motion — the CB does NOT follow the receiver across. What coverage is this?', correct:'Zone coverage', choices:['Man coverage','Zone coverage','Cover 0','Blitz'], fb:'Zone CBs stay in their zones — they do NOT travel with a moving receiver. CB stays = ZONE (SKY/SHARK/GOLD/SUN).' },
+  { diagramFn: null, q:'On ZOOM motion — the CB DOES follow the receiver across. What coverage is this?', correct:'Man coverage', choices:['Zone coverage','Man coverage','Cover 2','Cover 4'], fb:'Man CBs are glued to their assigned receiver wherever he goes. CB follows = MAN (RED/MARS/MOON).' },
 ];
 let mqList = [];
 function startMotion() {
