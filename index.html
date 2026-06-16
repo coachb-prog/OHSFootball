@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Red Devils Playbook</title>
+<style>
+:root {
+  --red: #CC0000;
+  --red-dark: #990000;
+  --red-light: #FF4444;
+  --black: #111111;
+  --black2: #1A1A1A;
+  --black3: #242424;
+  --white: #FFFFFF;
+  --gold: #E8C96A;
+  --gold-dark: #C9A84C;
+  --green-field: #2A5C14;
+  --correct: #1A7A3A;
+  --wrong: #7A1A1A;
+  --gray: #888888;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body {
+  background: var(--black);
+  color: var(--white);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+.screen { display: none; min-height: 100vh; flex-direction: column; }
+.screen.active { display: flex; }
+
+/* HEADER */
+.header {
+  background: var(--red);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.header-title { font-size: 13px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
+.header-xp { font-size: 11px; color: var(--gold); font-weight: 700; }
+.back-btn {
+  background: rgba(255,255,255,0.2); border: none; color: white;
+  padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+  font-weight: 700;
+}
+
+/* HOME SCREEN */
+#home { background: var(--black); }
+.home-hero {
+  background: linear-gradient(180deg, #1A0000 0%, var(--black) 100%);
+  padding: 32px 20px 24px;
+  text-align: center;
+  border-bottom: 2px solid var(--red);
+}
+.logo-wrap { margin-bottom: 16px; }
+.home-team { font-size: 28px; font-weight: 900; letter-spacing: 3px; color: var(--white); line-height: 1; }
+.home-sub { font-size: 12px; letter-spacing: 4px; color: var(--gold); margin-top: 4px; font-weight: 700; }
+.xp-bar-wrap { margin: 16px auto 0; max-width: 320px; }
+.xp-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--gold); font-weight: 700; margin-bottom: 4px; }
+.xp-bar { background: #333; border-radius: 99px; height: 8px; overflow: hidden; }
+.xp-fill { height: 100%; background: linear-gradient(90deg, var(--red), var(--gold)); border-radius: 99px; transition: width 0.5s; }
+.pos-selector { padding: 16px 20px; background: var(--black2); border-bottom: 1px solid #333; }
+.pos-label { font-size: 11px; letter-spacing: 2px; color: var(--gray); margin-bottom: 8px; font-weight: 700; }
+.pos-btns { display: flex; gap: 8px; }
+.pos-btn {
+  flex: 1; padding: 10px 0; border: 2px solid #444; border-radius: 8px;
+  background: transparent; color: var(--white); font-size: 14px; font-weight: 800;
+  cursor: pointer; transition: all 0.15s;
+}
+.pos-btn.active { background: var(--red); border-color: var(--red); }
+.modes-list { padding: 20px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+.mode-btn {
+  background: var(--black2); border: 1px solid #333; border-radius: 12px;
+  padding: 18px 16px; display: flex; align-items: center; gap: 14px;
+  cursor: pointer; transition: all 0.15s; text-align: left; color: var(--white);
+  min-height: 72px;
+}
+.mode-btn:hover, .mode-btn:active { background: var(--black3); border-color: var(--red); transform: scale(0.98); }
+.mode-icon { font-size: 28px; width: 40px; text-align: center; flex-shrink: 0; }
+.mode-info { flex: 1; }
+.mode-name { font-size: 15px; font-weight: 800; letter-spacing: 0.5px; }
+.mode-desc { font-size: 12px; color: var(--gray); margin-top: 2px; }
+.mode-badge { font-size: 11px; color: var(--gold); font-weight: 700; }
+.lb-btn {
+  margin: 0 20px 20px; background: transparent; border: 2px solid var(--gold);
+  border-radius: 10px; padding: 14px; color: var(--gold); font-size: 14px;
+  font-weight: 800; cursor: pointer; letter-spacing: 1px;
+}
+
+/* QUIZ SHARED */
+.quiz-wrap { flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 12px; }
+.progress-row { display: flex; align-items: center; gap: 10px; }
+.progress-bar { flex: 1; background: #333; border-radius: 99px; height: 6px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--red); border-radius: 99px; transition: width 0.3s; }
+.progress-text { font-size: 12px; color: var(--gray); font-weight: 700; min-width: 40px; text-align: right; }
+.streak-badge {
+  font-size: 12px; font-weight: 800; color: var(--gold);
+  background: rgba(232,201,106,0.15); border: 1px solid var(--gold);
+  border-radius: 99px; padding: 3px 10px;
+}
+.question-card {
+  background: var(--black2); border: 1px solid #333; border-radius: 14px; padding: 16px;
+}
+.play-call-label {
+  font-size: 11px; letter-spacing: 2px; color: var(--gold); font-weight: 700; margin-bottom: 8px;
+}
+.play-call-text {
+  font-size: 20px; font-weight: 900; color: var(--white); letter-spacing: 1px; margin-bottom: 12px;
+}
+.question-text { font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--white); }
+.choices { display: flex; flex-direction: column; gap: 10px; }
+.choice-btn {
+  background: var(--black3); border: 2px solid #444; border-radius: 10px;
+  padding: 16px 14px; font-size: 14px; font-weight: 600; color: var(--white);
+  cursor: pointer; text-align: left; transition: all 0.15s; min-height: 52px;
+}
+.choice-btn:disabled { cursor: default; }
+.choice-btn.correct { background: var(--correct); border-color: #2ECC71; color: white; }
+.choice-btn.wrong { background: var(--wrong); border-color: var(--red); color: white; }
+.choice-btn.reveal { background: rgba(0,180,80,0.2); border-color: #2ECC71; }
+.feedback-box {
+  background: var(--black2); border-radius: 10px; padding: 14px;
+  font-size: 13px; line-height: 1.5; color: #ccc; border-left: 3px solid var(--gold);
+  display: none;
+}
+.feedback-box.show { display: block; }
+.next-btn {
+  background: var(--red); border: none; border-radius: 10px; padding: 16px;
+  color: white; font-size: 16px; font-weight: 800; cursor: pointer;
+  letter-spacing: 1px; margin-top: auto;
+}
+
+/* SVG DIAGRAM */
+.diagram-wrap {
+  background: var(--black2); border: 1px solid #333; border-radius: 14px;
+  overflow: hidden; display: flex; justify-content: center;
+}
+.diagram-wrap svg { width: 100%; max-width: 360px; display: block; }
+
+/* SCORE SCREEN */
+#score-screen { background: var(--black); justify-content: center; align-items: center; padding: 20px; }
+.score-card {
+  background: var(--black2); border: 2px solid var(--gold); border-radius: 20px;
+  padding: 32px 24px; text-align: center; width: 100%; max-width: 340px;
+}
+.score-trophy { font-size: 64px; margin-bottom: 12px; }
+.score-title { font-size: 22px; font-weight: 900; color: var(--gold); letter-spacing: 2px; }
+.score-number { font-size: 56px; font-weight: 900; color: var(--white); line-height: 1; margin: 8px 0; }
+.score-sub { font-size: 14px; color: var(--gray); }
+.score-xp { font-size: 18px; color: var(--gold); font-weight: 800; margin: 12px 0; }
+.score-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.score-actions button {
+  padding: 14px; border-radius: 10px; font-size: 15px; font-weight: 800; cursor: pointer; border: none;
+}
+.btn-play-again { background: var(--red); color: white; }
+.btn-home { background: var(--black3); color: var(--white); border: 1px solid #444; }
+
+/* COVERAGE DRILL */
+.timer-ring-wrap { display: flex; justify-content: center; padding: 8px 0; }
+.timer-text { font-size: 24px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.coverage-name-display {
+  text-align: center; font-size: 48px; font-weight: 900; color: var(--red);
+  letter-spacing: 4px; padding: 20px;
+  text-shadow: 0 0 20px rgba(204,0,0,0.4);
+}
+
+/* PLAY BUILDER */
+.builder-wrap { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.drop-zone {
+  background: var(--black2); border: 2px dashed #444; border-radius: 12px;
+  padding: 12px; min-height: 60px; display: flex; flex-wrap: wrap; gap: 8px;
+  align-items: center; transition: border-color 0.2s;
+}
+.drop-zone.drag-over { border-color: var(--gold); }
+.drop-zone-label { font-size: 11px; color: var(--gray); margin-bottom: 4px; letter-spacing: 1px; font-weight: 700; }
+.tile {
+  background: var(--red); color: white; border: none; border-radius: 8px;
+  padding: 10px 14px; font-size: 14px; font-weight: 800; cursor: grab;
+  user-select: none; touch-action: none; letter-spacing: 0.5px;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.tile.dragging { opacity: 0.5; }
+.tile.in-drop { background: var(--black3); border: 2px solid var(--gold); color: var(--gold); cursor: grab; }
+.tile-pool { display: flex; flex-wrap: wrap; gap: 8px; background: var(--black2); border-radius: 12px; padding: 12px; border: 1px solid #333; }
+.builder-feedback { font-size: 13px; text-align: center; font-weight: 700; padding: 8px; border-radius: 8px; display: none; }
+.builder-feedback.correct { background: rgba(0,180,80,0.2); color: #2ECC71; display: block; }
+.builder-feedback.wrong { background: rgba(200,0,0,0.2); color: #FF6666; display: block; }
+.check-btn {
+  background: var(--gold); color: var(--black); border: none; border-radius: 10px;
+  padding: 16px; font-size: 16px; font-weight: 900; cursor: pointer; letter-spacing: 1px;
+}
+
+/* LEADERBOARD */
+#leaderboard { background: var(--black); }
+.lb-wrap { padding: 16px; flex: 1; }
+.lb-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.lb-tab {
+  padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer;
+  border: 1px solid #444; background: var(--black2); color: var(--gray);
+  letter-spacing: 0.5px;
+}
+.lb-tab.active { background: var(--red); color: white; border-color: var(--red); }
+.lb-list { display: flex; flex-direction: column; gap: 8px; }
+.lb-item {
+  background: var(--black2); border-radius: 10px; padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px; border: 1px solid #2A2A2A;
+}
+.lb-rank { font-size: 20px; font-weight: 900; color: var(--gold); min-width: 28px; }
+.lb-name { flex: 1; font-size: 15px; font-weight: 700; }
+.lb-score { font-size: 18px; font-weight: 900; color: var(--red); }
+.lb-empty { text-align: center; color: var(--gray); padding: 40px; font-size: 14px; }
+
+/* NAME ENTRY */
+.name-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+  display: flex; align-items: center; justify-content: center; z-index: 200;
+  padding: 20px; display: none;
+}
+.name-modal.show { display: flex; }
+.name-card { background: var(--black2); border: 2px solid var(--gold); border-radius: 16px; padding: 24px; width: 100%; max-width: 300px; }
+.name-card h3 { font-size: 18px; font-weight: 900; color: var(--gold); margin-bottom: 4px; }
+.name-card p { font-size: 13px; color: var(--gray); margin-bottom: 16px; }
+.name-input {
+  width: 100%; padding: 14px; background: var(--black3); border: 2px solid #444;
+  border-radius: 8px; color: white; font-size: 16px; font-weight: 700;
+  text-transform: uppercase; outline: none; margin-bottom: 12px;
+}
+.name-input:focus { border-color: var(--gold); }
+.name-save-btn { width: 100%; background: var(--red); border: none; border-radius: 8px; padding: 14px; color: white; font-size: 16px; font-weight: 800; cursor: pointer; }
+
+/* TIMER SVG */
+.timer-svg { transform: rotate(-90deg); }
+
+/* Motion arrows */
+.motion-arrow { stroke: var(--gold); fill: none; stroke-width: 2.5; stroke-dasharray: 4 3; marker-end: url(#arrow); }
+
+/* Responsive */
+@media (max-height: 600px) {
+  .home-hero { padding: 16px 20px; }
+  .home-team { font-size: 22px; }
+}
+</style>
+</head>
+<body>
+
+<!-- HOME -->
+<div id="home" class="screen active">
+  <div class="home-hero">
+    <div class="logo-wrap">
+      <svg width="80" height="80" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="40" cy="40" r="36" fill="#CC0000" stroke="#E8C96A" stroke-width="3"/>
+        <text x="40" y="48" text-anchor="middle" font-size="32" font-weight="900" fill="white" font-family="sans-serif">O</text>
+        <!-- trident-style top -->
+        <line x1="40" y1="4" x2="40" y2="14" stroke="#E8C96A" stroke-width="3"/>
+        <line x1="32" y1="6" x2="32" y2="14" stroke="#E8C96A" stroke-width="2.5"/>
+        <line x1="48" y1="6" x2="48" y2="14" stroke="#E8C96A" stroke-width="2.5"/>
+      </svg>
+    </div>
+    <div class="home-team">OWENSBORO</div>
+    <div class="home-team" style="color:var(--gold)">RED DEVILS</div>
+    <div class="home-sub">OFFENSIVE PLAYBOOK</div>
+    <div class="xp-bar-wrap">
+      <div class="xp-label">
+        <span id="level-label">🏈 ROOKIE</span>
+        <span id="xp-label">0 XP</span>
+      </div>
+      <div class="xp-bar"><div class="xp-fill" id="xp-fill" style="width:0%"></div></div>
+    </div>
+  </div>
+  <div class="pos-selector">
+    <div class="pos-label">MY POSITION</div>
+    <div class="pos-btns">
+      <button class="pos-btn" data-pos="QB" onclick="setPosition('QB')">QB</button>
+      <button class="pos-btn" data-pos="WR" onclick="setPosition('WR')">WR</button>
+      <button class="pos-btn" data-pos="RB" onclick="setPosition('RB')">RB</button>
+      <button class="pos-btn" data-pos="OL" onclick="setPosition('OL')">OL</button>
+    </div>
+  </div>
+  <div class="modes-list">
+    <button class="mode-btn" onclick="startMode('formation')">
+      <div class="mode-icon">🏟️</div>
+      <div class="mode-info">
+        <div class="mode-name">FORMATION ID QUIZ</div>
+        <div class="mode-desc">Identify formations from diagrams</div>
+      </div>
+      <div class="mode-badge" id="badge-formation">▶</div>
+    </button>
+    <button class="mode-btn" onclick="startMode('assignment')">
+      <div class="mode-icon">📋</div>
+      <div class="mode-info">
+        <div class="mode-name">ASSIGNMENT FLASHCARDS</div>
+        <div class="mode-desc">Position-specific play questions</div>
+      </div>
+      <div class="mode-badge" id="badge-assignment">▶</div>
+    </button>
+    <button class="mode-btn" onclick="startMode('coverage')">
+      <div class="mode-icon">🛡️</div>
+      <div class="mode-info">
+        <div class="mode-name">COVERAGE RECOGNITION</div>
+        <div class="mode-desc">ID defensive shells fast</div>
+      </div>
+      <div class="mode-badge" id="badge-coverage">▶</div>
+    </button>
+    <button class="mode-btn" onclick="startMode('builder')">
+      <div class="mode-icon">🎯</div>
+      <div class="mode-info">
+        <div class="mode-name">PLAY CALL BUILDER</div>
+        <div class="mode-desc">Drag tiles into correct order</div>
+      </div>
+      <div class="mode-badge" id="badge-builder">▶</div>
+    </button>
+    <button class="mode-btn" onclick="startMode('motion')">
+      <div class="mode-icon">⚡</div>
+      <div class="mode-info">
+        <div class="mode-name">MOTION ID QUIZ</div>
+        <div class="mode-desc">Name the motion & read coverage</div>
+      </div>
+      <div class="mode-badge" id="badge-motion">▶</div>
+    </button>
+  </div>
+  <button class="lb-btn" onclick="showLeaderboard()">🏆 LEADERBOARD</button>
+</div>
+
+<!-- FORMATION QUIZ -->
+<div id="formation-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">FORMATION ID</div>
+    <div class="header-xp" id="fq-streak"></div>
+  </div>
+  <div class="quiz-wrap">
+    <div class="progress-row">
+      <div class="progress-bar"><div class="progress-fill" id="fq-progress"></div></div>
+      <div class="progress-text" id="fq-progress-text">1/10</div>
+    </div>
+    <div class="diagram-wrap" id="fq-diagram"></div>
+    <div class="question-card">
+      <div class="question-text" id="fq-question"></div>
+    </div>
+    <div class="choices" id="fq-choices"></div>
+    <div class="feedback-box" id="fq-feedback"></div>
+    <button class="next-btn" id="fq-next" onclick="fqNext()" style="display:none">NEXT →</button>
+  </div>
+</div>
+
+<!-- ASSIGNMENT FLASHCARDS -->
+<div id="assignment-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">ASSIGNMENTS</div>
+    <div class="header-xp" id="aq-streak"></div>
+  </div>
+  <div class="quiz-wrap">
+    <div class="progress-row">
+      <div class="progress-bar"><div class="progress-fill" id="aq-progress"></div></div>
+      <div class="progress-text" id="aq-progress-text">1/8</div>
+    </div>
+    <div class="question-card">
+      <div class="play-call-label">PLAY CALL</div>
+      <div class="play-call-text" id="aq-playcall"></div>
+      <div class="question-text" id="aq-question"></div>
+    </div>
+    <div class="choices" id="aq-choices"></div>
+    <div class="feedback-box" id="aq-feedback"></div>
+    <button class="next-btn" id="aq-next" onclick="aqNext()" style="display:none">NEXT →</button>
+  </div>
+</div>
+
+<!-- COVERAGE DRILL -->
+<div id="coverage-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">COVERAGE DRILL</div>
+    <div class="header-xp" id="cq-streak"></div>
+  </div>
+  <div class="quiz-wrap">
+    <div class="progress-row">
+      <div class="progress-bar"><div class="progress-fill" id="cq-progress"></div></div>
+      <div class="progress-text" id="cq-progress-text">1/12</div>
+    </div>
+    <div class="timer-ring-wrap">
+      <svg width="70" height="70" class="timer-svg">
+        <circle cx="35" cy="35" r="28" fill="none" stroke="#333" stroke-width="6"/>
+        <circle cx="35" cy="35" r="28" fill="none" stroke="var(--red)" stroke-width="6"
+          stroke-dasharray="175.9" stroke-dashoffset="0" id="timer-circle" stroke-linecap="round"/>
+        <text x="35" y="35" text-anchor="middle" dominant-baseline="middle"
+          font-size="18" font-weight="900" fill="white" transform="rotate(90,35,35)" id="timer-text">15</text>
+      </svg>
+    </div>
+    <div class="coverage-name-display" id="cq-coverage"></div>
+    <div class="question-card">
+      <div class="question-text" id="cq-question"></div>
+    </div>
+    <div class="choices" id="cq-choices"></div>
+    <div class="feedback-box" id="cq-feedback"></div>
+    <button class="next-btn" id="cq-next" onclick="cqNext()" style="display:none">NEXT →</button>
+  </div>
+</div>
+
+<!-- PLAY BUILDER -->
+<div id="builder-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">PLAY BUILDER</div>
+    <div class="header-xp" id="pb-score-display"></div>
+  </div>
+  <div class="builder-wrap">
+    <div class="progress-row">
+      <div class="progress-bar"><div class="progress-fill" id="pb-progress"></div></div>
+      <div class="progress-text" id="pb-progress-text">1/6</div>
+    </div>
+    <div class="question-card">
+      <div class="play-call-label">BUILD THE PLAY CALL</div>
+      <div class="question-text" id="pb-instruction"></div>
+    </div>
+    <div>
+      <div class="drop-zone-label">DRAG TILES HERE IN ORDER →</div>
+      <div class="drop-zone" id="drop-zone"></div>
+    </div>
+    <div>
+      <div class="drop-zone-label">AVAILABLE TILES</div>
+      <div class="tile-pool" id="tile-pool"></div>
+    </div>
+    <div class="builder-feedback" id="pb-feedback"></div>
+    <button class="check-btn" onclick="checkBuilder()">CHECK ANSWER ✓</button>
+    <button class="next-btn" id="pb-next" onclick="pbNext()" style="display:none">NEXT PLAY →</button>
+  </div>
+</div>
+
+<!-- MOTION QUIZ -->
+<div id="motion-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">MOTION ID</div>
+    <div class="header-xp" id="mq-streak"></div>
+  </div>
+  <div class="quiz-wrap">
+    <div class="progress-row">
+      <div class="progress-bar"><div class="progress-fill" id="mq-progress"></div></div>
+      <div class="progress-text" id="mq-progress-text">1/8</div>
+    </div>
+    <div class="diagram-wrap" id="mq-diagram"></div>
+    <div class="question-card">
+      <div class="question-text" id="mq-question"></div>
+    </div>
+    <div class="choices" id="mq-choices"></div>
+    <div class="feedback-box" id="mq-feedback"></div>
+    <button class="next-btn" id="mq-next" onclick="mqNext()" style="display:none">NEXT →</button>
+  </div>
+</div>
+
+<!-- SCORE SCREEN -->
+<div id="score-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">RESULTS</div>
+    <div class="header-xp"></div>
+  </div>
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:20px;">
+    <div class="score-card">
+      <div class="score-trophy" id="score-trophy">🏆</div>
+      <div class="score-title" id="score-title">GREAT JOB</div>
+      <div class="score-number" id="score-number">8/10</div>
+      <div class="score-sub" id="score-sub">Formation ID Quiz</div>
+      <div class="score-xp" id="score-xp">+80 XP earned</div>
+      <div class="score-actions">
+        <button class="score-actions btn-play-again" style="background:var(--red);color:white;padding:14px;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;border:none;" onclick="playAgain()">PLAY AGAIN</button>
+        <button style="background:var(--black3);color:var(--white);border:1px solid #444;padding:14px;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;" onclick="goHome()">HOME</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LEADERBOARD -->
+<div id="leaderboard-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">LEADERBOARD</div>
+    <div class="header-xp"></div>
+  </div>
+  <div class="lb-wrap">
+    <div class="lb-tabs">
+      <button class="lb-tab active" onclick="showLbTab('formation',this)">FORMATION</button>
+      <button class="lb-tab" onclick="showLbTab('assignment',this)">ASSIGNMENTS</button>
+      <button class="lb-tab" onclick="showLbTab('coverage',this)">COVERAGE</button>
+      <button class="lb-tab" onclick="showLbTab('builder',this)">BUILDER</button>
+      <button class="lb-tab" onclick="showLbTab('motion',this)">MOTION</button>
+    </div>
+    <div class="lb-list" id="lb-list"></div>
+  </div>
+</div>
+
+<!-- NAME MODAL -->
+<div class="name-modal" id="name-modal">
+  <div class="name-card">
+    <h3>🔥 NEW HIGH SCORE!</h3>
+    <p>Enter your name for the leaderboard</p>
+    <input class="name-input" id="name-input" placeholder="YOUR NAME" maxlength="12" autocomplete="off">
+    <button class="name-save-btn" onclick="saveName()">SAVE SCORE</button>
+  </div>
+</div>
+
+<script>
+// ==================== STATE ====================
+let xp = parseInt(localStorage.getItem('rd_xp') || '0');
+let position = localStorage.getItem('rd_pos') || 'QB';
+let currentMode = '';
+let currentScore = 0;
+let currentStreak = 0;
+let questionIndex = 0;
+let questions = [];
+let timerInterval = null;
+let timerVal = 15;
+let pendingScore = 0;
+let pendingMode = '';
+
+const LEVELS = [
+  { name: 'ROOKIE', min: 0, max: 99 },
+  { name: 'STARTER', min: 100, max: 299 },
+  { name: 'VARSITY', min: 300, max: 599 },
+  { name: 'ALL-STATE', min: 600, max: 9999 },
+];
+
+// ==================== AUDIO ====================
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function getAudio() { if (!audioCtx) audioCtx = new AudioCtx(); return audioCtx; }
+function playCorrect() {
+  try {
+    const ctx = getAudio();
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.setValueAtTime(880, ctx.currentTime);
+    o.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
+    g.gain.setValueAtTime(0.3, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    o.start(); o.stop(ctx.currentTime + 0.4);
+  } catch(e){}
+}
+function playWrong() {
+  try {
+    const ctx = getAudio();
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(200, ctx.currentTime);
+    o.frequency.setValueAtTime(150, ctx.currentTime + 0.2);
+    g.gain.setValueAtTime(0.2, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    o.start(); o.stop(ctx.currentTime + 0.4);
+  } catch(e){}
+}
+
+// ==================== XP / LEVEL ====================
+function getLevel(x) { return LEVELS.find(l => x >= l.min && x <= l.max) || LEVELS[3]; }
+function updateXPDisplay() {
+  const lv = getLevel(xp);
+  const next = LEVELS[LEVELS.indexOf(lv)+1];
+  document.getElementById('level-label').textContent = '🏈 ' + lv.name;
+  document.getElementById('xp-label').textContent = xp + ' XP';
+  const pct = next ? Math.round(((xp - lv.min) / (next.min - lv.min)) * 100) : 100;
+  document.getElementById('xp-fill').style.width = pct + '%';
+  const badges = ['formation','assignment','coverage','builder','motion'];
+  badges.forEach(m => {
+    const best = getBestScore(m);
+    document.getElementById('badge-'+m).textContent = best ? best + ' pts' : '▶';
+  });
+}
+function addXP(pts) { xp += pts; localStorage.setItem('rd_xp', xp); updateXPDisplay(); }
+
+// ==================== POSITION ====================
+function setPosition(pos) {
+  position = pos;
+  localStorage.setItem('rd_pos', pos);
+  document.querySelectorAll('.pos-btn').forEach(b => b.classList.toggle('active', b.dataset.pos === pos));
+}
+
+// ==================== LEADERBOARD ====================
+function getLB(mode) { return JSON.parse(localStorage.getItem('rd_lb_'+mode) || '[]'); }
+function saveLB(mode, name, score) {
+  let lb = getLB(mode);
+  lb.push({ name: name.toUpperCase().substring(0,12), score });
+  lb.sort((a,b) => b.score - a.score);
+  lb = lb.slice(0,5);
+  localStorage.setItem('rd_lb_'+mode, JSON.stringify(lb));
+}
+function getBestScore(mode) {
+  const lb = getLB(mode);
+  return lb.length ? lb[0].score : 0;
+}
+function showLeaderboard() {
+  showScreen('leaderboard-screen');
+  showLbTab('formation', document.querySelector('.lb-tab'));
+}
+function showLbTab(mode, el) {
+  document.querySelectorAll('.lb-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const lb = getLB(mode);
+  const list = document.getElementById('lb-list');
+  if (!lb.length) { list.innerHTML = '<div class="lb-empty">No scores yet. Play to get on the board!</div>'; return; }
+  const medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+  list.innerHTML = lb.map((e,i) =>
+    `<div class="lb-item"><div class="lb-rank">${medals[i]}</div><div class="lb-name">${e.name}</div><div class="lb-score">${e.score}</div></div>`
+  ).join('');
+}
+
+// ==================== SCREENS ====================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function goHome() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  showScreen('home');
+  updateXPDisplay();
+  setPosition(position);
+}
+function startMode(mode) {
+  currentMode = mode;
+  currentScore = 0; currentStreak = 0; questionIndex = 0;
+  if (mode === 'formation') startFormation();
+  else if (mode === 'assignment') startAssignment();
+  else if (mode === 'coverage') startCoverage();
+  else if (mode === 'builder') startBuilder();
+  else if (mode === 'motion') startMotion();
+}
+function playAgain() { startMode(currentMode); }
+
+// ==================== SCORE SCREEN ====================
+function showScore(score, total, mode, xpEarned) {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  const pct = score / total;
+  let trophy = pct >= 0.9 ? '🏆' : pct >= 0.7 ? '🎯' : pct >= 0.5 ? '👍' : '📚';
+  let title = pct >= 0.9 ? 'OUTSTANDING!' : pct >= 0.7 ? 'SOLID WORK' : pct >= 0.5 ? 'KEEP GRINDING' : 'STUDY UP';
+  document.getElementById('score-trophy').textContent = trophy;
+  document.getElementById('score-title').textContent = title;
+  document.getElementById('score-number').textContent = score + '/' + total;
+  document.getElementById('score-sub').textContent = { formation:'Formation ID', assignment:'Assignments', coverage:'Coverage Drill', builder:'Play Builder', motion:'Motion ID' }[mode];
+  document.getElementById('score-xp').textContent = '+' + xpEarned + ' XP earned';
+  addXP(xpEarned);
+  pendingScore = score * 10;
+  pendingMode = mode;
+  showScreen('score-screen');
+  const lb = getLB(mode);
+  if (!lb.length || pendingScore > (lb[lb.length-1]?.score || 0) || lb.length < 5) {
+    setTimeout(() => showNameModal(), 600);
+  }
+}
+function showNameModal() {
+  document.getElementById('name-modal').classList.add('show');
+  document.getElementById('name-input').value = localStorage.getItem('rd_name') || '';
+  document.getElementById('name-input').focus();
+}
+function saveName() {
+  const name = document.getElementById('name-input').value.trim();
+  if (!name) return;
+  localStorage.setItem('rd_name', name);
+  saveLB(pendingMode, name, pendingScore);
+  document.getElementById('name-modal').classList.remove('show');
+}
+document.getElementById('name-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveName(); });
+
+// ==================== SVG HELPERS ====================
+function makeSVG(content) {
+  return `<svg viewBox="0 0 360 240" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#E8C96A"/>
+      </marker>
+    </defs>
+    <rect width="360" height="240" fill="#2A5C14"/>
+    <line x1="0" y1="80" x2="360" y2="80" stroke="#3A7A1A" stroke-width="1" opacity="0.5"/>
+    <line x1="0" y1="120" x2="360" y2="120" stroke="#3A7A1A" stroke-width="1" opacity="0.5"/>
+    <line x1="0" y1="155" x2="360" y2="155" stroke="#88FF88" stroke-width="1.5" stroke-dasharray="8 6" opacity="0.7"/>
+    ${content}
+  </svg>`;
+}
+function circle(x, y, r, fill, stroke, label, textColor) {
+  return `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>
+    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="900" fill="${textColor}" font-family="sans-serif">${label}</text>`;
+}
+function olLine(cx) {
+  const pos = [[-52,'LT'],[-26,'LG'],[0,'C'],[26,'RG'],[52,'RT']];
+  return pos.map(([dx,lbl]) => circle(cx+dx, 155, 11, '#CC0000', '#FF6666', lbl, 'white')).join('');
+}
+const CX = 180;
+function drawDeuce() {
+  return makeSVG(olLine(CX) +
+    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
+    circle(88, 152, 10, 'white', '#CC0000', 'H', 'black') +
+    circle(338, 148, 10, 'white', '#CC0000', 'Z', 'black') +
+    circle(272, 152, 10, 'white', '#CC0000', 'Y', 'black') +
+    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white') +
+    circle(CX, 213, 10, 'white', '#CC0000', 'RB', '#CC0000'));
+}
+function drawBase() {
+  return makeSVG(olLine(CX) +
+    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
+    circle(258, 152, 10, 'white', '#CC0000', 'H', 'black') +
+    circle(290, 148, 10, 'white', '#CC0000', 'Y', 'black') +
+    circle(338, 152, 10, 'white', '#CC0000', 'Z', 'black') +
+    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white') +
+    circle(CX, 213, 10, 'white', '#CC0000', 'RB', '#CC0000'));
+}
+function drawBunch() {
+  return makeSVG(olLine(CX) +
+    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
+    circle(248, 155, 10, 'white', '#CC0000', 'H', 'black') +
+    circle(272, 145, 10, 'white', '#CC0000', 'Y', 'black') +
+    circle(296, 155, 10, 'white', '#CC0000', 'Z', 'black') +
+    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white') +
+    circle(CX, 213, 10, 'white', '#CC0000', 'RB', '#CC0000'));
+}
+function drawCluster() {
+  return makeSVG(olLine(CX) +
+    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
+    circle(246, 155, 10, 'white', '#CC0000', 'H', 'black') +
+    circle(262, 145, 10, 'white', '#CC0000', 'Y', 'black') +
+    circle(278, 155, 10, 'white', '#CC0000', 'Z', 'black') +
+    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white') +
+    circle(CX, 213, 10, 'white', '#CC0000', 'RB', '#CC0000'));
+}
+function drawEmpty() {
+  return makeSVG(olLine(CX) +
+    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
+    circle(88, 152, 10, 'white', '#CC0000', 'H', 'black') +
+    circle(120, 162, 10, 'white', '#CC0000', 'W', 'black') +
+    circle(272, 152, 10, 'white', '#CC0000', 'Y', 'black') +
+    circle(338, 148, 10, 'white', '#CC0000', 'Z', 'black') +
+    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white'));
+}
+function drawRT() {
+  return makeSVG(olLine(CX) +
+    circle(22, 148, 10, 'white', '#CC0000', 'X', 'black') +
+    circle(258, 152, 10, 'white', '#CC0000', 'Y', 'black') +
+    circle(258, 152, 10, 'white', '#CC0000', 'Y', 'black') +
+    circle(300, 148, 10, 'white', '#CC0000', 'Z', 'black') +
+    circle(244, 155, 11, '#E8C96A', '#C9A84C', 'TE', 'black') +
+    circle(CX, 185, 10, '#CC0000', '#FF4444', 'QB', 'white') +
+    circle(CX, 213, 10, 'white', '#CC0000', 'RB', '#CC0000'));
+}
+
+const formations = {
+  'DEUCE': drawDeuce,
+  'BASE': drawBase,
+  'BUNCH': drawBunch,
+  'CLUSTER': drawCluster,
+  'EMPTY': drawEmpty,
+  'RT': drawRT,
+};
+
+// ==================== FORMATION QUIZ ====================
+const fqQuestions = [
+  { formation:'DEUCE', q:'What formation is this?', correct:'DEUCE', choices:['DEUCE','BASE','BUNCH','CLUSTER'] },
+  { formation:'BASE', q:'What formation is this?', correct:'BASE', choices:['DEUCE','BASE','RT','CLUSTER'] },
+  { formation:'BUNCH', q:'What formation is this?', correct:'BUNCH', choices:['BASE','DEUCE','BUNCH','CLUSTER'] },
+  { formation:'CLUSTER', q:'What formation is this?', correct:'CLUSTER', choices:['BUNCH','BASE','DEUCE','CLUSTER'] },
+  { formation:'EMPTY', q:'What personnel group is on the field?', correct:'EMPTY', choices:['10 personnel','11 personnel','EMPTY','20 personnel'] },
+  { formation:'RT', q:'What formation is this? (11 personnel)', correct:'RT', choices:['BASE 11','RT','QUAD','DEUCE 11'] },
+  { formation:'DEUCE', q:'This is a ___ formation (surface)', correct:'2x2', choices:['2x2','3x1','4x0','1x3'] },
+  { formation:'BASE', q:'How many receivers are in the trips grouping?', correct:'3', choices:['2','3','4','1'] },
+  { formation:'BUNCH', q:'Receivers within how many yards of each other in BUNCH?', correct:'9 yards', choices:['5 yards','9 yards','15 yards','3 yards'] },
+  { formation:'CLUSTER', q:'CLUSTER vs BUNCH — receivers are how far apart?', correct:'1-2 yards', choices:['5+ yards','1-2 yards','Equal distance','Behind each other'] },
+];
+const fqFeedback = {
+  'DEUCE': 'DEUCE = 2x2 — two WRs split to each side. Even, balanced formation.',
+  'BASE': 'BASE 10 = 3x1 — trips to the field, X isolated to boundary.',
+  'BUNCH': 'BUNCH = tight 3x1 — receivers condensed within 9 yards.',
+  'CLUSTER': 'CLUSTER = very tight 3x1 — receivers only 1-2 yards apart.',
+  'EMPTY': 'EMPTY = no RB on field, 5 WRs. Maximum spread.',
+  'RT': 'RT (11 personnel) — TE attached strong right, 2 WRs field side, X boundary.',
+  '2x2': 'DEUCE is a 2x2 surface — two receivers each side of the formation.',
+  '3': 'BASE trips has 3 receivers to the field side (H, Y, Z).',
+  '9 yards': 'BUNCH condenses trips within 9 yards — creates rub/pick opportunities.',
+  '1-2 yards': 'CLUSTER is extremely tight — receivers nearly stacked, 1-2 yards apart.',
+};
+let fqList = [];
+
+function shuffle(arr) { return [...arr].sort(() => Math.random()-0.5); }
+
+function startFormation() {
+  fqList = shuffle(fqQuestions).slice(0,10);
+  questionIndex = 0; currentScore = 0; currentStreak = 0;
+  showScreen('formation-screen');
+  renderFQ();
+}
+function renderFQ() {
+  const q = fqList[questionIndex];
+  document.getElementById('fq-progress').style.width = ((questionIndex)/fqList.length*100)+'%';
+  document.getElementById('fq-progress-text').textContent = (questionIndex+1)+'/'+fqList.length;
+  document.getElementById('fq-streak').textContent = currentStreak >= 3 ? '🔥 x'+currentStreak : '';
+  document.getElementById('fq-diagram').innerHTML = formations[q.formation]();
+  document.getElementById('fq-question').textContent = q.q;
+  document.getElementById('fq-feedback').className = 'feedback-box';
+  document.getElementById('fq-next').style.display = 'none';
+  const shuffled = shuffle(q.choices);
+  document.getElementById('fq-choices').innerHTML = shuffled.map(c =>
+    `<button class="choice-btn" onclick="fqAnswer(this,'${c.replace(/'/g,"\\'")}','${q.correct.replace(/'/g,"\\'")}','${q.formation}')">${c}</button>`
+  ).join('');
+}
+function fqAnswer(btn, chosen, correct, formation) {
+  document.querySelectorAll('#fq-choices .choice-btn').forEach(b => b.disabled = true);
+  const isRight = chosen === correct;
+  btn.classList.add(isRight ? 'correct' : 'wrong');
+  if (!isRight) document.querySelectorAll('#fq-choices .choice-btn').forEach(b => { if (b.textContent === correct) b.classList.add('reveal'); });
+  if (isRight) { currentScore++; currentStreak++; playCorrect(); addXP(10 + (currentStreak >= 3 ? 5 : 0)); }
+  else { currentStreak = 0; playWrong(); }
+  const fb = document.getElementById('fq-feedback');
+  fb.textContent = (isRight ? '✅ Correct! ' : '❌ Wrong. ') + (fqFeedback[correct] || '');
+  fb.className = 'feedback-box show';
+  document.getElementById('fq-next').style.display = 'block';
+}
+function fqNext() {
+  questionIndex++;
+  if (questionIndex >= fqList.length) { showScore(currentScore, fqList.length, 'formation', currentScore*10 + Math.floor(currentStreak/3)*5); return; }
+  renderFQ();
+}
+
+// ==================== ASSIGNMENT QUIZ ====================
+const aqAll = {
+  QB: [
+    { play:'GIANTS CON HAWAII', q:'CB is PRESSING #1 WR before snap. What do you do?', correct:'Throw HAWAII (hitch)', choices:['Hand off inside zone','Throw HAWAII (hitch)','Check to CHARGERS','Throw fade'], fb:'CB pressed = throw the hitch. His leverage takes away the run read.' },
+    { play:'GIANTS CON HAWAII', q:'CB is playing SOFT (off coverage). What do you do?', correct:'Ride the mesh — give inside zone', choices:['Throw hitch immediately','Ride the mesh — give inside zone','Pull and keep','Check to OREGON'], fb:'CB soft = CB can make the tackle. Give the ball and let your OL work the zone.' },
+    { play:'INDIANA (SMASH)', q:'Which coverage is INDIANA designed to attack?', correct:'Cover 2', choices:['Cover 3','Cover 1','Cover 2','Quarters'], fb:'SMASH beats Cover 2 ONLY. The corner route wins over the hitch vs C2. DO NOT throw vs Cover 3 or 4.' },
+    { play:'FLORIDA CONCEPT', q:'What does RIVER mean on a FLORIDA concept?', correct:'Pocket moves left', choices:['Run right','Pocket moves left','Throw to flat','Fake handoff'], fb:'RIVER = move the pocket LEFT. LAKE = move RIGHT. These are boot/waggle actions.' },
+    { play:'BOSTON CON', q:'Which direction does the QB bootleg?', correct:'Left', choices:['Right','Left','Straight back','Designed keeper'], fb:'BOSTON PRO = boot RIGHT. BOSTON CON = boot LEFT. Con = contra/opposite.' },
+    { play:'CINCY + CLEMSON', q:'LB stays in the box pre-snap. What do you do?', correct:'Throw the slant', choices:['Give the counter','Throw the slant','Give draw','Check off'], fb:'LB in box = defense has extra numbers vs run. Throw the slant and punish the box.' },
+    { play:'LOUISVILLE', q:'Safety is 1-high (middle). Where do you attack?', correct:'Front side (field)', choices:['Boundary','Front side (field)','Check to screen','Throw back side'], fb:'LOUISVILLE attacks 3x1 vs Cover 3/1-high. Attack the trips side — overload vs single safety.' },
+    { play:'KENTUCKY (VERTICALS)', q:'What coverage does KENTUCKY work best against?', correct:'Cover 1 / Man', choices:['Cover 2','Cover 4','Cover 1 / Man','Cover 3'], fb:'KENTUCKY (all verticals) stresses man coverage and single-high. WRs convert to posts vs Cover 2.' },
+  ],
+  WR: [
+    { play:'HAWAII (HITCH)', q:'Vs MAN coverage — what is your release?', correct:'Stack release outside', choices:['Inside release','Stack release outside','Post release','Go route'], fb:'Stack release outside creates space for the hitch. Get off the jam, settle at 5.' },
+    { play:'HAWAII (HITCH)', q:'Vs COVER 2 — where do you sit the route?', correct:'At 5 yards, outside shoulder of CB', choices:['At 8 yards','At 5 yards, outside shoulder of CB','Continue vertical','Break inside'], fb:'Vs Cover 2, CB has the flat. Sit at 5 on his outside shoulder — split the CB and the safety.' },
+    { play:'OREGON (OUT ROUTE)', q:'Vs COVER 2 — what is your release and break?', correct:'Outside release, break out at 6', choices:['Inside release','Outside release, break out at 6','Slant away','Fade route'], fb:'Outside release to threaten deep, then break out at 6. Beat the Cover 2 CB to the sideline.' },
+    { play:'INDIANA (SMASH) — CORNER ROUTE', q:'Vs Cover 2 — what do you run?', correct:'Corner route over the hitch', choices:['Hitch','Out route','Corner route over the hitch','Go route'], fb:'The corner route attacks the deep half of the Cover 2 safety. The hitch holds the CB underneath.' },
+    { play:'CLEMSON (SLANT)', q:'Vs MAN coverage — what is your release?', correct:'Inside release hard', choices:['Outside release','Inside release hard','Bubble release','Post release'], fb:'Attack inside leverage of the CB. Hard inside release creates the crease for the slant.' },
+    { play:'PITTSBURGH (SPOT)', q:'Vs COVER 3 — what do you do?', correct:'Sit in the void', choices:['Run a go route','Break out','Sit in the void','Convert to slant'], fb:'Spot routes find the soft spots in zone. Vs Cover 3, settle between the hook and flat defenders.' },
+    { play:'KENTUCKY (VERTICALS)', q:'Vs COVER 2 — what do you convert to?', correct:'Post route', choices:['Out route','Post route','Hitch','Comeback'], fb:'WRs convert verticals to posts vs Cover 2 to attack the middle between the two deep safeties.' },
+  ],
+  RB: [
+    { play:'GIANTS (INSIDE ZONE)', q:'What is your aiming point?', correct:'Playside A/B gap', choices:['Outside hip of tackle','Playside A/B gap','Follow pulling guard','Behind FB'], fb:'IZ aiming point is playside A/B gap. Mesh, press the line of scrimmage, then read the backside.' },
+    { play:'GIANTS (INSIDE ZONE)', q:'What is your vision read to find the cutback?', correct:'Backside hip of guard — cut off combo', choices:['MIKE linebacker','Backside hip of guard — cut off combo','Playside tackle','Safety depth'], fb:'Read the backside combo block. If the defense over-pursues, the backside A gap opens up.' },
+    { play:'CHARGERS (OUTSIDE ZONE)', q:'What do you read for a cutback opportunity?', correct:'Over-pursuit by defense — cutback available', choices:['MIKE linebacker','Pulling guard','Over-pursuit by defense — cutback available','Backside A gap'], fb:'Bounce or cutback depends on the defense. If they over-pursue, cut BACK. Be patient.' },
+    { play:'CINCY (COUNTER GT)', q:'When do you hit the hole?', correct:'Wait for the crease — be patient', choices:['Immediately off snap','Wait for the crease — be patient','On QB second step','After snap count'], fb:'Counter requires patience. Let the guard and tackle pull and lead. HIT THE CREASE when it opens.' },
+    { play:'RAMS (POWER-O)', q:'What is your aiming point?', correct:'Follow lead guard through B-gap', choices:['Outside hip of tackle','Follow lead guard through B-gap','Cutback A gap','Bounce outside'], fb:'Power = downhill. Follow your lead guard (pullin G) through the B-gap. Hit it hard.' },
+    { play:'DENVER (DUO)', q:'What is your vision read?', correct:'Take whichever double team opens', choices:['Outside linebacker','Take whichever double team opens','Pulling guard','Boundary safety'], fb:'Duo has double teams on both sides. Read which one creates movement and take that crease.' },
+    { play:'ALL HANDOFFS', q:'Ball security on the mesh — you use...', correct:'Two hands on mesh', choices:['One hand, hip','Two hands on mesh','Cradle high','Tuck low'], fb:'TWO HANDS on the mesh until you feel the QB place it. Ball security is non-negotiable.' },
+  ],
+  OL: [
+    { play:'GIANTS (INSIDE ZONE)', q:'The combo block goal — what do you do after the double team?', correct:'Move to second level after combo', choices:['Drive man off ball','Move to second level after combo','Double team all rushers','Pull backside'], fb:'Zone OL: double team to control the down lineman, then one blocker climbs to MIKE/2nd level.' },
+    { play:'CHARGERS (OUTSIDE ZONE)', q:'What direction does the OL step?', correct:'Laterally toward play side', choices:['Down to center','Laterally toward play side','Straight ahead','Pull to boundary'], fb:'Outside Zone = lateral step playside. Reach the man outside you. Cover ground, not people.' },
+    { play:'CINCY (COUNTER GT)', q:'Which linemen pull on Counter GT?', correct:'Guard and Tackle (backside)', choices:['Center and Guard','Guard and Tackle (backside)','Both guards','Tackle and TE'], fb:'GT = Guard-Tackle pull. Backside G and T kick out and lead. This is the key to counter action.' },
+    { play:'RAMS (POWER-O)', q:'The backside guard does what?', correct:'Pulls to lead through the hole', choices:['Stays on his man','Pulls to lead through the hole','Blocks down','Releases to screen'], fb:'Power-O: BSG pulls and leads through the hole (kicking out or logging the EMOL).' },
+    { play:'60 PROTECTION', q:'Protection call 60 means:', correct:'Quick/pro (3-step drop)', choices:['Five-step drop','Quick/pro (3-step drop)','Play action','Bootleg'], fb:'60 = quick 3-step drop. Used for RPOs, hitches, slants. Be quick — QB is throwing fast.' },
+    { play:'90 PROTECTION', q:'Protection call 90 means:', correct:'Dropback pro (5-step drop)', choices:['Quick game','Dropback pro (5-step drop)','Play action','Screen'], fb:'90 = full drop-back 5-step. Used for concept routes — PITTSBURGH, KENTUCKY, LOUISVILLE, etc.' },
+    { play:'BOSTON CONCEPTS', q:'What protection do BOSTON plays use?', correct:'BOSTON PRO or CON (bootleg)', choices:['60 quick','90 dropback','BOSTON PRO or CON (bootleg)','70/80 play action'], fb:'BOSTON = boot/naked. QB rolls out. OL must sell run action, then release to protect boot direction.' },
+  ],
+};
+let aqList = [];
+function startAssignment() {
+  const qPool = aqAll[position] || aqAll.QB;
+  aqList = shuffle(qPool).slice(0, Math.min(8, qPool.length));
+  questionIndex = 0; currentScore = 0; currentStreak = 0;
+  showScreen('assignment-screen');
+  renderAQ();
+}
+function renderAQ() {
+  const q = aqList[questionIndex];
+  document.getElementById('aq-progress').style.width = ((questionIndex)/aqList.length*100)+'%';
+  document.getElementById('aq-progress-text').textContent = (questionIndex+1)+'/'+aqList.length;
+  document.getElementById('aq-streak').textContent = currentStreak >= 3 ? '🔥 x'+currentStreak : '';
+  document.getElementById('aq-playcall').textContent = q.play;
+  document.getElementById('aq-question').textContent = q.q;
+  document.getElementById('aq-feedback').className = 'feedback-box';
+  document.getElementById('aq-next').style.display = 'none';
+  const shuffled = shuffle(q.choices);
+  document.getElementById('aq-choices').innerHTML = shuffled.map(c =>
+    `<button class="choice-btn" onclick="aqAnswer(this,${JSON.stringify(c)},${JSON.stringify(q.correct)},${JSON.stringify(q.fb)})">${c}</button>`
+  ).join('');
+}
+function aqAnswer(btn, chosen, correct, fb) {
+  document.querySelectorAll('#aq-choices .choice-btn').forEach(b => b.disabled = true);
+  const isRight = chosen === correct;
+  btn.classList.add(isRight ? 'correct' : 'wrong');
+  if (!isRight) document.querySelectorAll('#aq-choices .choice-btn').forEach(b => { if (b.textContent === correct) b.classList.add('reveal'); });
+  if (isRight) { currentScore++; currentStreak++; playCorrect(); addXP(10 + (currentStreak >= 3 ? 5 : 0)); }
+  else { currentStreak = 0; playWrong(); }
+  const f = document.getElementById('aq-feedback');
+  f.textContent = (isRight ? '✅ ' : '❌ Correct: ' + correct + ' — ') + fb;
+  f.className = 'feedback-box show';
+  document.getElementById('aq-next').style.display = 'block';
+}
+function aqNext() {
+  questionIndex++;
+  if (questionIndex >= aqList.length) { showScore(currentScore, aqList.length, 'assignment', currentScore*10); return; }
+  renderAQ();
+}
+
+// ==================== COVERAGE DRILL ====================
+const coverages = [
+  { name:'SKY', safeties:'1', type:'Zone', family:'Cover 3', beats:'LOUISVILLE, HOUSTON (3x1 concepts)' },
+  { name:'SHARK', safeties:'1', type:'Zone', family:'Cover 3', beats:'LOUISVILLE, HOUSTON' },
+  { name:'GREEN', safeties:'1', type:'Zone', family:'Cover 3', beats:'3x1 concepts' },
+  { name:'GOLD', safeties:'2', type:'Zone', family:'Cover 2', beats:'INDIANA (SMASH), TEXAS' },
+  { name:'BLUE', safeties:'2', type:'Zone', family:'Cover 2', beats:'INDIANA (SMASH)' },
+  { name:'WEASEL', safeties:'2', type:'Zone', family:'Cover 2 variation', beats:'INDIANA' },
+  { name:'SUN', safeties:'2', type:'Zone', family:'Cover 4/Quarters', beats:'KENTUCKY, TENNESSEE' },
+  { name:'SILVER', safeties:'2', type:'Zone', family:'Quarters variation', beats:'Verticals' },
+  { name:'BLACK', safeties:'2', type:'Zone', family:'Quarters/2-Read', beats:'Deep concepts' },
+  { name:'RED', safeties:'varies', type:'Man', family:'Man coverage', beats:'MICHIGAN (mesh), PITTSBURGH' },
+  { name:'MARS', safeties:'varies', type:'Man', family:'Man coverage', beats:'Mesh concepts' },
+  { name:'MOON', safeties:'varies', type:'Man', family:'Man coverage', beats:'Mesh, pick plays' },
+];
+const cqQuestions = [
+  ...coverages.map(c => ({ cov:c.name, q:`${c.name} — how many safeties HIGH?`, correct:c.safeties, choices: c.safeties==='1' ? ['0','1','2','3'] : c.safeties==='2' ? ['0','1','2','3'] : ['1','2','varies','0'], fb:`${c.name} = ${c.family}. ${c.safeties} safety/safeties high. ${c.type} coverage.` })),
+  ...coverages.slice(0,9).map(c => ({ cov:c.name, q:`${c.name} — Man or Zone?`, correct:'Zone', choices:['Man','Zone'], fb:`${c.name} is a zone coverage (${c.family}).` })),
+  ...coverages.slice(9).map(c => ({ cov:c.name, q:`${c.name} — Man or Zone?`, correct:'Man', choices:['Man','Zone'], fb:`${c.name} is man coverage.` })),
+  { cov:'GOLD', q:'INDIANA (SMASH) is designed to beat which coverage?', correct:'GOLD / BLUE (Cover 2)', choices:['SKY / SHARK (Cover 3)','GOLD / BLUE (Cover 2)','RED / MARS (Man)','SUN / SILVER (Quarters)'], fb:'SMASH is a Cover 2 beater. Corner over hitch attacks the deep half vs 2 safeties split.' },
+  { cov:'RED', q:'CB follows H on ZOOM motion. What coverage is this?', correct:'Man (RED / MARS / MOON)', choices:['Zone coverage','Man (RED / MARS / MOON)','Cover 2','Cover 4'], fb:'CB following a man in motion = Man coverage. Zone CBs stay with their zones.' },
+  { cov:'SKY', q:'2 safeties split wide pre-snap. Likely coverage?', correct:'2-high Zone (GOLD/BLUE/SUN)', choices:['1-high (SKY/SHARK)','2-high Zone (GOLD/BLUE/SUN)','Man (RED/MARS)','Bear front'], fb:'Two safeties split = 2-high shell. Could be Cover 2 (GOLD/BLUE) or Quarters (SUN/SILVER).' },
+];
+let cqList = [];
+function startCoverage() {
+  cqList = shuffle(cqQuestions).slice(0,12);
+  questionIndex = 0; currentScore = 0; currentStreak = 0;
+  showScreen('coverage-screen');
+  renderCQ();
+}
+function renderCQ() {
+  if (timerInterval) clearInterval(timerInterval);
+  const q = cqList[questionIndex];
+  document.getElementById('cq-progress').style.width = ((questionIndex)/cqList.length*100)+'%';
+  document.getElementById('cq-progress-text').textContent = (questionIndex+1)+'/'+cqList.length;
+  document.getElementById('cq-streak').textContent = currentStreak >= 3 ? '🔥 x'+currentStreak : '';
+  document.getElementById('cq-coverage').textContent = q.cov;
+  document.getElementById('cq-question').textContent = q.q;
+  document.getElementById('cq-feedback').className = 'feedback-box';
+  document.getElementById('cq-next').style.display = 'none';
+  const shuffled = shuffle(q.choices);
+  document.getElementById('cq-choices').innerHTML = shuffled.map(c =>
+    `<button class="choice-btn" onclick="cqAnswer(this,${JSON.stringify(c)},${JSON.stringify(q.correct)},${JSON.stringify(q.fb)})">${c}</button>`
+  ).join('');
+  startTimer();
+}
+function startTimer() {
+  timerVal = 15;
+  updateTimerUI(15);
+  timerInterval = setInterval(() => {
+    timerVal--;
+    updateTimerUI(timerVal);
+    if (timerVal <= 0) {
+      clearInterval(timerInterval);
+      document.querySelectorAll('#cq-choices .choice-btn').forEach(b => b.disabled = true);
+      const q = cqList[questionIndex];
+      document.querySelectorAll('#cq-choices .choice-btn').forEach(b => { if (b.textContent === q.correct) b.classList.add('reveal'); });
+      const f = document.getElementById('cq-feedback');
+      f.textContent = '⏱ Time\'s up! Correct: ' + q.correct + ' — ' + q.fb;
+      f.className = 'feedback-box show';
+      currentStreak = 0;
+      document.getElementById('cq-next').style.display = 'block';
+    }
+  }, 1000);
+}
+function updateTimerUI(val) {
+  const circ = document.getElementById('timer-circle');
+  const txt = document.getElementById('timer-text');
+  const r = 28; const full = 2 * Math.PI * r;
+  const offset = full * (1 - val/15);
+  circ.style.strokeDashoffset = offset;
+  circ.style.stroke = val <= 5 ? '#FF4444' : val <= 10 ? '#E8C96A' : 'var(--red)';
+  txt.textContent = val;
+}
+function cqAnswer(btn, chosen, correct, fb) {
+  clearInterval(timerInterval);
+  document.querySelectorAll('#cq-choices .choice-btn').forEach(b => b.disabled = true);
+  const isRight = chosen === correct;
+  btn.classList.add(isRight ? 'correct' : 'wrong');
+  if (!isRight) document.querySelectorAll('#cq-choices .choice-btn').forEach(b => { if (b.textContent === correct) b.classList.add('reveal'); });
+  if (isRight) { currentScore++; currentStreak++; playCorrect(); addXP(10 + (currentStreak >= 3 ? 5 : 0) + (timerVal >= 10 ? 5 : 0)); }
+  else { currentStreak = 0; playWrong(); }
+  const f = document.getElementById('cq-feedback');
+  f.textContent = (isRight ? '✅ ' : '❌ Correct: ' + correct + ' — ') + fb;
+  f.className = 'feedback-box show';
+  document.getElementById('cq-next').style.display = 'block';
+}
+function cqNext() {
+  questionIndex++;
+  if (questionIndex >= cqList.length) { showScore(currentScore, cqList.length, 'coverage', currentScore*10); return; }
+  renderCQ();
+}
+
+// ==================== PLAY BUILDER ====================
+const pbPlays = [
+  { tiles:['10','DEUCE','H ZOOM','GIANTS','CON','HAWAII'], answer:['10','DEUCE','H ZOOM','GIANTS','CON','HAWAII'], desc:'Build the full RPO play call with motion', explain:'Personnel → Formation → Motion → Run Concept → Protection → Pass Concept' },
+  { tiles:['11','BASE','CHARGERS','HAWAII'], answer:['11','BASE','CHARGERS','HAWAII'], desc:'Outside zone with RPO tag', explain:'Personnel → Formation → Run Concept → Pass Concept' },
+  { tiles:['10','BUNCH','INDIANA'], answer:['10','BUNCH','INDIANA'], desc:'SMASH scissors vs Cover 2', explain:'Personnel → Formation → Pass Concept' },
+  { tiles:['10','BASE','Z ZOOM','LOUISVILLE'], answer:['10','BASE','Z ZOOM','LOUISVILLE'], desc:'3x1 concept with motion', explain:'Personnel → Formation → Motion → Pass Concept' },
+  { tiles:['11','RT','BOSTON','CON'], answer:['11','RT','BOSTON','CON'], desc:'Bootleg left from 11 personnel', explain:'Personnel → Formation → Protection → Direction' },
+  { tiles:['10','DEUCE','CINCY','CLEMSON'], answer:['10','DEUCE','CINCY','CLEMSON'], desc:'Counter GT with slant RPO', explain:'Personnel → Formation → Run Concept → Pass Concept' },
+];
+let pbList = [];
+let pbDropped = [];
+let pbPool = [];
+let draggingTile = null;
+let touchStartX = 0, touchStartY = 0;
+let dragClone = null;
+
+function startBuilder() {
+  pbList = shuffle(pbPlays).slice(0,6);
+  questionIndex = 0; currentScore = 0;
+  showScreen('builder-screen');
+  renderPB();
+}
+function renderPB() {
+  const p = pbList[questionIndex];
+  document.getElementById('pb-progress').style.width = ((questionIndex)/pbList.length*100)+'%';
+  document.getElementById('pb-progress-text').textContent = (questionIndex+1)+'/'+pbList.length;
+  document.getElementById('pb-score-display').textContent = currentScore + ' pts';
+  document.getElementById('pb-instruction').textContent = p.desc;
+  document.getElementById('pb-feedback').className = 'builder-feedback';
+  document.getElementById('pb-next').style.display = 'none';
+  pbDropped = [];
+  pbPool = shuffle(p.tiles);
+  renderTiles();
+}
+function renderTiles() {
+  const pool = document.getElementById('tile-pool');
+  const drop = document.getElementById('drop-zone');
+  pool.innerHTML = '';
+  drop.innerHTML = '';
+  pbPool.forEach(t => {
+    if (!pbDropped.includes(t)) {
+      pool.appendChild(makeTile(t, 'pool'));
+    }
+  });
+  pbDropped.forEach(t => drop.appendChild(makeTile(t, 'drop')));
+}
+function makeTile(text, loc) {
+  const el = document.createElement('div');
+  el.className = 'tile' + (loc==='drop' ? ' in-drop' : '');
+  el.textContent = text;
+  el.dataset.text = text;
+  el.addEventListener('click', () => toggleTile(text, loc));
+  return el;
+}
+function toggleTile(text, loc) {
+  if (loc === 'pool') {
+    pbDropped.push(text);
+  } else {
+    pbDropped = pbDropped.filter(t => t !== text);
+  }
+  renderTiles();
+}
+function checkBuilder() {
+  const p = pbList[questionIndex];
+  const correct = p.answer;
+  const isRight = pbDropped.length === correct.length && pbDropped.every((t,i) => t === correct[i]);
+  const fb = document.getElementById('pb-feedback');
+  if (isRight) {
+    fb.textContent = '✅ Correct! ' + p.explain;
+    fb.className = 'builder-feedback correct';
+    currentScore += 10;
+    playCorrect(); addXP(15);
+  } else {
+    fb.innerHTML = '❌ Correct order: <strong>' + correct.join(' → ') + '</strong><br>' + p.explain;
+    fb.className = 'builder-feedback wrong';
+    playWrong();
+  }
+  document.getElementById('pb-next').style.display = 'block';
+  document.getElementById('pb-score-display').textContent = currentScore + ' pts';
+}
+function pbNext() {
+  questionIndex++;
+  if (questionIndex >= pbList.length) { showScore(currentScore, pbList.length, 'builder', currentScore*5); return; }
+  renderPB();
+}
+
+// ==================== MOTION QUIZ ====================
+function drawMotion(baseFormation, fromX, fromY, toX, toY, arc) {
+  let arrow = '';
+  if (arc) {
+    const mx = (fromX+toX)/2; const my = Math.min(fromY,toY) - 40;
+    arrow = `<path d="M${fromX},${fromY} Q${mx},${my} ${toX},${toY}" stroke="#E8C96A" fill="none" stroke-width="2.5" stroke-dasharray="5 3" marker-end="url(#arrow)"/>`;
+  } else {
+    arrow = `<line x1="${fromX}" y1="${fromY}" x2="${toX}" y2="${toY}" stroke="#E8C96A" stroke-width="2.5" stroke-dasharray="5 3" marker-end="url(#arrow)"/>`;
+  }
+  return makeSVG(formations[baseFormation]().replace(/<svg[^>]+>[\s\S]*?<defs>[\s\S]*?<\/defs>/, '').replace('</svg>','') + arrow + '</svg>').replace('<svg','<svg');
+}
+// Rebuild with arrow properly
+function drawMotionSVG(baseKey, from, to, arc) {
+  const base = { DEUCE: drawDeuce, BASE: drawBase }[baseKey] || drawDeuce;
+  let arrowEl = '';
+  if (arc) {
+    const mx = (from[0]+to[0])/2; const my = Math.min(from[1],to[1]) - 45;
+    arrowEl = `<path d="M${from[0]},${from[1]} Q${mx},${my} ${to[0]},${to[1]}" stroke="#E8C96A" fill="none" stroke-width="3" stroke-dasharray="6 3" marker-end="url(#arrow)"/>`;
+  } else {
+    arrowEl = `<line x1="${from[0]}" y1="${from[1]}" x2="${to[0]}" y2="${to[1]}" stroke="#E8C96A" stroke-width="3" stroke-dasharray="6 3" marker-end="url(#arrow)"/>`;
+  }
+  const inner = base().replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
+  return `<svg viewBox="0 0 360 240" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z" fill="#E8C96A"/></marker></defs>
+    ${inner}${arrowEl}</svg>`;
+}
+
+const mqQuestions = [
+  { diagramFn: () => drawMotionSVG('DEUCE',[88,152],[310,152],false), q:'H crosses all the way behind QB to opposite side. What motion is this?', correct:'ZOOM', choices:['ZOOM','ZIP','YOYO','TRADE'], fb:'ZOOM = receiver crosses all the way to the opposite side behind the QB. Watch the CB — does he follow? Man coverage.' },
+  { diagramFn: () => drawMotionSVG('DEUCE',[88,152],[120,152],false), q:'H moves slightly tighter to the same side. What motion is this?', correct:'ZIP', choices:['ZOOM','ZIP','HOP','SHUFFLE'], fb:'ZIP = receiver tightens to the same side. Creates a surface overload.' },
+  { diagramFn: () => drawMotionSVG('DEUCE',[88,152],[88,170],true), q:'Receiver goes deep, arcs back to same side. What motion is this?', correct:'YOYO', choices:['ZOOM','TRADE','YOYO','BOUNCE'], fb:'YOYO = out to tackle depth, arc back. Creates jet sweep threat — forces defense to declare.' },
+  { diagramFn: () => drawMotionSVG('BASE',[338,152],[80,152],false), q:'Z crosses from far right all the way to the left side. What motion is this?', correct:'TRADE', choices:['ZOOM','ZIP','TRADE','TIP'], fb:'TRADE = receiver starts opposite side and crosses to own side. Different from ZOOM — this is a formation shift.' },
+  { diagramFn: () => drawMotionSVG('BASE',[338,152],[210,155],false), q:'Z crosses and lands tight to the OL. What motion is this?', correct:'TIP', choices:['TRADE','TIP','ZIP','HOP'], fb:'TIP = TRADE but the receiver lands as a sniffer tight to the OL (2-3 yards off). Can lead-block on run.' },
+  { diagramFn: () => drawMotionSVG('DEUCE',[88,152],[98,152],false), q:'H takes a very short inside hop. What motion is this?', correct:'HOP', choices:['ZIP','HOP','SHUFFLE','BOUNCE'], fb:'HOP = short motion hop inside. Often used as RPO read trigger.' },
+  { diagramFn: () => drawMotionSVG('DEUCE',[88,152],[55,152],false), q:'H moves toward the boundary. What motion is this?', correct:'BAM', choices:['ZOOM','BAM','TIP','BOUNCE'], fb:'BAM = receiver goes in motion toward the boundary. Creates boundary overload.' },
+  { diagramFn: null, q:'On ZOOM motion — the CB does NOT follow the receiver. What coverage is this?', correct:'Zone coverage', choices:['Man coverage','Zone coverage','Cover 0','Blitz'], fb:'Zone CBs stay in their zone — they do NOT follow motion. If the CB stays = ZONE (SKY/SHARK/GOLD/SUN).' },
+  { diagramFn: null, q:'On ZOOM motion — the CB DOES follow the receiver. What coverage is this?', correct:'Man coverage', choices:['Zone coverage','Man coverage','Cover 2','Cover 4'], fb:'Man CBs follow their assigned receiver everywhere. CB follows ZOOM = MAN (RED/MARS/MOON).' },
+];
+let mqList = [];
+function startMotion() {
+  mqList = shuffle(mqQuestions).slice(0,8);
+  questionIndex = 0; currentScore = 0; currentStreak = 0;
+  showScreen('motion-screen');
+  renderMQ();
+}
+function renderMQ() {
+  const q = mqList[questionIndex];
+  document.getElementById('mq-progress').style.width = ((questionIndex)/mqList.length*100)+'%';
+  document.getElementById('mq-progress-text').textContent = (questionIndex+1)+'/'+mqList.length;
+  document.getElementById('mq-streak').textContent = currentStreak >= 3 ? '🔥 x'+currentStreak : '';
+  const diag = document.getElementById('mq-diagram');
+  if (q.diagramFn) {
+    diag.innerHTML = q.diagramFn();
+    diag.style.display = '';
+  } else {
+    diag.innerHTML = '';
+    diag.style.display = 'none';
+  }
+  document.getElementById('mq-question').textContent = q.q;
+  document.getElementById('mq-feedback').className = 'feedback-box';
+  document.getElementById('mq-next').style.display = 'none';
+  const shuffled = shuffle(q.choices);
+  document.getElementById('mq-choices').innerHTML = shuffled.map(c =>
+    `<button class="choice-btn" onclick="mqAnswer(this,${JSON.stringify(c)},${JSON.stringify(q.correct)},${JSON.stringify(q.fb)})">${c}</button>`
+  ).join('');
+}
+function mqAnswer(btn, chosen, correct, fb) {
+  document.querySelectorAll('#mq-choices .choice-btn').forEach(b => b.disabled = true);
+  const isRight = chosen === correct;
+  btn.classList.add(isRight ? 'correct' : 'wrong');
+  if (!isRight) document.querySelectorAll('#mq-choices .choice-btn').forEach(b => { if (b.textContent === correct) b.classList.add('reveal'); });
+  if (isRight) { currentScore++; currentStreak++; playCorrect(); addXP(10 + (currentStreak >= 3 ? 5 : 0)); }
+  else { currentStreak = 0; playWrong(); }
+  const f = document.getElementById('mq-feedback');
+  f.textContent = (isRight ? '✅ ' : '❌ Correct: ' + correct + ' — ') + fb;
+  f.className = 'feedback-box show';
+  document.getElementById('mq-next').style.display = 'block';
+}
+function mqNext() {
+  questionIndex++;
+  if (questionIndex >= mqList.length) { showScore(currentScore, mqList.length, 'motion', currentScore*10); return; }
+  renderMQ();
+}
+
+// ==================== INIT ====================
+updateXPDisplay();
+setPosition(position);
+</script>
+</body>
+</html>
