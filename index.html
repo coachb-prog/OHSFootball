@@ -785,17 +785,18 @@ function drawCluster() {
 }
 function drawBunch() {
   // BUNCH: X(LOS) boundary | Z(LOS) point, Y & H each 1×1 off Z (1 yd back, 1 yd to each side)
-  const ZX=304, ZY=LOS, YX=ZX+10, YY=LOS+SLOT_OFF, HX=ZX-10, HY=LOS+SLOT_OFF;
+  // Z = point on LOS; Y & H spread ~2 yds to each side and ~2 yds back
+  const ZX=304, ZY=LOS, YX=ZX+24, YY=LOS+20, HX=ZX-24, HY=LOS+20;
   return fieldSVG(
     olLine() +
     wrC(20, LOS, 'X') +
     wrC(ZX, ZY, 'Z') +
     wrC(YX, YY, 'Y') +
     wrC(HX, HY, 'H') +
-    `<line x1="284" y1="${LOS-18}" x2="284" y2="${LOS+SLOT_OFF+12}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
-     <line x1="326" y1="${LOS-18}" x2="326" y2="${LOS+SLOT_OFF+12}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
-     <line x1="284" y1="${LOS-18}" x2="326" y2="${LOS-18}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
-     <text x="305" y="${LOS-22}" text-anchor="middle" font-size="8" fill="#E8C96A" opacity="0.7" font-family="sans-serif" font-weight="700">BUNCH</text>` +
+    `<line x1="270" y1="${LOS-18}" x2="270" y2="${LOS+34}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <line x1="342" y1="${LOS-18}" x2="342" y2="${LOS+34}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <line x1="270" y1="${LOS-18}" x2="342" y2="${LOS-18}" stroke="#E8C96A" stroke-width="1.5" opacity="0.55"/>
+     <text x="306" y="${LOS-22}" text-anchor="middle" font-size="8" fill="#E8C96A" opacity="0.7" font-family="sans-serif" font-weight="700">BUNCH</text>` +
     qbC(QX,QY) + rbC(BX,BY),
     '(10) BUNCH — TIGHT 3×1 FIELD'
   );
