@@ -354,14 +354,12 @@ function edgePoint(ox, oy, tx, ty, r) {
   return { x: ox + r * dx / len, y: oy + r * dy / len };
 }
 
-// waypoints: [{x,y}] for a sharp-cut line segment, or [{x,y,curve:true,cx,cy}] for a
-// quadratic-bezier bend (used only for naturally-rounding routes like corner/post/wheel).
+// waypoints: [{x,y}] — every segment is a straight cut, matching how routes are
+// drawn on a real call sheet (sharp breaks, not rounded curves).
 function buildPath(ox, oy, waypoints, r) {
   const start = edgePoint(ox, oy, waypoints[0].x, waypoints[0].y, r);
   let d = `M${start.x},${start.y}`;
-  for (const w of waypoints) {
-    d += w.curve ? ` Q${w.cx},${w.cy} ${w.x},${w.y}` : ` L${w.x},${w.y}`;
-  }
+  for (const w of waypoints) d += ` L${w.x},${w.y}`;
   return d;
 }
 
@@ -373,17 +371,23 @@ function routePath(ox, oy, route, r) {
   const wp = (pts) => buildPath(ox, oy, pts, r);
   switch(R) {
     case 'GO': return wp([{x:ox,y:20}]);
-    case 'HITCH': return wp([{x:ox,y:y(5)},{x:ox+toOut*10,y:y(4.3),curve:true,cx:ox,cy:y(5.6)}]);
-    case 'WIDE HITCH': return wp([{x:ox,y:y(6)},{x:ox+toOut*14,y:y(5.2),curve:true,cx:ox,cy:y(6.7)}]);
+    case 'FADE': return wp([{x:ox+toOut*6,y:y(8)},{x:ox+toOut*16,y:20}]);
+    case 'HITCH': return wp([{x:ox,y:y(5)},{x:ox+toOut*10,y:y(4.3)}]);
+    case 'WIDE HITCH': return wp([{x:ox,y:y(6)},{x:ox+toOut*14,y:y(5.2)}]);
     case '3 SLANT': case 'SLANT': return wp([{x:ox,y:y(1.5)},{x:ox+toCtr*36,y:y(3)}]);
     case '1 SLANT': return wp([{x:ox,y:y(1)},{x:ox+toCtr*22,y:y(2)}]);
+    case 'NOW SLANT': return wp([{x:ox+toCtr*22,y:y(1)}]);
+    case 'SPRAY SLANT': return wp([{x:ox,y:y(1)},{x:ox+toCtr*48,y:y(2.5)}]);
+    case 'WHIP': return wp([{x:ox+toOut*14,y:y(4)},{x:ox+toOut*6,y:y(3.3)}]);
+    case 'PIVOT': return wp([{x:ox+toOut*14,y:y(3)},{x:ox,y:y(2)}]);
+    case 'QUICK OUT': case 'OUT': return wp([{x:ox,y:y(5)},{x:ox+toOut*30,y:y(5.5)}]);
     case 'ARROW': case 'FLAT': return wp([{x:ox+toOut*6,y:y(1.5)},{x:ox+toOut*40,y:y(2)}]);
-    case 'FALLOUT': return wp([{x:ox+toOut*10,y:y(5)},{x:ox+toOut*34,y:y(5.5),curve:true,cx:ox+toOut*38,cy:y(7)},{x:ox+toOut*22,y:y(5)}]);
-    case 'CORNER': return wp([{x:ox,y:y(10)},{x:ox+toOut*32,y:y(14),curve:true,cx:ox,cy:y(12)}]);
-    case 'POST': case 'SKINNY POST': return wp([{x:ox,y:y(10)},{x:ox+toCtr*32,y:y(14),curve:true,cx:ox,cy:y(12)}]);
+    case 'FALLOUT': return wp([{x:ox+toOut*10,y:y(5)},{x:ox+toOut*34,y:y(7)},{x:ox+toOut*22,y:y(5)}]);
+    case 'CORNER': return wp([{x:ox,y:y(10)},{x:ox+toOut*32,y:y(14)}]);
+    case 'POST': case 'SKINNY POST': return wp([{x:ox,y:y(10)},{x:ox+toCtr*32,y:y(14)}]);
     case 'WHEEL': return wp([{x:ox+toOut*20,y:y(2)},{x:ox+toOut*24,y:20}]);
     case 'SLOT FADE': return wp([{x:ox+toOut*16,y:20}]);
-    case 'BEND SEAM': return wp([{x:ox,y:y(10)},{x:ox+toCtr*20,y:y(15),curve:true,cx:ox,cy:y(13)}]);
+    case 'BEND SEAM': return wp([{x:ox,y:y(10)},{x:ox+toCtr*20,y:y(15)}]);
     case 'CROSS': case 'HI CROSS': return wp([{x:ox,y:y(7)},{x:ox+toCtr*160,y:y(8.5)}]);
     case 'MESH OVER': return wp([{x:ox,y:y(6)},{x:ox+toCtr*145,y:y(6.5)}]);
     case 'MESH UNDER': return wp([{x:ox,y:y(4.5)},{x:ox+toCtr*145,y:y(5)}]);
@@ -428,8 +432,8 @@ function drawPlaySVG(formation, routes, selectedPos, cardId) {
     const d = routePath(pp.x, pp.y, info.route, r);
     const opacity = selectedPos === null ? 1 : (selectedPos === pos ? 1 : 0.15);
     const pathId = `${cardId}-path-${pos}`;
-    arrows += `<path id="${pathId}" d="${d}" stroke="${col}" stroke-width="${selectedPos===pos?3:2}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}" marker-end="url(#arrowR${pos})"/>`;
-    defs += `<defs><marker id="arrowR${pos}" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0 0, 7 3.5, 0 7" fill="${col}"/></marker></defs>`;
+    arrows += `<path id="${pathId}" d="${d}" stroke="${col}" stroke-width="${selectedPos===pos?2.75:2.25}" fill="none" stroke-linecap="round" stroke-linejoin="miter" opacity="${opacity}" marker-end="url(#arrowR${pos})"/>`;
+    defs += `<defs><marker id="arrowR${pos}" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 L2,4 Z" fill="${col}"/></marker></defs>`;
     movers += `<g class="mover" data-pos="${pos}" data-ox="${pp.x}" data-oy="${pp.y}" transform="translate(0,0)" opacity="${opacity}">
       <circle cx="${pp.x}" cy="${pp.y}" r="${r}" fill="white" stroke="${col}" stroke-width="2"/>
       <text x="${pp.x}" y="${pp.y+1}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="900" fill="${col}" font-family="sans-serif">${pos}</text>
@@ -468,6 +472,18 @@ const playbookData = {
     { name:'INDIANA', surface:'3×1', formation:'BASE', family:'STACKING-OUTSIDE',
       routes: { Z:{route:'WIDE HITCH',assignment:'6×1 wide hitch'}, H:{route:'CORNER',assignment:'7 steps & stick — 25&in: back pylon / 26+: front pylon'}, Y:{route:'SKINNY POST',assignment:'Attack safety & stay skinny'}, X:{route:'HITCH',assignment:'6 yd turn to QB'}, B:{route:'SPOT',assignment:'Replace alley defender'} },
       qbNotes: ['Dropback concept','Progression: Low / High / Back','Alert skinny post vs. 2 Hi safety off hash','Alert corner vs. Man coverage'] },
+    { name:'HAWAII', surface:'3×1', formation:'BASE', family:'DOUBLE HITCH',
+      routes: { Z:{route:'HITCH',assignment:'6 yd hitch — field #1'}, H:{route:'HITCH',assignment:'5 yd hitch — field #2'}, Y:{route:'HITCH',assignment:'6 yd hitch — field #3'}, X:{route:'GO',assignment:'MOR Go — mandatory outside release, clear out backside'}, B:{route:'SWING',assignment:'Check down / swing'} },
+      qbNotes: ['1 big step drop','1 big step if throwing the hitch off a pre-snap read','CB pressed = throw the hitch','CB soft = check down to the back'] },
+    { name:'OREGON', surface:'3×1', formation:'BASE', family:'OUT (EVEN)',
+      routes: { Z:{route:'GO',assignment:'MOR Go — clear out'}, H:{route:'QUICK OUT',assignment:'Quick out'}, Y:{route:'PIVOT',assignment:'Pivot — out and back to QB'}, X:{route:'QUICK OUT',assignment:'Quick out — mirrored backside'}, B:{route:'-',assignment:'Pass protection'} },
+      qbNotes: ['Out concept on both sides — mirrored when called "EVEN"','Star / corner read','1 big step if throwing the quick out off a pre-snap read'] },
+    { name:'CLEMSON (BUNCH FOLLOW)', surface:'3×1', formation:'BUNCH', family:'SLANTS',
+      routes: { Z:{route:'FADE',assignment:'Fade — backside clear'}, H:{route:'NOW SLANT',assignment:'Now slant — immediate inside break'}, Y:{route:'SPRAY SLANT',assignment:'Spray slant — flatter angle, full speed inside'}, X:{route:'SLANT',assignment:'Slant'}, B:{route:'-',assignment:'Pass protection'} },
+      qbNotes: ['1 big step drop','Bunch release — picks clear underneath for the slants','Alert fade vs. Man coverage'] },
+    { name:'CLEMSON (BUNCH WHIP)', surface:'3×1', formation:'BUNCH', family:'SLANTS',
+      routes: { Z:{route:'WHIP',assignment:'Whip — bust out then settle back underneath'}, H:{route:'SPRAY SLANT',assignment:'Spray slant — flatter angle, full speed inside'}, Y:{route:'FADE',assignment:'Fade — backside clear'}, X:{route:'SLANT',assignment:'Slant'}, B:{route:'-',assignment:'Pass protection'} },
+      qbNotes: ['1 big step drop','Whip tag — man-beater, game-week call','Alert fade vs. Man coverage'] },
   ],
   screens: [
     { name:'SMU (TUNNEL)', surface:'3×1', formation:'BASE', family:'TUNNEL SCREEN',
