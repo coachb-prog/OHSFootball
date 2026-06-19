@@ -344,42 +344,63 @@ const formationInfo = [
 // ==================== ROUTE PATHS / PLAY DIAGRAMS ====================
 const ROUTE_COLORS = { Z:'#FF4444', H:'#E8C96A', Y:'#4488FF', X:'#44DD88', B:'#FF8844', T:'#CC88FF' };
 
-function routePath(ox, oy, route, field) {
+const YDS = 7; // px per yard of depth/lateral distance, for realistic route scaling
+
+// Computes the point on a player marker's circle edge along the true direction
+// of travel toward the first waypoint, so lines attach cleanly regardless of angle.
+function edgePoint(ox, oy, tx, ty, r) {
+  const dx = tx - ox, dy = ty - oy;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: ox + r * dx / len, y: oy + r * dy / len };
+}
+
+// waypoints: [{x,y}] for a sharp-cut line segment, or [{x,y,curve:true,cx,cy}] for a
+// quadratic-bezier bend (used only for naturally-rounding routes like corner/post/wheel).
+function buildPath(ox, oy, waypoints, r) {
+  const start = edgePoint(ox, oy, waypoints[0].x, waypoints[0].y, r);
+  let d = `M${start.x},${start.y}`;
+  for (const w of waypoints) {
+    d += w.curve ? ` Q${w.cx},${w.cy} ${w.x},${w.y}` : ` L${w.x},${w.y}`;
+  }
+  return d;
+}
+
+function routePath(ox, oy, route, r) {
   const R = route.toUpperCase();
   const toCtr = ox > 194 ? -1 : 1; // toward the center of the field (inside)
   const toOut = -toCtr;            // toward the sideline (outside)
-  const sy = oy - WR_R;            // route lines attach to the top of the player marker
-  const syDown = oy + WR_R;        // for routes that initially break backward/downfield-behind
+  const y = (yd) => oy - yd * YDS; // y coordinate at a given depth in yards past the LOS
+  const wp = (pts) => buildPath(ox, oy, pts, r);
   switch(R) {
-    case 'GO': return `M${ox},${sy} L${ox},20`;
-    case 'HITCH': case 'WIDE HITCH': return `M${ox},${sy} L${ox},${oy-44} Q${ox},${oy-52} ${ox+toOut*12},${oy-44}`;
-    case '3 SLANT': case 'SLANT': return `M${ox},${sy} L${ox},${oy-18} L${ox+toCtr*38},${oy-50}`;
-    case '1 SLANT': return `M${ox},${sy} L${ox},${oy-12} L${ox+toCtr*28},${oy-36}`;
-    case 'ARROW': case 'FLAT': return `M${ox},${sy} L${ox+toOut*10},${oy-8} L${ox+toOut*40},${oy-14}`;
-    case 'FALLOUT': return `M${ox},${sy} L${ox+toOut*14},${oy-6} L${ox+toOut*36},${oy-10}`;
-    case 'CORNER': return `M${ox},${sy} L${ox},${oy-68} Q${ox},${oy-82} ${ox+toOut*30},${oy-105}`;
-    case 'POST': case 'SKINNY POST': return `M${ox},${sy} L${ox},${oy-68} Q${ox},${oy-82} ${ox+toCtr*30},${oy-105}`;
-    case 'WHEEL': return `M${ox},${sy} L${ox+toOut*24},${oy-10} L${ox+toOut*24},20`;
-    case 'SLOT FADE': return `M${ox},${sy} L${ox+toOut*14},20`;
-    case 'BEND SEAM': return `M${ox},${sy} L${ox},${oy-68} Q${ox},${oy-90} ${ox+toCtr*22},${oy-110}`;
-    case 'CROSS': case 'HI CROSS': return `M${ox},${sy} L${ox},${oy-55} L${ox+toCtr*160},${oy-65}`;
-    case 'MESH OVER': return `M${ox},${sy} L${ox},${oy-32} L${ox+toCtr*145},${oy-40}`;
-    case 'MESH UNDER': return `M${ox},${sy} L${ox},${oy-22} L${ox+toCtr*145},${oy-28}`;
-    case 'SPOT': return `M${ox},${sy} L${ox},${oy-42}`;
-    case 'SWING': return `M${ox},${sy} L${ox+toOut*60},${oy-8}`;
-    case 'RAIL': return `M${ox},${sy} L${ox},${oy-70}`;
-    case 'TUNNEL SCREEN': return `M${ox},${syDown} L${ox},${oy+12} L${ox+toCtr*30},${oy+16}`;
-    case 'BLOCK MDM': case 'BLOCK #1': case 'BLOCK #2': return `M${ox},${sy} L${ox+toCtr*18},${oy-14}`;
-    case 'CRACK': return `M${ox},${sy} L${ox+toCtr*30},${oy-18}`;
-    case 'RUN OFF STALK': case 'STALK': return `M${ox},${sy} L${ox},${oy-50}`;
+    case 'GO': return wp([{x:ox,y:20}]);
+    case 'HITCH': return wp([{x:ox,y:y(5)},{x:ox+toOut*10,y:y(4.3),curve:true,cx:ox,cy:y(5.6)}]);
+    case 'WIDE HITCH': return wp([{x:ox,y:y(6)},{x:ox+toOut*14,y:y(5.2),curve:true,cx:ox,cy:y(6.7)}]);
+    case '3 SLANT': case 'SLANT': return wp([{x:ox,y:y(1.5)},{x:ox+toCtr*36,y:y(3)}]);
+    case '1 SLANT': return wp([{x:ox,y:y(1)},{x:ox+toCtr*22,y:y(2)}]);
+    case 'ARROW': case 'FLAT': return wp([{x:ox+toOut*6,y:y(1.5)},{x:ox+toOut*40,y:y(2)}]);
+    case 'FALLOUT': return wp([{x:ox+toOut*10,y:y(5)},{x:ox+toOut*34,y:y(5.5),curve:true,cx:ox+toOut*38,cy:y(7)},{x:ox+toOut*22,y:y(5)}]);
+    case 'CORNER': return wp([{x:ox,y:y(10)},{x:ox+toOut*32,y:y(14),curve:true,cx:ox,cy:y(12)}]);
+    case 'POST': case 'SKINNY POST': return wp([{x:ox,y:y(10)},{x:ox+toCtr*32,y:y(14),curve:true,cx:ox,cy:y(12)}]);
+    case 'WHEEL': return wp([{x:ox+toOut*20,y:y(2)},{x:ox+toOut*24,y:20}]);
+    case 'SLOT FADE': return wp([{x:ox+toOut*16,y:20}]);
+    case 'BEND SEAM': return wp([{x:ox,y:y(10)},{x:ox+toCtr*20,y:y(15),curve:true,cx:ox,cy:y(13)}]);
+    case 'CROSS': case 'HI CROSS': return wp([{x:ox,y:y(7)},{x:ox+toCtr*160,y:y(8.5)}]);
+    case 'MESH OVER': return wp([{x:ox,y:y(6)},{x:ox+toCtr*145,y:y(6.5)}]);
+    case 'MESH UNDER': return wp([{x:ox,y:y(4.5)},{x:ox+toCtr*145,y:y(5)}]);
+    case 'SPOT': return wp([{x:ox,y:y(2.5)}]);
+    case 'SWING': return wp([{x:ox+toOut*20,y:y(-0.5)},{x:ox+toOut*60,y:y(0)}]);
+    case 'RAIL': return wp([{x:ox+toOut*4,y:y(11)}]);
+    case 'TUNNEL SCREEN': return wp([{x:ox,y:y(-1.5)},{x:ox+toCtr*32,y:y(-1)}]);
+    case 'BLOCK MDM': case 'BLOCK #1': case 'BLOCK #2': return wp([{x:ox+toCtr*20,y:y(1.5)}]);
+    case 'CRACK': return wp([{x:ox+toCtr*32,y:y(2)}]);
+    case 'RUN OFF STALK': case 'STALK': return wp([{x:ox,y:y(8)}]);
     case 'PUSH 3 VERTICAL KICK OUT #1': case 'PUSH VERTICAL FOR 3 & KICK OUT #2': case 'PUSH 3 VERTICAL KICK OUT #2':
-      return `M${ox},${sy} L${ox},${oy-24} L${ox+toOut*22},${oy-30}`;
+      return wp([{x:ox,y:y(3)},{x:ox+toOut*22,y:y(3.5)}]);
     case '3 STEPS VERTICAL/ RETRACE/ ATTACK BALL/ "RIDE THE WAVE"': case 'RETRACE':
-      return `M${ox},${sy} L${ox},${oy-22} L${ox+toCtr*30},${oy-30}`;
-    default: return `M${ox},${sy} L${ox},${oy-35}`;
+      return wp([{x:ox,y:y(3)},{x:ox+toCtr*30,y:y(3.5)}]);
+    default: return wp([{x:ox,y:y(5)}]);
   }
 }
-function isFieldSide(x) { return x > 194; }
 
 function getPlayerPositions(formation) {
   const L = LOS, S = SLOT_OFF;
@@ -403,14 +424,14 @@ function drawPlaySVG(formation, routes, selectedPos, cardId) {
     const pp = playerPositions[pos];
     if (!pp || !info.route || info.route === '-') return;
     const col = ROUTE_COLORS[pos] || '#fff';
-    const fside = isFieldSide(pp.x);
-    const d = routePath(pp.x, pp.y, info.route, fside);
+    const r = pos === 'B' ? RB_R : (pos === 'Y' || pos === 'T') ? TE_R : WR_R;
+    const d = routePath(pp.x, pp.y, info.route, r);
     const opacity = selectedPos === null ? 1 : (selectedPos === pos ? 1 : 0.15);
     const pathId = `${cardId}-path-${pos}`;
     arrows += `<path id="${pathId}" d="${d}" stroke="${col}" stroke-width="${selectedPos===pos?3:2}" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity}" marker-end="url(#arrowR${pos})"/>`;
     defs += `<defs><marker id="arrowR${pos}" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><polygon points="0 0, 7 3.5, 0 7" fill="${col}"/></marker></defs>`;
     movers += `<g class="mover" data-pos="${pos}" data-ox="${pp.x}" data-oy="${pp.y}" transform="translate(0,0)" opacity="${opacity}">
-      <circle cx="${pp.x}" cy="${pp.y}" r="${WR_R}" fill="white" stroke="${col}" stroke-width="2"/>
+      <circle cx="${pp.x}" cy="${pp.y}" r="${r}" fill="white" stroke="${col}" stroke-width="2"/>
       <text x="${pp.x}" y="${pp.y+1}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="900" fill="${col}" font-family="sans-serif">${pos}</text>
     </g>`;
   });
