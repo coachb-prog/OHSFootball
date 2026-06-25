@@ -2086,6 +2086,48 @@ function dbBlitzLabel(r) {
   const st = String(r.stunt == null ? '' : r.stunt).trim().toUpperCase();
   return st || null;
 }
+function dbYards(r) {
+  const v = parseFloat(r.gainLoss);
+  return isNaN(v) ? 0 : v;
+}
+function dbResultStr(r) {
+  return String(r.result == null ? '' : r.result).trim().toUpperCase();
+}
+function dbIsTurnover(r) {
+  const v = dbResultStr(r);
+  return v.includes('FUMBLE') || v.includes('INT');
+}
+function dbIsTD(r) {
+  return dbResultStr(r).includes('TD');
+}
+function dbIsDeadPlay(r) {
+  const v = dbResultStr(r);
+  return v.includes('PENALTY') || v.includes('TIMEOUT');
+}
+function dbIsOffenseSuccess(r) {
+  if (dbIsTurnover(r)) return false;
+  if (dbIsTD(r)) return true;
+  const down = parseInt(r.down, 10);
+  const dist = parseFloat(r.dist);
+  const yards = dbYards(r);
+  if (!dist || isNaN(dist) || dist <= 0) return yards >= 4;
+  let needed;
+  if (!down || down <= 1) needed = dist * 0.5;
+  else if (down === 2) needed = dist * 0.7;
+  else needed = dist;
+  return yards >= needed;
+}
+function dbSuccessStats(rows) {
+  const chartable = rows.filter(r => !dbIsDeadPlay(r));
+  if (!chartable.length) return null;
+  const successCount = chartable.filter(dbIsOffenseSuccess).length;
+  const totalYards = chartable.reduce((s, r) => s + dbYards(r), 0);
+  return {
+    successPct: Math.round(successCount / chartable.length * 100),
+    avgYards: Math.round(totalYards / chartable.length * 10) / 10,
+    n: chartable.length
+  };
+}
 function dbFreqByFn(rows, fn) {
   const counts = {}; let total = 0;
   rows.forEach(r => {
@@ -2141,7 +2183,8 @@ function dbComputeOverall(rows) {
   const covFreq = dbFreq(rows, 'coverage');
   const stuntFreq = dbFreq(rows, 'stunt');
   const blitzCount = rows.filter(dbIsBlitz).length;
-  return { total, frontFreq, covFreq, stuntFreq, blitzCount, blitzPct: total ? Math.round(blitzCount / total * 100) : 0 };
+  const successStats = dbSuccessStats(rows);
+  return { total, frontFreq, covFreq, stuntFreq, blitzCount, blitzPct: total ? Math.round(blitzCount / total * 100) : 0, successStats };
 }
 
 function dbComboKey(r) {
@@ -2211,6 +2254,19 @@ function dbGenerateInsights(rows) {
       }
     });
   });
+  // Effectiveness: which calls allow the highest/lowest offensive success rate.
+  [[dbDefFrontBucket, 'front'], [dbCoverageBucket, 'coverage']].forEach(([groupFn, label]) => {
+    const groups = dbGroupBy(rows, groupFn);
+    Object.entries(groups).forEach(([key, rs]) => {
+      const stats = dbSuccessStats(rs);
+      if (!stats || stats.n < 5) return;
+      if (stats.successPct <= 30) {
+        items.push({ weight: rs.length * 2, text: `<strong>${key}</strong> ${label} is highly effective — only ${stats.successPct}% offensive success allowed (${stats.avgYards} yds/play, ${stats.n} snaps).` });
+      } else if (stats.successPct >= 70) {
+        items.push({ weight: rs.length * 2, text: `<strong>${key}</strong> ${label} is getting exploited — ${stats.successPct}% offensive success allowed (${stats.avgYards} yds/play, ${stats.n} snaps).` });
+      }
+    });
+  });
   items.sort((a, b) => b.weight - a.weight);
   return items.slice(0, 30).map(i => i.text);
 }
@@ -2223,6 +2279,8 @@ function dbRenderStats(overall) {
     <div class="db-stat"><div class="db-stat-num">${topFront ? topFront.label : '—'}</div><div class="db-stat-label">TOP FRONT</div></div>
     <div class="db-stat"><div class="db-stat-num">${topCov ? topCov.label : '—'}</div><div class="db-stat-label">TOP COVERAGE</div></div>
     <div class="db-stat"><div class="db-stat-num">${overall.blitzPct}%</div><div class="db-stat-label">BLITZ RATE</div></div>
+    <div class="db-stat"><div class="db-stat-num">${overall.successStats ? overall.successStats.successPct + '%' : '—'}</div><div class="db-stat-label">OFF SUCCESS% ALLOWED</div></div>
+    <div class="db-stat"><div class="db-stat-num">${overall.successStats ? overall.successStats.avgYards : '—'}</div><div class="db-stat-label">AVG YDS ALLOWED</div></div>
   </div>`;
 }
 
@@ -2250,6 +2308,12 @@ function dbFreqDistHTML(freq, n) {
   return html;
 }
 
+function dbSuccessCellHTML(rs) {
+  const stats = dbSuccessStats(rs);
+  if (!stats) return '—';
+  return `${stats.successPct}%<br><span style="color:var(--gray);font-size:11px">${stats.avgYards} yds/play</span>`;
+}
+
 function dbRenderGroupTable(rows, groupFn, title) {
   const groups = dbGroupBy(rows, groupFn);
   const buckets = Object.keys(groups).sort((a, b) => a.localeCompare(b));
@@ -2263,9 +2327,10 @@ function dbRenderGroupTable(rows, groupFn, title) {
       <td>${dbFreqDistHTML(dbFreq(rs, 'coverage'), 4)}</td>
       <td>${blitzPct}%</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
+      <td>${dbSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th></tr>${trs}</table></div>`);
+  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderComboTable(rows, title) {
@@ -2282,9 +2347,10 @@ function dbRenderComboTable(rows, title) {
       <td>${rs.length} <span style="color:var(--gold)">(${pct}%)</span></td>
       <td>${blitzPct}%</td>
       <td>${stunt ? stunt.label + ' <span style="color:var(--gold)">' + stunt.pct + '%</span>' : '—'}</td>
+      <td>${dbSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT / COVERAGE</th><th>SNAPS</th><th>BLITZ %</th><th>TOP STUNT</th></tr>${trs}</table></div>`);
+  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT / COVERAGE</th><th>SNAPS</th><th>BLITZ %</th><th>TOP STUNT</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLabel, title) {
@@ -2300,9 +2366,10 @@ function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLab
       <td>${dbFreqDistHTML(dbFreq(rs, otherField), 4)}</td>
       <td>${blitzPct}%</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
+      <td>${dbSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel} (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th></tr>${trs}</table></div>`);
+  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel} (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderTopBlitzesByFront(rows, topN) {
@@ -2317,9 +2384,10 @@ function dbRenderTopBlitzesByFront(rows, topN) {
       <td><strong>${front}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} blitz snaps (${pct}% of all blitzes)</span></td>
       <td>${dbFreqDistHTML(dbFreqByFn(rs, dbBlitzLabel), 4)}</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'coverage'), 3)}</td>
+      <td>${dbSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbSectionWrap('TOP BLITZES BY FRONT', `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT</th><th>BLITZ CALLS (ALL)</th><th>COVERAGE BEHIND IT</th></tr>${trs}</table></div>`);
+  return dbSectionWrap('TOP BLITZES BY FRONT', `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT</th><th>BLITZ CALLS (ALL)</th><th>COVERAGE BEHIND IT</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbBarRow(label, pct, isTop) {
@@ -2332,6 +2400,17 @@ function dbRenderBarGroup(title, freq, n) {
   return `<div><div class="db-bar-group-title">${title}</div>${top.map((t, i) => dbBarRow(t.label, t.pct, i === 0)).join('')}</div>`;
 }
 
+function dbRenderEffectivenessBarGroup(title, rows, groupFn, n) {
+  const groups = dbGroupBy(rows, groupFn);
+  const entries = Object.entries(groups)
+    .map(([key, rs]) => ({ key, stats: dbSuccessStats(rs) }))
+    .filter(e => e.stats && e.stats.n >= 5);
+  if (!entries.length) return '';
+  entries.sort((a, b) => a.stats.successPct - b.stats.successPct);
+  const top = entries.slice(0, n);
+  return `<div><div class="db-bar-group-title">${title}</div>${top.map((e, i) => dbBarRow(e.key, e.stats.successPct, i === 0)).join('')}</div>`;
+}
+
 function dbRenderBarSection(rows) {
   const runPass = dbFreqByFn(rows, dbPlayTypeBucket);
   const blitzFreq = dbFreqByFn(rows, r => dbIsBlitz(r) ? 'BLITZ' : 'NO BLITZ');
@@ -2339,7 +2418,9 @@ function dbRenderBarSection(rows) {
     dbRenderBarGroup('RUN vs PASS', runPass, 2),
     dbRenderBarGroup('BLITZ vs NO BLITZ', blitzFreq, 2),
     dbRenderBarGroup('TOP FRONTS', dbFreq(rows, 'defFront'), 5),
-    dbRenderBarGroup('TOP COVERAGES', dbFreq(rows, 'coverage'), 5)
+    dbRenderBarGroup('TOP COVERAGES', dbFreq(rows, 'coverage'), 5),
+    dbRenderEffectivenessBarGroup('MOST EFFECTIVE FRONTS (OFF SUCCESS% ALLOWED)', rows, dbDefFrontBucket, 5),
+    dbRenderEffectivenessBarGroup('MOST EFFECTIVE COVERAGES (OFF SUCCESS% ALLOWED)', rows, dbCoverageBucket, 5)
   ].filter(Boolean);
   if (!groups.length) return '';
   return dbSectionWrap('TENDENCY OVERVIEW', `<div class="db-bar-grid">${groups.join('')}</div>`);
@@ -2411,8 +2492,8 @@ function printGameCard() {
     <div class="pc-sub">${entry.games.length} game${entry.games.length > 1 ? 's' : ''} loaded (${entry.games.map(g => dbEscapeHTML(g.label)).join(', ')}) — ${defRows.length} defensive snaps charted</div>
     <div class="pc-section">
       <div class="pc-section-title">OVERVIEW</div>
-      <table><tr><th>SNAPS</th><th>TOP FRONT</th><th>TOP COVERAGE</th><th>BLITZ RATE</th></tr>
-      <tr><td>${overall.total}</td><td>${dbTop(overall.frontFreq, 1)[0]?.label || '—'}</td><td>${dbTop(overall.covFreq, 1)[0]?.label || '—'}</td><td>${overall.blitzPct}%</td></tr></table>
+      <table><tr><th>SNAPS</th><th>TOP FRONT</th><th>TOP COVERAGE</th><th>BLITZ RATE</th><th>OFF SUCCESS% ALLOWED</th><th>AVG YDS ALLOWED</th></tr>
+      <tr><td>${overall.total}</td><td>${dbTop(overall.frontFreq, 1)[0]?.label || '—'}</td><td>${dbTop(overall.covFreq, 1)[0]?.label || '—'}</td><td>${overall.blitzPct}%</td><td>${overall.successStats ? overall.successStats.successPct + '%' : '—'}</td><td>${overall.successStats ? overall.successStats.avgYards : '—'}</td></tr></table>
     </div>
     <div class="pc-section">
       <div class="pc-section-title">RUN vs PASS</div>
