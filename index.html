@@ -1993,6 +1993,21 @@ function dbIsBlitz(r) {
   if (!v) return false;
   return !['N', 'NO', 'NONE', '0'].includes(v);
 }
+function dbBlitzLabel(r) {
+  const bn = String(r.blitzNum == null ? '' : r.blitzNum).trim().toUpperCase();
+  if (bn) return bn;
+  const st = String(r.stunt == null ? '' : r.stunt).trim().toUpperCase();
+  return st || null;
+}
+function dbFreqByFn(rows, fn) {
+  const counts = {}; let total = 0;
+  rows.forEach(r => {
+    const v = fn(r);
+    if (!v) return;
+    counts[v] = (counts[v] || 0) + 1; total++;
+  });
+  return { counts, total };
+}
 function dbDownDistBucket(r) {
   const d = parseInt(r.down, 10);
   if (isNaN(d)) return null;
@@ -2191,6 +2206,24 @@ function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLab
     <div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel} (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th></tr>${trs}</table></div></div>`;
 }
 
+function dbRenderTopBlitzesByFront(rows, topN) {
+  const blitzRows = rows.filter(dbIsBlitz);
+  if (!blitzRows.length) return '';
+  const groups = dbGroupBy(blitzRows, dbDefFrontBucket);
+  const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length).slice(0, topN);
+  if (!entries.length) return '';
+  const trs = entries.map(([front, rs]) => {
+    const pct = blitzRows.length ? Math.round(rs.length / blitzRows.length * 100) : 0;
+    return `<tr>
+      <td><strong>${front}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} blitz snaps (${pct}% of all blitzes)</span></td>
+      <td>${dbFreqDistHTML(dbFreqByFn(rs, dbBlitzLabel), 4)}</td>
+      <td>${dbFreqDistHTML(dbFreq(rs, 'coverage'), 3)}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="db-section"><div class="db-section-title">TOP BLITZES BY FRONT</div>
+    <div class="db-table-wrap"><table class="db-table"><tr><th>FRONT</th><th>BLITZ CALLS (ALL)</th><th>COVERAGE BEHIND IT</th></tr>${trs}</table></div></div>`;
+}
+
 function dbRenderTopComboBanner(rows) {
   const groups = dbGroupBy(rows, dbComboKey);
   const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
@@ -2219,6 +2252,7 @@ function renderDefDashboard(rows) {
     ${dbRenderComboTable(defRows, 'MOST COMMON DEFENSIVE CALLS (FRONT + COVERAGE)')}
     ${dbRenderPairTable(defRows, dbDefFrontBucket, 'FRONT', 'coverage', 'TOP COVERAGE', 'BY FRONT — WHAT THEY PLAY BEHIND IT')}
     ${dbRenderPairTable(defRows, dbCoverageBucket, 'COVERAGE', 'defFront', 'TOP FRONT', 'BY COVERAGE — WHAT FRONT IT COMES FROM')}
+    ${dbRenderTopBlitzesByFront(defRows, 5)}
     ${dbRenderGroupTable(defRows, dbDownDistBucket, 'BY DOWN & DISTANCE')}
     ${dbRenderGroupTable(defRows, dbHashBucket, 'BY HASH')}
     ${dbRenderGroupTable(defRows, dbZoneBucket, 'BY FIELD ZONE')}
