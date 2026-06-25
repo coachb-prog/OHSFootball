@@ -2117,26 +2117,39 @@ function dbRenderStats(overall) {
   </div>`;
 }
 
+function dbFreqDistHTML(freq, n) {
+  const all = dbTop(freq, 9999);
+  if (!all.length) return '—';
+  const shown = all.slice(0, n);
+  const rest = all.slice(n);
+  let html = shown.map((t, i) => i === 0
+    ? `<strong>${t.label}</strong> <span style="color:var(--gold)">${t.pct}%</span>`
+    : `<span style="color:var(--gray)">${t.label} <span style="color:var(--gold)">${t.pct}%</span></span>`
+  ).join('<br>');
+  if (rest.length) {
+    const restPct = rest.reduce((s, t) => s + t.pct, 0);
+    html += `<br><span style="color:var(--gray);font-size:10px">+${rest.length} more (${restPct}%)</span>`;
+  }
+  return html;
+}
+
 function dbRenderGroupTable(rows, groupFn, title) {
   const groups = dbGroupBy(rows, groupFn);
   const buckets = Object.keys(groups).sort((a, b) => a.localeCompare(b));
   if (!buckets.length) return '';
   const trs = buckets.map(b => {
     const rs = groups[b];
-    const front = dbTop(dbFreq(rs, 'defFront'), 1)[0];
-    const cov = dbTop(dbFreq(rs, 'coverage'), 1)[0];
-    const stunt = dbTop(dbFreq(rs, 'stunt'), 1)[0];
     const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
     return `<tr>
       <td><strong>${b}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps</span></td>
-      <td>${front ? front.label + ' <span style="color:var(--gold)">' + front.pct + '%</span>' : '—'}</td>
-      <td>${cov ? cov.label + ' <span style="color:var(--gold)">' + cov.pct + '%</span>' : '—'}</td>
+      <td>${dbFreqDistHTML(dbFreq(rs, 'defFront'), 4)}</td>
+      <td>${dbFreqDistHTML(dbFreq(rs, 'coverage'), 4)}</td>
       <td>${blitzPct}%</td>
-      <td>${stunt ? stunt.label + ' <span style="color:var(--gold)">' + stunt.pct + '%</span>' : '—'}</td>
+      <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
     </tr>`;
   }).join('');
   return `<div class="db-section"><div class="db-section-title">${title}</div>
-    <div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>TOP FRONT</th><th>TOP COVERAGE</th><th>BLITZ %</th><th>TOP STUNT</th></tr>${trs}</table></div></div>`;
+    <div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th></tr>${trs}</table></div></div>`;
 }
 
 function dbRenderComboTable(rows, title) {
@@ -2160,25 +2173,22 @@ function dbRenderComboTable(rows, title) {
 }
 
 function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLabel, title) {
-  const otherIsFront = otherField === 'defFront';
   const groups = dbGroupBy(rows, groupFn);
   const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
   if (!entries.length) return '';
   const total = rows.length;
   const trs = entries.map(([key, rs]) => {
     const pct = total ? Math.round(rs.length / total * 100) : 0;
-    const topOther = dbTop(dbFreq(rs, otherField), 1)[0];
     const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
-    const stunt = dbTop(dbFreq(rs, 'stunt'), 1)[0];
     return `<tr>
       <td><strong>${key}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps (${pct}%)</span></td>
-      <td>${topOther ? topOther.label + ' <span style="color:var(--gold)">' + topOther.pct + '%</span>' : '—'}</td>
+      <td>${dbFreqDistHTML(dbFreq(rs, otherField), 4)}</td>
       <td>${blitzPct}%</td>
-      <td>${stunt ? stunt.label + ' <span style="color:var(--gold)">' + stunt.pct + '%</span>' : '—'}</td>
+      <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
     </tr>`;
   }).join('');
   return `<div class="db-section"><div class="db-section-title">${title}</div>
-    <div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel}</th><th>BLITZ %</th><th>TOP STUNT</th></tr>${trs}</table></div></div>`;
+    <div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel} (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th></tr>${trs}</table></div></div>`;
 }
 
 function dbRenderTopComboBanner(rows) {
