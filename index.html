@@ -1901,13 +1901,24 @@ function startDefBreakdown() {
   }
 }
 
+function dbEscapeHTML(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function renderOppList() {
   const all = getDefOpponents();
   const names = Object.keys(all);
   const wrap = document.getElementById('db-opp-list');
-  wrap.innerHTML = names.map(n =>
-    `<div class="db-opp-pill ${n === currentDefOpponent ? 'active' : ''}" onclick="selectDefOpponent(${JSON.stringify(n)})">${n}<span class="db-opp-del" onclick="event.stopPropagation();deleteDefOpponent(${JSON.stringify(n)})">×</span></div>`
-  ).join('');
+  wrap.innerHTML = names.map(n => {
+    const esc = dbEscapeHTML(n);
+    return `<div class="db-opp-pill ${n === currentDefOpponent ? 'active' : ''}" data-opp="${esc}">${esc}<span class="db-opp-del" data-opp-del="${esc}">×</span></div>`;
+  }).join('');
+  wrap.querySelectorAll('.db-opp-del').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); deleteDefOpponent(el.dataset.oppDel); });
+  });
+  wrap.querySelectorAll('.db-opp-pill').forEach(el => {
+    el.addEventListener('click', () => selectDefOpponent(el.dataset.opp));
+  });
 }
 
 function selectDefOpponent(name) {
@@ -1986,8 +1997,54 @@ function dbComputeOverall(rows) {
   return { total, frontFreq, covFreq, stuntFreq, blitzCount, blitzPct: total ? Math.round(blitzCount / total * 100) : 0 };
 }
 
+function dbComboKey(r) {
+  const f = String(r.defFront == null ? '' : r.defFront).trim().toUpperCase();
+  const c = String(r.coverage == null ? '' : r.coverage).trim().toUpperCase();
+  if (!f || !c) return null;
+  return f + ' / ' + c;
+}
+function dbDefFrontBucket(r) {
+  const v = String(r.defFront == null ? '' : r.defFront).trim().toUpperCase();
+  return v || null;
+}
+function dbCoverageBucket(r) {
+  const v = String(r.coverage == null ? '' : r.coverage).trim().toUpperCase();
+  return v || null;
+}
+
 function dbGenerateInsights(rows) {
   const items = [];
+  // Most common single front+coverage call overall — the headline conclusion.
+  const comboGroups = dbGroupBy(rows, dbComboKey);
+  const comboEntries = Object.entries(comboGroups).sort((a, b) => b[1].length - a[1].length);
+  if (comboEntries.length) {
+    const [combo, rs] = comboEntries[0];
+    const pct = rows.length ? Math.round(rs.length / rows.length * 100) : 0;
+    if (rs.length >= 3) {
+      items.push({ weight: rows.length * 3, text: `Most common defensive call is <strong>${combo}</strong> — ${pct}% of all snaps (${rs.length}/${rows.length}).` });
+    }
+  }
+  // Front -> coverage/blitz pairing: "out of 4-2, what do they play behind it?"
+  [['defFront', dbDefFrontBucket, 'front'], ['coverage', dbCoverageBucket, 'coverage']].forEach(([groupField, groupFn, groupLabel]) => {
+    const otherField = groupField === 'defFront' ? 'coverage' : 'defFront';
+    const otherLabel = groupField === 'defFront' ? 'coverage' : 'front';
+    const groups = dbGroupBy(rows, groupFn);
+    Object.entries(groups).forEach(([key, rs]) => {
+      if (rs.length < 3) return;
+      const fc = dbFreq(rs, otherField);
+      if (fc.total < 3) return;
+      const top = dbTop(fc, 1)[0];
+      if (top && top.pct >= 50) {
+        items.push({ weight: rs.length * 2, text: `Out of <strong>${key}</strong> ${groupLabel} (${rs.length} snaps), shows <strong>${top.label}</strong> ${otherLabel} ${top.pct}% of the time (${top.count}/${fc.total}).` });
+      }
+      const blitzCount = rs.filter(dbIsBlitz).length;
+      const blitzPct = Math.round(blitzCount / rs.length * 100);
+      if (blitzPct >= 40) {
+        items.push({ weight: rs.length * 2, text: `Out of <strong>${key}</strong> ${groupLabel} (${rs.length} snaps), blitzes ${blitzPct}% of the time.` });
+      }
+    });
+  });
+  // Situational tendencies (down/distance, hash, field zone, formation/personnel faced).
   [dbDownDistBucket, dbHashBucket, dbZoneBucket, dbFormBucket, dbPersonnelBucket].forEach(fn => {
     const groups = dbGroupBy(rows, fn);
     Object.entries(groups).forEach(([bucket, rs]) => {
@@ -2008,7 +2065,7 @@ function dbGenerateInsights(rows) {
     });
   });
   items.sort((a, b) => b.weight - a.weight);
-  return items.slice(0, 25).map(i => i.text);
+  return items.slice(0, 30).map(i => i.text);
 }
 
 function dbRenderStats(overall) {
@@ -2044,6 +2101,57 @@ function dbRenderGroupTable(rows, groupFn, title) {
     <div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>TOP FRONT</th><th>TOP COVERAGE</th><th>BLITZ %</th><th>TOP STUNT</th></tr>${trs}</table></div></div>`;
 }
 
+function dbRenderComboTable(rows, title) {
+  const groups = dbGroupBy(rows, dbComboKey);
+  const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length).slice(0, 8);
+  if (!entries.length) return '';
+  const total = rows.length;
+  const trs = entries.map(([combo, rs]) => {
+    const pct = total ? Math.round(rs.length / total * 100) : 0;
+    const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
+    const stunt = dbTop(dbFreq(rs, 'stunt'), 1)[0];
+    return `<tr>
+      <td><strong>${combo}</strong></td>
+      <td>${rs.length} <span style="color:var(--gold)">(${pct}%)</span></td>
+      <td>${blitzPct}%</td>
+      <td>${stunt ? stunt.label + ' <span style="color:var(--gold)">' + stunt.pct + '%</span>' : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="db-section"><div class="db-section-title">${title}</div>
+    <div class="db-table-wrap"><table class="db-table"><tr><th>FRONT / COVERAGE</th><th>SNAPS</th><th>BLITZ %</th><th>TOP STUNT</th></tr>${trs}</table></div></div>`;
+}
+
+function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLabel, title) {
+  const otherIsFront = otherField === 'defFront';
+  const groups = dbGroupBy(rows, groupFn);
+  const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+  if (!entries.length) return '';
+  const total = rows.length;
+  const trs = entries.map(([key, rs]) => {
+    const pct = total ? Math.round(rs.length / total * 100) : 0;
+    const topOther = dbTop(dbFreq(rs, otherField), 1)[0];
+    const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
+    const stunt = dbTop(dbFreq(rs, 'stunt'), 1)[0];
+    return `<tr>
+      <td><strong>${key}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps (${pct}%)</span></td>
+      <td>${topOther ? topOther.label + ' <span style="color:var(--gold)">' + topOther.pct + '%</span>' : '—'}</td>
+      <td>${blitzPct}%</td>
+      <td>${stunt ? stunt.label + ' <span style="color:var(--gold)">' + stunt.pct + '%</span>' : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="db-section"><div class="db-section-title">${title}</div>
+    <div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel}</th><th>BLITZ %</th><th>TOP STUNT</th></tr>${trs}</table></div></div>`;
+}
+
+function dbRenderTopComboBanner(rows) {
+  const groups = dbGroupBy(rows, dbComboKey);
+  const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+  if (!entries.length || entries[0][1].length < 3) return '';
+  const [combo, rs] = entries[0];
+  const pct = rows.length ? Math.round(rs.length / rows.length * 100) : 0;
+  return `<div class="db-note" style="background:rgba(204,0,0,0.15);border-left-color:var(--red)">🎯 Most common defensive call: <strong>${combo}</strong> — ${rs.length} snaps (${pct}% of all charted plays)</div>`;
+}
+
 function renderDefDashboard(rows) {
   const dash = document.getElementById('db-dashboard');
   if (!rows || !rows.length) { dash.innerHTML = '<div class="db-empty">No data found in this file.</div>'; return; }
@@ -2055,10 +2163,14 @@ function renderDefDashboard(rows) {
   dash.innerHTML = `
     ${usedAll ? '<div class="db-note">No ODK column marking defensive snaps was found — showing tendencies across all charted plays.</div>' : ''}
     ${dbRenderStats(overall)}
+    ${dbRenderTopComboBanner(defRows)}
     <div class="db-section">
       <div class="db-section-title">KEY TENDENCIES</div>
       ${insights.length ? '<ul class="db-insights">' + insights.map(i => `<li>${i}</li>`).join('') + '</ul>' : '<div class="db-empty">Not enough data yet to detect strong tendencies. Upload more charted plays.</div>'}
     </div>
+    ${dbRenderComboTable(defRows, 'MOST COMMON DEFENSIVE CALLS (FRONT + COVERAGE)')}
+    ${dbRenderPairTable(defRows, dbDefFrontBucket, 'FRONT', 'coverage', 'TOP COVERAGE', 'BY FRONT — WHAT THEY PLAY BEHIND IT')}
+    ${dbRenderPairTable(defRows, dbCoverageBucket, 'COVERAGE', 'defFront', 'TOP FRONT', 'BY COVERAGE — WHAT FRONT IT COMES FROM')}
     ${dbRenderGroupTable(defRows, dbDownDistBucket, 'BY DOWN & DISTANCE')}
     ${dbRenderGroupTable(defRows, dbHashBucket, 'BY HASH')}
     ${dbRenderGroupTable(defRows, dbZoneBucket, 'BY FIELD ZONE')}
