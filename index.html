@@ -313,12 +313,22 @@ body {
 .db-upload-status.ok { color: #2ECC71; }
 .db-upload-status.err { color: #FF6666; }
 .db-note { font-size: 12px; color: var(--gold); background: rgba(232,201,106,0.1); border-left: 3px solid var(--gold); padding: 10px 12px; border-radius: 6px; }
+.db-opp-gamecount { color: var(--gray); font-weight: 700; }
+.db-opp-pill.active .db-opp-gamecount { color: rgba(255,255,255,0.7); }
+.db-games-title { font-size: 10px; letter-spacing: 1px; color: var(--gray); font-weight: 700; margin-top: 4px; }
+.db-game-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--white); background: var(--black3); border-radius: 6px; padding: 6px 10px; margin-top: 4px; }
+.db-game-del { color: var(--gray); font-weight: 900; cursor: pointer; padding: 0 4px; }
+.db-print-btn { background: var(--black3); border: 1px solid var(--gold); color: var(--gold); border-radius: 10px; padding: 12px; font-size: 13px; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; }
+.db-print-btn:hover, .db-print-btn:active { background: var(--gold); color: var(--black); }
 .db-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .db-stat { background: var(--black2); border: 1px solid #333; border-radius: 10px; padding: 14px; text-align: center; }
 .db-stat-num { font-size: 18px; font-weight: 900; color: var(--gold); word-break: break-word; }
 .db-stat-label { font-size: 10px; color: var(--gray); letter-spacing: 1px; font-weight: 700; margin-top: 4px; }
 .db-section { background: var(--black2); border: 1px solid #333; border-radius: 14px; padding: 14px; }
-.db-section-title { font-size: 12px; letter-spacing: 2px; color: var(--gold); font-weight: 800; margin-bottom: 10px; }
+.db-section-title { font-size: 12px; letter-spacing: 2px; color: var(--gold); font-weight: 800; margin-bottom: 10px; cursor: pointer; display: flex; align-items: center; gap: 6px; user-select: none; }
+.db-sec-chevron { transition: transform 0.15s; display: inline-block; }
+.db-section.collapsed .db-sec-chevron { transform: rotate(-90deg); }
+.db-section.collapsed .db-section-body { display: none; }
 .db-insights { display: flex; flex-direction: column; gap: 8px; padding-left: 18px; }
 .db-insights li { font-size: 13px; line-height: 1.4; color: #ddd; }
 .db-table-wrap { overflow-x: auto; }
@@ -327,6 +337,28 @@ body {
 .db-table td { padding: 8px; border-bottom: 1px solid #2a2a2a; vertical-align: top; }
 .db-table tr:hover td { background: var(--black3); }
 .db-empty { text-align: center; color: var(--gray); padding: 24px; font-size: 13px; }
+.db-bar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.db-bar-group-title { font-size: 11px; color: var(--gray); letter-spacing: 1px; margin-bottom: 6px; font-weight: 700; }
+.db-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+.db-bar-label { width: 90px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--white); font-weight: 700; }
+.db-bar-track { flex: 1; background: #2a2a2a; border-radius: 4px; height: 14px; overflow: hidden; }
+.db-bar-fill { height: 100%; background: var(--gray); border-radius: 4px; }
+.db-bar-fill.top { background: linear-gradient(90deg, var(--red), var(--gold)); }
+.db-bar-pct { width: 34px; text-align: right; color: var(--gold); font-weight: 700; flex-shrink: 0; }
+#db-print-card { display: none; }
+@media (max-width: 600px) { .db-bar-grid { grid-template-columns: 1fr; } }
+@media print {
+  body * { visibility: hidden; }
+  #db-print-card, #db-print-card * { visibility: visible; }
+  #db-print-card { display: block; position: absolute; top: 0; left: 0; width: 100%; padding: 20px; color: #000; background: #fff; }
+  #db-print-card .pc-title { font-size: 20px; font-weight: 900; margin-bottom: 4px; }
+  #db-print-card .pc-sub { font-size: 12px; color: #444; margin-bottom: 16px; }
+  #db-print-card .pc-section { margin-bottom: 14px; page-break-inside: avoid; }
+  #db-print-card .pc-section-title { font-size: 12px; font-weight: 800; letter-spacing: 1px; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
+  #db-print-card table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  #db-print-card th, #db-print-card td { border: 1px solid #999; padding: 4px 6px; text-align: left; }
+  #db-print-card th { background: #eee; }
+}
 </style>
 </head>
 <body>
@@ -613,15 +645,19 @@ body {
     <div class="db-card">
       <div class="db-card-title">OPPONENTS</div>
       <div class="db-opp-row" id="db-opp-list"></div>
+      <div id="db-games-list"></div>
       <input class="db-input" id="db-opp-name" placeholder="OPPONENT NAME (e.g. TRINITY)" maxlength="24">
+      <input class="db-input" id="db-game-label" placeholder="GAME LABEL (optional, e.g. WK 3 @ TRINITY)" maxlength="32">
       <label for="db-file-input">
         <input type="file" id="db-file-input" accept=".csv,.xlsx,.xls" onchange="handleDefFile(this)" style="display:none">
         <span class="db-upload-btn">📁 UPLOAD BREAKDOWN FILE (.csv / .xlsx)</span>
       </label>
       <div class="db-upload-status" id="db-upload-status"></div>
+      <button class="db-print-btn" onclick="printGameCard()">🖨️ PRINT GAME CARD</button>
     </div>
     <div id="db-dashboard"></div>
   </div>
+  <div id="db-print-card"></div>
 </div>
 
 <!-- SCORE SCREEN -->
@@ -1822,6 +1858,7 @@ const DB_COLUMN_ALIASES = {
   'NOTES': 'notes',
 };
 let currentDefOpponent = null;
+let dbCollapsedSections = new Set();
 let dbXLSXLoading = null;
 
 function dbNormHeader(h) { return String(h == null ? '' : h).trim().toUpperCase().replace(/\s+/g, ' '); }
@@ -1897,8 +1934,10 @@ async function handleDefFile(input) {
     if (!rows.length) throw new Error('No data rows found in that file');
     let name = document.getElementById('db-opp-name').value.trim().toUpperCase();
     if (!name) name = 'OPPONENT ' + (Object.keys(getDefOpponents()).length + 1);
-    saveDefOpponent(name, rows);
+    const label = document.getElementById('db-game-label').value.trim().toUpperCase();
+    addGameToOpponent(name, label, rows);
     document.getElementById('db-opp-name').value = '';
+    document.getElementById('db-game-label').value = '';
     statusEl.textContent = '✅ Loaded ' + rows.length + ' plays for ' + name;
     statusEl.className = 'db-upload-status ok';
     renderOppList();
@@ -1910,11 +1949,44 @@ async function handleDefFile(input) {
   input.value = '';
 }
 
-function getDefOpponents() { return JSON.parse(localStorage.getItem('rd_defbreak') || '{}'); }
-function saveDefOpponent(name, rows) {
+function getDefOpponents() {
+  const all = JSON.parse(localStorage.getItem('rd_defbreak') || '{}');
+  let migrated = false;
+  Object.keys(all).forEach(name => {
+    const entry = all[name];
+    if (!entry.games) {
+      all[name] = { games: [{ id: 'g' + (entry.savedAt || Date.now()), label: 'GAME 1', rows: entry.rows || [], savedAt: entry.savedAt || Date.now() }] };
+      migrated = true;
+    }
+  });
+  if (migrated) localStorage.setItem('rd_defbreak', JSON.stringify(all));
+  return all;
+}
+function getOpponentRows(name) {
+  const entry = getDefOpponents()[name];
+  if (!entry) return [];
+  return entry.games.reduce((acc, g) => acc.concat(g.rows), []);
+}
+function addGameToOpponent(name, label, rows) {
   const all = getDefOpponents();
-  all[name] = { rows, savedAt: Date.now() };
+  if (!all[name]) all[name] = { games: [] };
+  all[name].games.push({ id: 'g' + Date.now(), label: label || ('GAME ' + (all[name].games.length + 1)), rows, savedAt: Date.now() });
   localStorage.setItem('rd_defbreak', JSON.stringify(all));
+}
+function deleteGame(name, gameId) {
+  const all = getDefOpponents();
+  if (!all[name]) return;
+  all[name].games = all[name].games.filter(g => g.id !== gameId);
+  if (!all[name].games.length) {
+    delete all[name];
+    if (currentDefOpponent === name) {
+      currentDefOpponent = null;
+      document.getElementById('db-dashboard').innerHTML = '<div class="db-empty">Upload a breakdown file to see opponent tendencies.</div>';
+    }
+  }
+  localStorage.setItem('rd_defbreak', JSON.stringify(all));
+  renderOppList();
+  if (currentDefOpponent === name) selectDefOpponent(name);
 }
 function deleteDefOpponent(name) {
   const all = getDefOpponents();
@@ -1949,7 +2021,8 @@ function renderOppList() {
   const wrap = document.getElementById('db-opp-list');
   wrap.innerHTML = names.map(n => {
     const esc = dbEscapeHTML(n);
-    return `<div class="db-opp-pill ${n === currentDefOpponent ? 'active' : ''}" data-opp="${esc}">${esc}<span class="db-opp-del" data-opp-del="${esc}">×</span></div>`;
+    const gameCount = all[n].games.length;
+    return `<div class="db-opp-pill ${n === currentDefOpponent ? 'active' : ''}" data-opp="${esc}">${esc}${gameCount > 1 ? ' <span class="db-opp-gamecount">(' + gameCount + ')</span>' : ''}<span class="db-opp-del" data-opp-del="${esc}">×</span></div>`;
   }).join('');
   wrap.querySelectorAll('.db-opp-del').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); deleteDefOpponent(el.dataset.oppDel); });
@@ -1957,13 +2030,27 @@ function renderOppList() {
   wrap.querySelectorAll('.db-opp-pill').forEach(el => {
     el.addEventListener('click', () => selectDefOpponent(el.dataset.opp));
   });
+  renderGamesList();
+}
+
+function renderGamesList() {
+  const listEl = document.getElementById('db-games-list');
+  if (!currentDefOpponent) { listEl.innerHTML = ''; return; }
+  const entry = getDefOpponents()[currentDefOpponent];
+  if (!entry) { listEl.innerHTML = ''; return; }
+  listEl.innerHTML = `<div class="db-games-title">GAMES LOADED FOR ${dbEscapeHTML(currentDefOpponent)}</div>` + entry.games.map(g => {
+    return `<div class="db-game-row"><span>${dbEscapeHTML(g.label)} — ${g.rows.length} plays</span><span class="db-game-del" data-game-del="${dbEscapeHTML(g.id)}">×</span></div>`;
+  }).join('');
+  listEl.querySelectorAll('.db-game-del').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); deleteGame(currentDefOpponent, el.dataset.gameDel); });
+  });
 }
 
 function selectDefOpponent(name) {
   currentDefOpponent = name;
   renderOppList();
-  const entry = getDefOpponents()[name];
-  if (entry) renderDefDashboard(entry.rows);
+  const rows = getOpponentRows(name);
+  if (rows.length) renderDefDashboard(rows);
 }
 
 function dbFreq(rows, field) {
@@ -2039,6 +2126,13 @@ function dbFormBucket(r) {
 function dbPersonnelBucket(r) {
   const v = String(r.personnel == null ? '' : r.personnel).trim().toUpperCase();
   return v || null;
+}
+function dbPlayTypeBucket(r) {
+  const v = String(r.playType == null ? '' : r.playType).trim().toUpperCase();
+  if (!v) return null;
+  if (v.includes('PASS') || v.includes('RPO') || v.includes('SCREEN')) return 'PASS';
+  if (v.includes('RUN')) return 'RUN';
+  return null;
 }
 
 function dbComputeOverall(rows) {
@@ -2132,6 +2226,14 @@ function dbRenderStats(overall) {
   </div>`;
 }
 
+function dbSectionWrap(title, bodyHtml) {
+  const key = dbEscapeHTML(title);
+  return `<div class="db-section${dbCollapsedSections.has(key) ? ' collapsed' : ''}" data-sec-key="${key}">
+    <div class="db-section-title" data-sec-toggle="${key}"><span class="db-sec-chevron">▾</span> ${title}</div>
+    <div class="db-section-body">${bodyHtml}</div>
+  </div>`;
+}
+
 function dbFreqDistHTML(freq, n) {
   const all = dbTop(freq, 9999);
   if (!all.length) return '—';
@@ -2163,8 +2265,7 @@ function dbRenderGroupTable(rows, groupFn, title) {
       <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
     </tr>`;
   }).join('');
-  return `<div class="db-section"><div class="db-section-title">${title}</div>
-    <div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th></tr>${trs}</table></div></div>`;
+  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderComboTable(rows, title) {
@@ -2183,8 +2284,7 @@ function dbRenderComboTable(rows, title) {
       <td>${stunt ? stunt.label + ' <span style="color:var(--gold)">' + stunt.pct + '%</span>' : '—'}</td>
     </tr>`;
   }).join('');
-  return `<div class="db-section"><div class="db-section-title">${title}</div>
-    <div class="db-table-wrap"><table class="db-table"><tr><th>FRONT / COVERAGE</th><th>SNAPS</th><th>BLITZ %</th><th>TOP STUNT</th></tr>${trs}</table></div></div>`;
+  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT / COVERAGE</th><th>SNAPS</th><th>BLITZ %</th><th>TOP STUNT</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLabel, title) {
@@ -2202,8 +2302,7 @@ function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLab
       <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
     </tr>`;
   }).join('');
-  return `<div class="db-section"><div class="db-section-title">${title}</div>
-    <div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel} (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th></tr>${trs}</table></div></div>`;
+  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel} (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderTopBlitzesByFront(rows, topN) {
@@ -2220,8 +2319,30 @@ function dbRenderTopBlitzesByFront(rows, topN) {
       <td>${dbFreqDistHTML(dbFreq(rs, 'coverage'), 3)}</td>
     </tr>`;
   }).join('');
-  return `<div class="db-section"><div class="db-section-title">TOP BLITZES BY FRONT</div>
-    <div class="db-table-wrap"><table class="db-table"><tr><th>FRONT</th><th>BLITZ CALLS (ALL)</th><th>COVERAGE BEHIND IT</th></tr>${trs}</table></div></div>`;
+  return dbSectionWrap('TOP BLITZES BY FRONT', `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT</th><th>BLITZ CALLS (ALL)</th><th>COVERAGE BEHIND IT</th></tr>${trs}</table></div>`);
+}
+
+function dbBarRow(label, pct, isTop) {
+  return `<div class="db-bar-row"><span class="db-bar-label">${dbEscapeHTML(label)}</span><div class="db-bar-track"><div class="db-bar-fill${isTop ? ' top' : ''}" style="width:${pct}%"></div></div><span class="db-bar-pct">${pct}%</span></div>`;
+}
+
+function dbRenderBarGroup(title, freq, n) {
+  const top = dbTop(freq, n);
+  if (!top.length) return '';
+  return `<div><div class="db-bar-group-title">${title}</div>${top.map((t, i) => dbBarRow(t.label, t.pct, i === 0)).join('')}</div>`;
+}
+
+function dbRenderBarSection(rows) {
+  const runPass = dbFreqByFn(rows, dbPlayTypeBucket);
+  const blitzFreq = dbFreqByFn(rows, r => dbIsBlitz(r) ? 'BLITZ' : 'NO BLITZ');
+  const groups = [
+    dbRenderBarGroup('RUN vs PASS', runPass, 2),
+    dbRenderBarGroup('BLITZ vs NO BLITZ', blitzFreq, 2),
+    dbRenderBarGroup('TOP FRONTS', dbFreq(rows, 'defFront'), 5),
+    dbRenderBarGroup('TOP COVERAGES', dbFreq(rows, 'coverage'), 5)
+  ].filter(Boolean);
+  if (!groups.length) return '';
+  return dbSectionWrap('TENDENCY OVERVIEW', `<div class="db-bar-grid">${groups.join('')}</div>`);
 }
 
 function dbRenderTopComboBanner(rows) {
@@ -2245,20 +2366,79 @@ function renderDefDashboard(rows) {
     ${usedAll ? '<div class="db-note">No ODK column marking defensive snaps was found — showing tendencies across all charted plays.</div>' : ''}
     ${dbRenderStats(overall)}
     ${dbRenderTopComboBanner(defRows)}
-    <div class="db-section">
-      <div class="db-section-title">KEY TENDENCIES</div>
-      ${insights.length ? '<ul class="db-insights">' + insights.map(i => `<li>${i}</li>`).join('') + '</ul>' : '<div class="db-empty">Not enough data yet to detect strong tendencies. Upload more charted plays.</div>'}
-    </div>
+    ${dbRenderBarSection(defRows)}
+    ${dbSectionWrap('KEY TENDENCIES', insights.length ? '<ul class="db-insights">' + insights.map(i => `<li>${i}</li>`).join('') + '</ul>' : '<div class="db-empty">Not enough data yet to detect strong tendencies. Upload more charted plays.</div>')}
     ${dbRenderComboTable(defRows, 'MOST COMMON DEFENSIVE CALLS (FRONT + COVERAGE)')}
     ${dbRenderPairTable(defRows, dbDefFrontBucket, 'FRONT', 'coverage', 'TOP COVERAGE', 'BY FRONT — WHAT THEY PLAY BEHIND IT')}
     ${dbRenderPairTable(defRows, dbCoverageBucket, 'COVERAGE', 'defFront', 'TOP FRONT', 'BY COVERAGE — WHAT FRONT IT COMES FROM')}
     ${dbRenderTopBlitzesByFront(defRows, 5)}
+    ${dbRenderGroupTable(defRows, dbPlayTypeBucket, 'BY RUN vs PASS')}
     ${dbRenderGroupTable(defRows, dbDownDistBucket, 'BY DOWN & DISTANCE')}
     ${dbRenderGroupTable(defRows, dbHashBucket, 'BY HASH')}
     ${dbRenderGroupTable(defRows, dbZoneBucket, 'BY FIELD ZONE')}
     ${dbRenderGroupTable(defRows, dbFormBucket, 'BY OFFENSIVE FORMATION FACED')}
     ${dbRenderGroupTable(defRows, dbPersonnelBucket, 'BY OFFENSIVE PERSONNEL FACED')}
   `;
+  dash.querySelectorAll('.db-section-title').forEach(el => {
+    el.addEventListener('click', () => {
+      const key = el.dataset.secToggle;
+      const sec = el.closest('.db-section');
+      sec.classList.toggle('collapsed');
+      if (sec.classList.contains('collapsed')) dbCollapsedSections.add(key); else dbCollapsedSections.delete(key);
+    });
+  });
+}
+
+function printGameCard() {
+  if (!currentDefOpponent) { alert('Select an opponent with loaded data first.'); return; }
+  const entry = getDefOpponents()[currentDefOpponent];
+  const rows = getOpponentRows(currentDefOpponent);
+  if (!rows.length) { alert('No data loaded for this opponent yet.'); return; }
+  let defRows = rows.filter(r => String(r.odk == null ? '' : r.odk).trim().toUpperCase().charAt(0) === 'D');
+  if (!defRows.length) defRows = rows;
+  const overall = dbComputeOverall(defRows);
+  const insights = dbGenerateInsights(defRows).slice(0, 5);
+  const runPass = dbTop(dbFreqByFn(defRows, dbPlayTypeBucket), 2);
+  const topFronts = dbTop(overall.frontFreq, 5);
+  const topCovs = dbTop(overall.covFreq, 5);
+  const blitzRows = defRows.filter(dbIsBlitz);
+  const blitzGroups = dbGroupBy(blitzRows, dbDefFrontBucket);
+  const topBlitzFronts = Object.entries(blitzGroups).sort((a, b) => b[1].length - a[1].length).slice(0, 5);
+
+  const card = document.getElementById('db-print-card');
+  card.innerHTML = `
+    <div class="pc-title">SCOUTING REPORT — ${dbEscapeHTML(currentDefOpponent)}</div>
+    <div class="pc-sub">${entry.games.length} game${entry.games.length > 1 ? 's' : ''} loaded (${entry.games.map(g => dbEscapeHTML(g.label)).join(', ')}) — ${defRows.length} defensive snaps charted</div>
+    <div class="pc-section">
+      <div class="pc-section-title">OVERVIEW</div>
+      <table><tr><th>SNAPS</th><th>TOP FRONT</th><th>TOP COVERAGE</th><th>BLITZ RATE</th></tr>
+      <tr><td>${overall.total}</td><td>${dbTop(overall.frontFreq, 1)[0]?.label || '—'}</td><td>${dbTop(overall.covFreq, 1)[0]?.label || '—'}</td><td>${overall.blitzPct}%</td></tr></table>
+    </div>
+    <div class="pc-section">
+      <div class="pc-section-title">RUN vs PASS</div>
+      <table><tr>${runPass.map(t => `<th>${dbEscapeHTML(t.label)}</th>`).join('')}</tr>
+      <tr>${runPass.map(t => `<td>${t.pct}% (${t.count})</td>`).join('')}</tr></table>
+    </div>
+    <div class="pc-section">
+      <div class="pc-section-title">TOP FRONTS</div>
+      <table><tr><th>FRONT</th><th>%</th></tr>${topFronts.map(t => `<tr><td>${dbEscapeHTML(t.label)}</td><td>${t.pct}%</td></tr>`).join('')}</table>
+    </div>
+    <div class="pc-section">
+      <div class="pc-section-title">TOP COVERAGES</div>
+      <table><tr><th>COVERAGE</th><th>%</th></tr>${topCovs.map(t => `<tr><td>${dbEscapeHTML(t.label)}</td><td>${t.pct}%</td></tr>`).join('')}</table>
+    </div>
+    ${topBlitzFronts.length ? `<div class="pc-section">
+      <div class="pc-section-title">TOP BLITZES BY FRONT</div>
+      <table><tr><th>FRONT</th><th>BLITZ SNAPS</th><th>TOP BLITZ CALL</th></tr>
+      ${topBlitzFronts.map(([front, rs]) => `<tr><td>${dbEscapeHTML(front)}</td><td>${rs.length}</td><td>${dbEscapeHTML(dbTop(dbFreqByFn(rs, dbBlitzLabel), 1)[0]?.label || '—')}</td></tr>`).join('')}
+      </table>
+    </div>` : ''}
+    ${insights.length ? `<div class="pc-section">
+      <div class="pc-section-title">KEY TENDENCIES</div>
+      <table><tr><th>#</th><th>TENDENCY</th></tr>${insights.map((ins, i) => `<tr><td>${i + 1}</td><td>${ins}</td></tr>`).join('')}</table>
+    </div>` : ''}
+  `;
+  window.print();
 }
 </script>
 </body>
