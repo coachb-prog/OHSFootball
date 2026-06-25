@@ -2211,7 +2211,7 @@ function dbGenerateInsights(rows) {
     const [combo, rs] = comboEntries[0];
     const pct = rows.length ? Math.round(rs.length / rows.length * 100) : 0;
     if (rs.length >= 3) {
-      items.push({ weight: rows.length * 3, text: `Most common defensive call is <strong>${combo}</strong> — ${pct}% of all snaps (${rs.length}/${rows.length}).` });
+      items.push({ weight: rows.length * 3, text: `Most common defensive call is <strong>${dbEscapeHTML(combo)}</strong> — ${pct}% of all snaps (${rs.length}/${rows.length}).` });
     }
   }
   // Front -> coverage/blitz pairing: "out of 4-2, what do they play behind it?"
@@ -2225,12 +2225,12 @@ function dbGenerateInsights(rows) {
       if (fc.total < 3) return;
       const top = dbTop(fc, 1)[0];
       if (top && top.pct >= 50) {
-        items.push({ weight: rs.length * 2, text: `Out of <strong>${key}</strong> ${groupLabel} (${rs.length} snaps), shows <strong>${top.label}</strong> ${otherLabel} ${top.pct}% of the time (${top.count}/${fc.total}).` });
+        items.push({ weight: rs.length * 2, text: `Out of <strong>${dbEscapeHTML(key)}</strong> ${groupLabel} (${rs.length} snaps), shows <strong>${dbEscapeHTML(top.label)}</strong> ${otherLabel} ${top.pct}% of the time (${top.count}/${fc.total}).` });
       }
       const blitzCount = rs.filter(dbIsBlitz).length;
       const blitzPct = Math.round(blitzCount / rs.length * 100);
       if (blitzPct >= 40) {
-        items.push({ weight: rs.length * 2, text: `Out of <strong>${key}</strong> ${groupLabel} (${rs.length} snaps), blitzes ${blitzPct}% of the time.` });
+        items.push({ weight: rs.length * 2, text: `Out of <strong>${dbEscapeHTML(key)}</strong> ${groupLabel} (${rs.length} snaps), blitzes ${blitzPct}% of the time.` });
       }
     });
   });
@@ -2244,13 +2244,13 @@ function dbGenerateInsights(rows) {
         if (fc.total < 3) return;
         const top = dbTop(fc, 1)[0];
         if (top && top.pct >= 50) {
-          items.push({ weight: rs.length, text: `On <strong>${bucket}</strong> (${rs.length} snaps), shows <strong>${top.label}</strong> ${label} ${top.pct}% of the time.` });
+          items.push({ weight: rs.length, text: `On <strong>${dbEscapeHTML(bucket)}</strong> (${rs.length} snaps), shows <strong>${dbEscapeHTML(top.label)}</strong> ${label} ${top.pct}% of the time.` });
         }
       });
       const blitzCount = rs.filter(dbIsBlitz).length;
       const blitzPct = Math.round(blitzCount / rs.length * 100);
       if (blitzPct >= 40) {
-        items.push({ weight: rs.length, text: `On <strong>${bucket}</strong> (${rs.length} snaps), blitzes ${blitzPct}% of the time.` });
+        items.push({ weight: rs.length, text: `On <strong>${dbEscapeHTML(bucket)}</strong> (${rs.length} snaps), blitzes ${blitzPct}% of the time.` });
       }
     });
   });
@@ -2261,9 +2261,9 @@ function dbGenerateInsights(rows) {
       const stats = dbSuccessStats(rs);
       if (!stats || stats.n < 5) return;
       if (stats.successPct <= 30) {
-        items.push({ weight: rs.length * 2, text: `<strong>${key}</strong> ${label} is highly effective — only ${stats.successPct}% offensive success allowed (${stats.avgYards} yds/play, ${stats.n} snaps).` });
+        items.push({ weight: rs.length * 2, text: `<strong>${dbEscapeHTML(key)}</strong> ${label} is highly effective — only ${stats.successPct}% offensive success allowed (${stats.avgYards} yds/play, ${stats.n} snaps).` });
       } else if (stats.successPct >= 70) {
-        items.push({ weight: rs.length * 2, text: `<strong>${key}</strong> ${label} is getting exploited — ${stats.successPct}% offensive success allowed (${stats.avgYards} yds/play, ${stats.n} snaps).` });
+        items.push({ weight: rs.length * 2, text: `<strong>${dbEscapeHTML(key)}</strong> ${label} is getting exploited — ${stats.successPct}% offensive success allowed (${stats.avgYards} yds/play, ${stats.n} snaps).` });
       }
     });
   });
@@ -2276,8 +2276,8 @@ function dbRenderStats(overall) {
   const topCov = dbTop(overall.covFreq, 1)[0];
   return `<div class="db-stats-grid">
     <div class="db-stat"><div class="db-stat-num">${overall.total}</div><div class="db-stat-label">SNAPS CHARTED</div></div>
-    <div class="db-stat"><div class="db-stat-num">${topFront ? topFront.label : '—'}</div><div class="db-stat-label">TOP FRONT</div></div>
-    <div class="db-stat"><div class="db-stat-num">${topCov ? topCov.label : '—'}</div><div class="db-stat-label">TOP COVERAGE</div></div>
+    <div class="db-stat"><div class="db-stat-num">${topFront ? dbEscapeHTML(topFront.label) : '—'}</div><div class="db-stat-label">TOP FRONT</div></div>
+    <div class="db-stat"><div class="db-stat-num">${topCov ? dbEscapeHTML(topCov.label) : '—'}</div><div class="db-stat-label">TOP COVERAGE</div></div>
     <div class="db-stat"><div class="db-stat-num">${overall.blitzPct}%</div><div class="db-stat-label">BLITZ RATE</div></div>
     <div class="db-stat"><div class="db-stat-num">${overall.successStats ? overall.successStats.successPct + '%' : '—'}</div><div class="db-stat-label">OFF SUCCESS% ALLOWED</div></div>
     <div class="db-stat"><div class="db-stat-num">${overall.successStats ? overall.successStats.avgYards : '—'}</div><div class="db-stat-label">AVG YDS ALLOWED</div></div>
@@ -2298,8 +2298,8 @@ function dbFreqDistHTML(freq, n) {
   const shown = all.slice(0, n);
   const rest = all.slice(n);
   let html = shown.map((t, i) => i === 0
-    ? `<strong>${t.label}</strong> <span style="color:var(--gold)">${t.pct}%</span>`
-    : `<span style="color:var(--gray)">${t.label} <span style="color:var(--gold)">${t.pct}%</span></span>`
+    ? `<strong>${dbEscapeHTML(t.label)}</strong> <span style="color:var(--gold)">${t.pct}%</span>`
+    : `<span style="color:var(--gray)">${dbEscapeHTML(t.label)} <span style="color:var(--gold)">${t.pct}%</span></span>`
   ).join('<br>');
   if (rest.length) {
     const restPct = rest.reduce((s, t) => s + t.pct, 0);
@@ -2322,7 +2322,7 @@ function dbRenderGroupTable(rows, groupFn, title) {
     const rs = groups[b];
     const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
     return `<tr>
-      <td><strong>${b}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps</span></td>
+      <td><strong>${dbEscapeHTML(b)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps</span></td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'defFront'), 4)}</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'coverage'), 4)}</td>
       <td>${blitzPct}%</td>
@@ -2343,10 +2343,10 @@ function dbRenderComboTable(rows, title) {
     const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
     const stunt = dbTop(dbFreq(rs, 'stunt'), 1)[0];
     return `<tr>
-      <td><strong>${combo}</strong></td>
+      <td><strong>${dbEscapeHTML(combo)}</strong></td>
       <td>${rs.length} <span style="color:var(--gold)">(${pct}%)</span></td>
       <td>${blitzPct}%</td>
-      <td>${stunt ? stunt.label + ' <span style="color:var(--gold)">' + stunt.pct + '%</span>' : '—'}</td>
+      <td>${stunt ? dbEscapeHTML(stunt.label) + ' <span style="color:var(--gold)">' + stunt.pct + '%</span>' : '—'}</td>
       <td>${dbSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
@@ -2362,7 +2362,7 @@ function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLab
     const pct = total ? Math.round(rs.length / total * 100) : 0;
     const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
     return `<tr>
-      <td><strong>${key}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps (${pct}%)</span></td>
+      <td><strong>${dbEscapeHTML(key)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps (${pct}%)</span></td>
       <td>${dbFreqDistHTML(dbFreq(rs, otherField), 4)}</td>
       <td>${blitzPct}%</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
@@ -2381,7 +2381,7 @@ function dbRenderTopBlitzesByFront(rows, topN) {
   const trs = entries.map(([front, rs]) => {
     const pct = blitzRows.length ? Math.round(rs.length / blitzRows.length * 100) : 0;
     return `<tr>
-      <td><strong>${front}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} blitz snaps (${pct}% of all blitzes)</span></td>
+      <td><strong>${dbEscapeHTML(front)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} blitz snaps (${pct}% of all blitzes)</span></td>
       <td>${dbFreqDistHTML(dbFreqByFn(rs, dbBlitzLabel), 4)}</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'coverage'), 3)}</td>
       <td>${dbSuccessCellHTML(rs)}</td>
@@ -2432,7 +2432,7 @@ function dbRenderTopComboBanner(rows) {
   if (!entries.length || entries[0][1].length < 3) return '';
   const [combo, rs] = entries[0];
   const pct = rows.length ? Math.round(rs.length / rows.length * 100) : 0;
-  return `<div class="db-note" style="background:rgba(204,0,0,0.15);border-left-color:var(--red)">🎯 Most common defensive call: <strong>${combo}</strong> — ${rs.length} snaps (${pct}% of all charted plays)</div>`;
+  return `<div class="db-note" style="background:rgba(204,0,0,0.15);border-left-color:var(--red)">🎯 Most common defensive call: <strong>${dbEscapeHTML(combo)}</strong> — ${rs.length} snaps (${pct}% of all charted plays)</div>`;
 }
 
 function renderDefDashboard(rows) {
@@ -2493,7 +2493,7 @@ function printGameCard() {
     <div class="pc-section">
       <div class="pc-section-title">OVERVIEW</div>
       <table><tr><th>SNAPS</th><th>TOP FRONT</th><th>TOP COVERAGE</th><th>BLITZ RATE</th><th>OFF SUCCESS% ALLOWED</th><th>AVG YDS ALLOWED</th></tr>
-      <tr><td>${overall.total}</td><td>${dbTop(overall.frontFreq, 1)[0]?.label || '—'}</td><td>${dbTop(overall.covFreq, 1)[0]?.label || '—'}</td><td>${overall.blitzPct}%</td><td>${overall.successStats ? overall.successStats.successPct + '%' : '—'}</td><td>${overall.successStats ? overall.successStats.avgYards : '—'}</td></tr></table>
+      <tr><td>${overall.total}</td><td>${dbEscapeHTML(dbTop(overall.frontFreq, 1)[0]?.label || '—')}</td><td>${dbEscapeHTML(dbTop(overall.covFreq, 1)[0]?.label || '—')}</td><td>${overall.blitzPct}%</td><td>${overall.successStats ? overall.successStats.successPct + '%' : '—'}</td><td>${overall.successStats ? overall.successStats.avgYards : '—'}</td></tr></table>
     </div>
     <div class="pc-section">
       <div class="pc-section-title">RUN vs PASS</div>
