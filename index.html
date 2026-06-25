@@ -2316,7 +2316,7 @@ function dbSuccessCellHTML(rs) {
 
 function dbRenderGroupTable(rows, groupFn, title) {
   const groups = dbGroupBy(rows, groupFn);
-  const buckets = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+  const buckets = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
   if (!buckets.length) return '';
   const trs = buckets.map(b => {
     const rs = groups[b];
