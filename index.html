@@ -282,6 +282,37 @@ body {
 .pb-qb-notes ul { padding-left: 16px; display: flex; flex-direction: column; gap: 5px; }
 .pb-qb-notes li { font-size: 13px; color: #ccc; line-height: 1.4; }
 .pb-back-btn { background: var(--black3); border: 1px solid #444; border-radius: 10px; color: var(--white); padding: 14px; font-size: 14px; font-weight: 800; cursor: pointer; }
+
+/* DEFENSE BREAKDOWN */
+.db-wrap { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+.db-card { background: var(--black2); border: 1px solid #333; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.db-card-title { font-size: 11px; letter-spacing: 2px; color: var(--gold); font-weight: 800; }
+.db-opp-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.db-opp-pill { background: var(--black3); border: 1px solid #444; border-radius: 99px; padding: 6px 10px 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.db-opp-pill.active { background: var(--red); border-color: var(--red); color: white; }
+.db-opp-del { color: var(--gray); font-weight: 900; padding: 0 2px; }
+.db-opp-pill.active .db-opp-del { color: rgba(255,255,255,0.7); }
+.db-input { background: var(--black3); border: 2px solid #444; border-radius: 8px; padding: 12px; color: white; font-size: 14px; font-weight: 700; text-transform: uppercase; outline: none; }
+.db-input:focus { border-color: var(--gold); }
+.db-upload-btn { display: block; text-align: center; background: var(--red); color: white; border-radius: 10px; padding: 14px; font-size: 14px; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; }
+.db-upload-status { font-size: 12px; font-weight: 700; color: var(--gray); min-height: 16px; }
+.db-upload-status.ok { color: #2ECC71; }
+.db-upload-status.err { color: #FF6666; }
+.db-note { font-size: 12px; color: var(--gold); background: rgba(232,201,106,0.1); border-left: 3px solid var(--gold); padding: 10px 12px; border-radius: 6px; }
+.db-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.db-stat { background: var(--black2); border: 1px solid #333; border-radius: 10px; padding: 14px; text-align: center; }
+.db-stat-num { font-size: 18px; font-weight: 900; color: var(--gold); word-break: break-word; }
+.db-stat-label { font-size: 10px; color: var(--gray); letter-spacing: 1px; font-weight: 700; margin-top: 4px; }
+.db-section { background: var(--black2); border: 1px solid #333; border-radius: 14px; padding: 14px; }
+.db-section-title { font-size: 12px; letter-spacing: 2px; color: var(--gold); font-weight: 800; margin-bottom: 10px; }
+.db-insights { display: flex; flex-direction: column; gap: 8px; padding-left: 18px; }
+.db-insights li { font-size: 13px; line-height: 1.4; color: #ddd; }
+.db-table-wrap { overflow-x: auto; }
+.db-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 480px; }
+.db-table th { background: var(--red); color: white; padding: 8px; text-align: left; font-size: 10px; letter-spacing: 1px; }
+.db-table td { padding: 8px; border-bottom: 1px solid #2a2a2a; vertical-align: top; }
+.db-table tr:hover td { background: var(--black3); }
+.db-empty { text-align: center; color: var(--gray); padding: 24px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -365,6 +396,14 @@ body {
       <div class="mode-info">
         <div class="mode-name">PLAY DIAGRAMS</div>
         <div class="mode-desc">Browse plays with route diagrams</div>
+      </div>
+      <div class="mode-badge">▶</div>
+    </button>
+    <button class="mode-btn" onclick="startDefBreakdown()">
+      <div class="mode-icon">📊</div>
+      <div class="mode-info">
+        <div class="mode-name">DEFENSE BREAKDOWN</div>
+        <div class="mode-desc">Upload opponent film charts → auto tendencies</div>
       </div>
       <div class="mode-badge">▶</div>
     </button>
@@ -522,6 +561,28 @@ body {
       <div class="pb-qb-notes" id="pb-qb-notes"></div>
       <button class="pb-back-btn" onclick="pbShowList()">← BACK TO PLAYS</button>
     </div>
+  </div>
+</div>
+
+<!-- DEFENSE BREAKDOWN -->
+<div id="defbreak-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">DEFENSE BREAKDOWN</div>
+    <div class="header-xp"></div>
+  </div>
+  <div class="db-wrap">
+    <div class="db-card">
+      <div class="db-card-title">OPPONENTS</div>
+      <div class="db-opp-row" id="db-opp-list"></div>
+      <input class="db-input" id="db-opp-name" placeholder="OPPONENT NAME (e.g. TRINITY)" maxlength="24">
+      <label for="db-file-input">
+        <input type="file" id="db-file-input" accept=".csv,.xlsx,.xls" onchange="handleDefFile(this)" style="display:none">
+        <span class="db-upload-btn">📁 UPLOAD BREAKDOWN FILE (.csv / .xlsx)</span>
+      </label>
+      <div class="db-upload-status" id="db-upload-status"></div>
+    </div>
+    <div id="db-dashboard"></div>
   </div>
 </div>
 
@@ -1688,6 +1749,322 @@ function pbSelectPos(pos) {
   const p = playbookData[pbCurrentCategory][pbSelectedPlay];
   pbSelectedPos = (pbSelectedPos === pos) ? null : pos;
   pbRenderDiagram(p, pbSelectedPos);
+}
+
+// ==================== DEFENSE BREAKDOWN ====================
+// Expected columns (Hudl-style breakdown export):
+// PLAY #, ODK, QTR, HASH, DN, DIST, YARD LN, GN/LS, PLAY TYPE, RESULT, CONCEPT,
+// PERSONNEL, OFF FORM, SHIFT, MOTION, OFF PLAY, PASS TAG, RUN TAG, PROTECTION,
+// DEF FRONT, STUNT, BLITZ, BLITZ #, COVERAGE, NOTES
+const DB_COLUMN_ALIASES = {
+  'PLAY #': 'playNum', 'PLAY NUM': 'playNum', 'PLAY': 'playNum',
+  'ODK': 'odk',
+  'QTR': 'qtr', 'QUARTER': 'qtr',
+  'HASH': 'hash',
+  'DN': 'down', 'DOWN': 'down',
+  'DIST': 'dist', 'DISTANCE': 'dist',
+  'YARD LN': 'yardLn', 'YARDLINE': 'yardLn', 'YARD LINE': 'yardLn',
+  'GN/LS': 'gainLoss', 'GN LS': 'gainLoss',
+  'PLAY TYPE': 'playType',
+  'RESULT': 'result',
+  'CONCEPT': 'concept',
+  'PERSONNEL': 'personnel',
+  'OFF FORM': 'offForm', 'OFFENSE FORM': 'offForm', 'OFF FORMATION': 'offForm',
+  'SHIFT': 'shift',
+  'MOTION': 'motion',
+  'OFF PLAY': 'offPlay',
+  'PASS TAG': 'passTag',
+  'RUN TAG': 'runTag',
+  'PROTECTION': 'protection',
+  'DEF FRONT': 'defFront', 'DEFENSE FRONT': 'defFront', 'DEF. FRONT': 'defFront',
+  'STUNT': 'stunt',
+  'BLITZ': 'blitz',
+  'BLITZ #': 'blitzNum', 'BLITZ#': 'blitzNum', 'BLITZ NUM': 'blitzNum',
+  'COVERAGE': 'coverage',
+  'NOTES': 'notes',
+};
+let currentDefOpponent = null;
+let dbXLSXLoading = null;
+
+function dbNormHeader(h) { return String(h == null ? '' : h).trim().toUpperCase().replace(/\s+/g, ' '); }
+
+function dbParseCSV(text) {
+  const rows = []; let row = []; let field = ''; let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') { if (text[i+1] === '"') { field += '"'; i++; } else inQuotes = false; }
+      else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\r') { /* skip */ }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else field += c;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.length && r.some(c => String(c).trim() !== ''));
+}
+
+function dbLoadXLSXLib() {
+  if (window.XLSX) return Promise.resolve();
+  if (dbXLSXLoading) return dbXLSXLoading;
+  dbXLSXLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Could not reach the spreadsheet library (network/CDN blocked) — try exporting as .csv instead'));
+    document.head.appendChild(s);
+  });
+  return dbXLSXLoading;
+}
+
+function dbRowsToObjects(aoa) {
+  if (!aoa.length) return [];
+  const colMap = {};
+  aoa[0].forEach((h, i) => {
+    const key = DB_COLUMN_ALIASES[dbNormHeader(h)];
+    if (key) colMap[key] = i;
+  });
+  return aoa.slice(1)
+    .filter(r => r && r.some(c => c !== undefined && c !== null && String(c).trim() !== ''))
+    .map(r => {
+      const o = {};
+      Object.entries(colMap).forEach(([key, i]) => { o[key] = r[i]; });
+      return o;
+    });
+}
+
+async function handleDefFile(input) {
+  const file = input.files[0];
+  const statusEl = document.getElementById('db-upload-status');
+  if (!file) return;
+  statusEl.textContent = 'Reading file…';
+  statusEl.className = 'db-upload-status';
+  try {
+    const ext = file.name.split('.').pop().toLowerCase();
+    let aoa;
+    if (ext === 'csv') {
+      const text = await file.text();
+      aoa = dbParseCSV(text);
+    } else {
+      await dbLoadXLSXLib();
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+    }
+    const rows = dbRowsToObjects(aoa);
+    if (!rows.length) throw new Error('No data rows found in that file');
+    let name = document.getElementById('db-opp-name').value.trim().toUpperCase();
+    if (!name) name = 'OPPONENT ' + (Object.keys(getDefOpponents()).length + 1);
+    saveDefOpponent(name, rows);
+    document.getElementById('db-opp-name').value = '';
+    statusEl.textContent = '✅ Loaded ' + rows.length + ' plays for ' + name;
+    statusEl.className = 'db-upload-status ok';
+    renderOppList();
+    selectDefOpponent(name);
+  } catch (err) {
+    statusEl.textContent = '❌ ' + err.message;
+    statusEl.className = 'db-upload-status err';
+  }
+  input.value = '';
+}
+
+function getDefOpponents() { return JSON.parse(localStorage.getItem('rd_defbreak') || '{}'); }
+function saveDefOpponent(name, rows) {
+  const all = getDefOpponents();
+  all[name] = { rows, savedAt: Date.now() };
+  localStorage.setItem('rd_defbreak', JSON.stringify(all));
+}
+function deleteDefOpponent(name) {
+  const all = getDefOpponents();
+  delete all[name];
+  localStorage.setItem('rd_defbreak', JSON.stringify(all));
+  if (currentDefOpponent === name) {
+    currentDefOpponent = null;
+    document.getElementById('db-dashboard').innerHTML = '<div class="db-empty">Upload a breakdown file to see opponent tendencies.</div>';
+  }
+  renderOppList();
+}
+
+function startDefBreakdown() {
+  showScreen('defbreak-screen');
+  renderOppList();
+  const all = getDefOpponents();
+  const names = Object.keys(all);
+  if (names.length) {
+    selectDefOpponent((currentDefOpponent && all[currentDefOpponent]) ? currentDefOpponent : names[names.length - 1]);
+  } else {
+    document.getElementById('db-dashboard').innerHTML = '<div class="db-empty">Upload a breakdown file to see opponent tendencies.</div>';
+  }
+}
+
+function renderOppList() {
+  const all = getDefOpponents();
+  const names = Object.keys(all);
+  const wrap = document.getElementById('db-opp-list');
+  wrap.innerHTML = names.map(n =>
+    `<div class="db-opp-pill ${n === currentDefOpponent ? 'active' : ''}" onclick="selectDefOpponent(${JSON.stringify(n)})">${n}<span class="db-opp-del" onclick="event.stopPropagation();deleteDefOpponent(${JSON.stringify(n)})">×</span></div>`
+  ).join('');
+}
+
+function selectDefOpponent(name) {
+  currentDefOpponent = name;
+  renderOppList();
+  const entry = getDefOpponents()[name];
+  if (entry) renderDefDashboard(entry.rows);
+}
+
+function dbFreq(rows, field) {
+  const counts = {}; let total = 0;
+  rows.forEach(r => {
+    const v = String(r[field] == null ? '' : r[field]).trim().toUpperCase();
+    if (!v) return;
+    counts[v] = (counts[v] || 0) + 1; total++;
+  });
+  return { counts, total };
+}
+function dbTop({ counts, total }, n) {
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, n)
+    .map(([label, count]) => ({ label, count, pct: total ? Math.round(count / total * 100) : 0 }));
+}
+function dbGroupBy(rows, fn) {
+  const g = {};
+  rows.forEach(r => {
+    const k = fn(r);
+    if (k === null || k === undefined || k === '') return;
+    (g[k] = g[k] || []).push(r);
+  });
+  return g;
+}
+function dbIsBlitz(r) {
+  const v = String(r.blitz == null ? '' : r.blitz).trim().toUpperCase();
+  if (!v) return false;
+  return !['N', 'NO', 'NONE', '0'].includes(v);
+}
+function dbDownDistBucket(r) {
+  const d = parseInt(r.down, 10);
+  if (isNaN(d)) return null;
+  if (d === 1) return '1ST DOWN';
+  const dist = parseFloat(r.dist);
+  const ord = d === 2 ? '2ND' : d === 3 ? '3RD' : d === 4 ? '4TH' : d + 'TH';
+  if (isNaN(dist)) return ord + ' DOWN';
+  const tag = dist <= 3 ? 'SHORT' : dist <= 6 ? 'MEDIUM' : 'LONG';
+  return ord + ' & ' + tag;
+}
+function dbHashBucket(r) {
+  const v = String(r.hash == null ? '' : r.hash).trim().toUpperCase();
+  if (v === 'L') return 'LEFT HASH';
+  if (v === 'R') return 'RIGHT HASH';
+  if (v === 'M') return 'MIDDLE';
+  return v || null;
+}
+function dbZoneBucket(r) {
+  const y = parseFloat(r.yardLn);
+  if (isNaN(y)) return null;
+  if (y <= -20) return 'BACKED UP (OWN TERRITORY)';
+  if (y < 20) return 'OPEN FIELD (MIDFIELD)';
+  return 'PLUS / SCORING TERRITORY';
+}
+function dbFormBucket(r) {
+  const v = String(r.offForm == null ? '' : r.offForm).trim().toUpperCase();
+  return v || null;
+}
+function dbPersonnelBucket(r) {
+  const v = String(r.personnel == null ? '' : r.personnel).trim().toUpperCase();
+  return v || null;
+}
+
+function dbComputeOverall(rows) {
+  const total = rows.length;
+  const frontFreq = dbFreq(rows, 'defFront');
+  const covFreq = dbFreq(rows, 'coverage');
+  const stuntFreq = dbFreq(rows, 'stunt');
+  const blitzCount = rows.filter(dbIsBlitz).length;
+  return { total, frontFreq, covFreq, stuntFreq, blitzCount, blitzPct: total ? Math.round(blitzCount / total * 100) : 0 };
+}
+
+function dbGenerateInsights(rows) {
+  const items = [];
+  [dbDownDistBucket, dbHashBucket, dbZoneBucket, dbFormBucket, dbPersonnelBucket].forEach(fn => {
+    const groups = dbGroupBy(rows, fn);
+    Object.entries(groups).forEach(([bucket, rs]) => {
+      if (rs.length < 3) return;
+      [['defFront', 'front'], ['coverage', 'coverage'], ['stunt', 'stunt']].forEach(([field, label]) => {
+        const fc = dbFreq(rs, field);
+        if (fc.total < 3) return;
+        const top = dbTop(fc, 1)[0];
+        if (top && top.pct >= 50) {
+          items.push({ weight: rs.length, text: `On <strong>${bucket}</strong> (${rs.length} snaps), shows <strong>${top.label}</strong> ${label} ${top.pct}% of the time.` });
+        }
+      });
+      const blitzCount = rs.filter(dbIsBlitz).length;
+      const blitzPct = Math.round(blitzCount / rs.length * 100);
+      if (blitzPct >= 40) {
+        items.push({ weight: rs.length, text: `On <strong>${bucket}</strong> (${rs.length} snaps), blitzes ${blitzPct}% of the time.` });
+      }
+    });
+  });
+  items.sort((a, b) => b.weight - a.weight);
+  return items.slice(0, 25).map(i => i.text);
+}
+
+function dbRenderStats(overall) {
+  const topFront = dbTop(overall.frontFreq, 1)[0];
+  const topCov = dbTop(overall.covFreq, 1)[0];
+  return `<div class="db-stats-grid">
+    <div class="db-stat"><div class="db-stat-num">${overall.total}</div><div class="db-stat-label">SNAPS CHARTED</div></div>
+    <div class="db-stat"><div class="db-stat-num">${topFront ? topFront.label : '—'}</div><div class="db-stat-label">TOP FRONT</div></div>
+    <div class="db-stat"><div class="db-stat-num">${topCov ? topCov.label : '—'}</div><div class="db-stat-label">TOP COVERAGE</div></div>
+    <div class="db-stat"><div class="db-stat-num">${overall.blitzPct}%</div><div class="db-stat-label">BLITZ RATE</div></div>
+  </div>`;
+}
+
+function dbRenderGroupTable(rows, groupFn, title) {
+  const groups = dbGroupBy(rows, groupFn);
+  const buckets = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+  if (!buckets.length) return '';
+  const trs = buckets.map(b => {
+    const rs = groups[b];
+    const front = dbTop(dbFreq(rs, 'defFront'), 1)[0];
+    const cov = dbTop(dbFreq(rs, 'coverage'), 1)[0];
+    const stunt = dbTop(dbFreq(rs, 'stunt'), 1)[0];
+    const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
+    return `<tr>
+      <td><strong>${b}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps</span></td>
+      <td>${front ? front.label + ' <span style="color:var(--gold)">' + front.pct + '%</span>' : '—'}</td>
+      <td>${cov ? cov.label + ' <span style="color:var(--gold)">' + cov.pct + '%</span>' : '—'}</td>
+      <td>${blitzPct}%</td>
+      <td>${stunt ? stunt.label + ' <span style="color:var(--gold)">' + stunt.pct + '%</span>' : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="db-section"><div class="db-section-title">${title}</div>
+    <div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>TOP FRONT</th><th>TOP COVERAGE</th><th>BLITZ %</th><th>TOP STUNT</th></tr>${trs}</table></div></div>`;
+}
+
+function renderDefDashboard(rows) {
+  const dash = document.getElementById('db-dashboard');
+  if (!rows || !rows.length) { dash.innerHTML = '<div class="db-empty">No data found in this file.</div>'; return; }
+  let defRows = rows.filter(r => String(r.odk == null ? '' : r.odk).trim().toUpperCase().charAt(0) === 'D');
+  let usedAll = false;
+  if (!defRows.length) { defRows = rows; usedAll = true; }
+  const overall = dbComputeOverall(defRows);
+  const insights = dbGenerateInsights(defRows);
+  dash.innerHTML = `
+    ${usedAll ? '<div class="db-note">No ODK column marking defensive snaps was found — showing tendencies across all charted plays.</div>' : ''}
+    ${dbRenderStats(overall)}
+    <div class="db-section">
+      <div class="db-section-title">KEY TENDENCIES</div>
+      ${insights.length ? '<ul class="db-insights">' + insights.map(i => `<li>${i}</li>`).join('') + '</ul>' : '<div class="db-empty">Not enough data yet to detect strong tendencies. Upload more charted plays.</div>'}
+    </div>
+    ${dbRenderGroupTable(defRows, dbDownDistBucket, 'BY DOWN & DISTANCE')}
+    ${dbRenderGroupTable(defRows, dbHashBucket, 'BY HASH')}
+    ${dbRenderGroupTable(defRows, dbZoneBucket, 'BY FIELD ZONE')}
+    ${dbRenderGroupTable(defRows, dbFormBucket, 'BY OFFENSIVE FORMATION FACED')}
+    ${dbRenderGroupTable(defRows, dbPersonnelBucket, 'BY OFFENSIVE PERSONNEL FACED')}
+  `;
 }
 </script>
 </body>
