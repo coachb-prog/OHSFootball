@@ -198,6 +198,7 @@ mark { background: var(--gold); color: var(--black); border-radius: 3px; padding
     <button class="tab-btn active" data-tab="formations" onclick="showTab('formations')">FORMATIONS</button>
     <button class="tab-btn" data-tab="passing" onclick="showTab('passing')">PASS GAME</button>
     <button class="tab-btn" data-tab="screens" onclick="showTab('screens')">SCREENS</button>
+    <button class="tab-btn" data-tab="runs" onclick="showTab('runs')">RUN GAME</button>
     <button class="tab-btn" data-tab="motions" onclick="showTab('motions')">MOTIONS</button>
     <button class="tab-btn" data-tab="coverages" onclick="showTab('coverages')">COVERAGES</button>
     <button class="tab-btn" data-tab="assignments" onclick="showTab('assignments')">ASSIGNMENTS</button>
@@ -217,6 +218,11 @@ mark { background: var(--gold); color: var(--black); border-radius: 3px; padding
     <div class="section" id="section-screens">
       <div class="section-title">Screen Game</div>
       <div id="screens-list"></div>
+    </div>
+
+    <div class="section" id="section-runs">
+      <div class="section-title">Run Game</div>
+      <div id="runs-list"></div>
     </div>
 
     <div class="section" id="section-motions">
@@ -550,6 +556,102 @@ const playbookData = {
   ],
 };
 
+// ==================== RUN GAME ====================
+const PRESSURE_COLS = ['Mike Fire','Mike Sting','Star sting','Will sting','Bama','Bama Bozo','NCAA','St Johns'];
+const PRESSURE_KEYS = ['Mike walked','Mike in C gap','Star walked C gap','Will in C gap','Mike & Will Walked','One down opposite A','Mike & Star showing','Double Stings'];
+const runGame = [
+  { name:'GIANTS PRO', concept:'Inside Zone', playCall:'Giants Pro vs Over front', formation:'BASE', family:'INSIDE ZONE',
+    alerts: ['Star Press – Out/Gang','Mike creep – Solo Alert','Will Creep – Solo Alert','Mike walked outside – Out Call','Creep BS – Solo','Point to #1 by C.'],
+    baseFormation:'Any 10, 11 formation', blockingStyle:'Zone run blocking (Gap 2 Head up)', variation:'On LOS how is the DT and N playing',
+    players: [ {pos:'PST',eyes:'PS Gap',assign:'Lock PSE'}, {pos:'PSG',eyes:'PS Gap',assign:'PS Gap to 2nd level'}, {pos:'C',eyes:'PS Gap',assign:'PS Gap to 2nd Level'}, {pos:'BSG',eyes:'PS Gap',assign:'Scoop BS A to 2nd Level'}, {pos:'BST',eyes:'PS Gap',assign:'Scoop BS C to 2nd Level'} ],
+    qb: 'No QB read notes filled in on this install sheet.',
+    qbNotes: [],
+    pressureProgression: ['Money from the Front side double team','Lisa or Out call','Pontiac or out','Money from the 2nd ace/cog','Money from both double teams','Money from both double teams','Lisa Call with the RPO or Default throw','Lisa and Out call on the BS'] },
+  { name:'GIANTS CON', concept:'Inside Zone', playCall:'Giants Con vs Over front', formation:'BASE', family:'INSIDE ZONE',
+    alerts: ['Star Press – Out/Gang','Mike creep – Solo Alert','Will Creep – Solo Alert','Mike walked outside – Out Call','Creep BS – Solo','Point to #2 by C.'],
+    baseFormation:'Any 10, 11 formation', blockingStyle:'Zone run blocking (Gap 2 Head up)', variation:'On LOS how is the DT and N playing',
+    players: [ {pos:'PST',eyes:'PS Gap',assign:'Lock PSE'}, {pos:'PSG',eyes:'PS Gap',assign:'PS Gap to 2nd level'}, {pos:'C',eyes:'PS Gap',assign:'PS Gap to 2nd Level'}, {pos:'BSG',eyes:'PS Gap',assign:'Scoop BS A to 2nd Level'}, {pos:'BST',eyes:'PS Gap',assign:'Scoop BS C to 2nd Level'} ],
+    qb: 'No QB read notes filled in on this install sheet.',
+    qbNotes: [],
+    pressureProgression: ['Money from the Front side double team','Lisa or Out call','Pontiac or out','Money from the 2nd ace/cog','Money from both double teams','Money from both double teams','Lisa Call with the RPO or Default throw','Lisa and Out call on the BS'] },
+  { name:'CINCY CON', concept:'Gap Counter (6 man)', playCall:'Cincinnati Con vs Under front', formation:'11/12 PERSONNEL', family:'COUNTER',
+    note: 'Cincy con / 35 – this a gap run counter play with the same blocking as Rams with OL on the Kick and Y or 2nd puller on the #1 LB',
+    sets: ['FST – B gap to #2','FSG – B gap to #2','C – WK A','BSG – Pull to EMOL','BST – pull 4 PSLB','B – Steps (Lat step, Cross over, Pivot), aiming is Play side A'],
+    alerts: ['Star Press – Throwing default','Will creep –','Mike Creep –','Mike walked outside –','Creep BS –'],
+    baseFormation:'Any 11 or 12 formation', blockingStyle:'Gap run blocking', variation:'What front are they in to the wk side',
+    players: [ {pos:'FST',eyes:'B gap',assign:'Double to #2'}, {pos:'FSG',eyes:'B gap',assign:'Double to #2'}, {pos:'C',eyes:'WK A gap',assign:'WK A'}, {pos:'BSG',eyes:'EMOL',assign:'Pull to EMOL'}, {pos:'BST',eyes:'PSLB',assign:'Pull to PSLB'} ],
+    qb: 'You have the star from depth',
+    qbNotes: ['Hand off or RPO – Cincy Pro/Con is Sidecar and RPO is on reading the BS','D gap pressure – if there is a free man off the backside edge then read option him','—','—','Cowboy (Corner Blitz) treat as D gap back side pressure'],
+    pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'] },
+  { name:'CINCY CON (ALT)', concept:'Gap Counter (6 man)', playCall:'Cincinnati Con vs Under front (variant)', formation:'11/12 PERSONNEL', family:'COUNTER',
+    note: 'Alternate blocking scheme for the same Cincy Con call — confirm with staff which version is current before installing.',
+    sets: ['FST – B gap to #2','FSG – A gap to #2','C – WK A to pull, kick C gap','BSG – WK B to pull, kick C gap','BST – WK B to WK C, slide hinge','B – Steps (Lat step, Cross over, Pivot), aiming is Play side A'],
+    alerts: ['Star Press –','Will creep –','Mike Creep –','Mike walked outside –','Creep BS –'],
+    baseFormation:'Any 11 or 12 formation', blockingStyle:'Gap run blocking', variation:'What front are they in to the wk side',
+    players: [ {pos:'FST',eyes:'B gap',assign:'Double to #2'}, {pos:'FSG',eyes:'A gap',assign:'Double to #2'}, {pos:'C',eyes:'WK A gap / LB#1',assign:'WK A or pull to LB#1'}, {pos:'BSG',eyes:'WK B / LB#1',assign:'Block WK B or pull to LB#1'}, {pos:'BST',eyes:'WK B to WK C',assign:'Alert Squeeze and block WK B to WK C'} ],
+    qb: 'You have the star from depth',
+    qbNotes: ['Hand off or RPO – Cincy Pro/Con is Sidecar and RPO is on reading the BS','D gap pressure – if there is a free man off the backside edge then read option him','—','—','Cowboy (Corner Blitz) treat as D gap back side pressure'],
+    pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'] },
+  { name:'CINCY PRO', concept:'Gap Counter (6 man)', playCall:'Cincy Pro vs Over front', formation:'11/12 PERSONNEL', family:'COUNTER',
+    note: 'Cincy Pro / 34 – this a gap run counter play with the same blocking as Tampa with OL on the Kick and Y or 2nd puller on the #1 LB',
+    sets: ['FST – B gap to #2','FSG – A gap to B gap to #2','C – WK A gap to pull','BSG – Pull to EMOL','BST – Pull 4 PSLB','B – Steps (Lat step, Cross over, Pivot), aiming is Play side A'],
+    alerts: ['Star Press –','Will creep –','Mike Creep –','Mike walked outside –','Creep BS –'],
+    baseFormation:'Any 11 or 12 formation — Y must be in to run boss', blockingStyle:'Gap run blocking', variation:'60/80 they are the same rules different techniques',
+    players: [ {pos:'FST',eyes:'Tackle',assign:'Block B'}, {pos:'FSG',eyes:'Tackle/Mike',assign:'DBL B to BSLB'}, {pos:'C',eyes:'Nose',assign:'Block Nose'}, {pos:'BSG',eyes:'Jack',assign:'Pull for EMOL'}, {pos:'BST',eyes:'Will',assign:'Pull for PSLB'} ],
+    qb: 'You have the star from depth',
+    qbNotes: ['Hand off or RPO – Con is Sidecar and RPO is on reading the BS','D gap pressure – if there is a free man off the backside edge then read option him','Press call by the Y (star is on the outside shoulder of the Y) — T and G should expect a "???" call','—','Cowboy treat as D gap back side pressure'],
+    pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'] },
+  { name:'CHARGERS (36)', concept:'Wide Zone Pro', playCall:'36 vs Over front', formation:'10/11/12/20/21 PERSONNEL', family:'WIDE ZONE',
+    note: 'Wide Zone Pro – zone play with the frontside of the play trying to reach the outside shoulder of the man over there.',
+    sets: ['FST – Reach the C gap','FSG – Reach the B gap','C – Reach the playside A gap','BSG – Cut off A gap','BST – Cut off B gap','B – Pistol, same side and side car, toes at 7.5 yds, aiming point 1 yd outside the tackle. 1st read is the EMOLS'],
+    alerts: ['Star Press –','Will creep –','Mike Creep –','Mike walked outside –','Creep BS –'],
+    baseFormation:'Any 10, 11, 12, 20, 21 — can run this strong or weak from any formation', blockingStyle:'Wide Zone run blocking', variation:'On LOS, how is the DE playing the run',
+    players: [ {pos:'FST',eyes:'C gap (DE/Mike)',assign:'Close gap reach / open gap help and climb'}, {pos:'FSG',eyes:'B gap (LB)',assign:'Close gap reach / open gap help and climb'}, {pos:'C',eyes:'A gap',assign:'Close gap reach / open gap help and climb'}, {pos:'BSG',eyes:'WK A',assign:'Cut off A gap DL 3ft / cut off A gap LB 3yds'}, {pos:'BST',eyes:'WK B',assign:'Cut off B gap DL 3ft / cut off B gap LB 3yds'} ],
+    qb: 'You have the star from depth',
+    qbNotes: ['Check opposite side to see if we need to flip the play','D gap pressure – still a give and boot away','RPO is the game-week plan — wide zone is not a big RPO play','There is no Star RPO read if we have a force, dart, or any other lead call','Cowboy treat as D gap back side pressure, throw cowboy hitch or read pull on'],
+    pressureProgression: ['Reach playside shoulder, Lisa','Triple call','Out call','Scoop call','Lisa and getting the playside shoulder','Lisa and getting the playside shoulder','Out call','Out call'] },
+];
+function pressureTable(prog) {
+  return `<table class="route-table"><tr>${PRESSURE_COLS.map(c=>`<th>${c}</th>`).join('')}</tr>
+    <tr>${PRESSURE_KEYS.map(k=>`<td style="font-size:11px;color:#ccc">${k}</td>`).join('')}</tr>
+    <tr>${prog.map(p=>`<td style="font-size:11px;color:var(--gold)">${p}</td>`).join('')}</tr></table>`;
+}
+function renderRunGame() {
+  document.getElementById('runs-list').innerHTML = runGame.map((r, i) => {
+    const id = 'runs-card-'+i;
+    const searchText = [r.name, r.concept, r.playCall, r.family, r.formation, ...(r.alerts||[]), ...(r.sets||[]), ...r.players.map(p=>p.pos+' '+p.eyes+' '+p.assign), r.qb, ...(r.qbNotes||[])].join(' ');
+    return `
+    <div class="card" id="${id}" data-search="${searchText.replace(/"/g,'&quot;')}">
+      <div class="card-header" onclick="toggleCard('${id}')">
+        <div style="flex:1">
+          <div class="card-title">${r.name}</div>
+          <div class="card-sub">${r.concept} • ${r.playCall}</div>
+        </div>
+        <div class="card-tag">${r.family}</div>
+        <div class="card-chevron">›</div>
+      </div>
+      <div class="card-body">
+        ${r.note ? `<div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">CONCEPT</div><div style="font-size:13px;color:#ccc">${r.note}</div></div>` : ''}
+        ${r.sets ? `<div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">SETS</div><ul>${r.sets.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : ''}
+        <div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">ALERTS</div><ul>${(r.alerts||[]).map(a=>`<li>${a}</li>`).join('')}</ul></div>
+        <table class="route-table">
+          <tr><th>BASE FORMATION</th><td>${r.baseFormation}</td></tr>
+          <tr><th>BLOCKING STYLE</th><td>${r.blockingStyle}</td></tr>
+          <tr><th>VARIATION / TAGS</th><td>${r.variation}</td></tr>
+        </table>
+        <table class="route-table">
+          <tr><th>POS</th><th>EYES</th><th>ASSIGNMENT</th></tr>
+          ${r.players.map(p => `<tr><td><strong>${p.pos}</strong></td><td style="color:#ccc">${p.eyes}</td><td style="color:#ccc;font-size:12px">${p.assign}</td></tr>`).join('')}
+        </table>
+        <div class="qb-notes"><div class="qb-notes-title">QB</div><div style="font-size:13px;color:var(--gold);margin-bottom:6px">${r.qb}</div>
+          ${r.qbNotes && r.qbNotes.length ? `<ul>${r.qbNotes.map(n=>`<li>${n}</li>`).join('')}</ul>` : ''}
+        </div>
+        <div class="qb-notes" style="margin-top:10px"><div class="qb-notes-title">PRESSURE BEATERS</div>${pressureTable(r.pressureProgression)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 // ==================== MOTIONS ====================
 const motions = [
   { name:'ZOOM', desc:'Receiver crosses ALL THE WAY to the opposite side, behind the QB. Watch the CB on the snap — if he follows, it\'s MAN; if he stays in his zone, it\'s ZONE.' },
@@ -795,6 +897,7 @@ function clearSearch() {
 renderFormations();
 renderPlayCategory('passing');
 renderPlayCategory('screens');
+renderRunGame();
 renderMotions();
 renderCoverages();
 renderAssignments();
