@@ -250,37 +250,40 @@ const SLOT_OFF = 10;
 const QX=194, QY=LOS+36, BX=218, BY=LOS+58;
 
 function fieldSVG(players, label) {
-  // Alternating mow stripes every 5 yards, like a painted/mowed turf field.
-  let stripes = '', band = 0;
-  for (let y = VH; y > 0; y -= 35) {
-    const y0 = Math.max(y - 35, 0);
-    stripes += `<rect x="0" y="${y0}" width="${VW}" height="${y - y0}" fill="${band % 2 === 0 ? '#2C6016' : '#286018'}"/>`;
-    band++;
-  }
-  // Yard lines every 5 yards, with hash marks at the standard inbound spots on each line.
-  let yLines = '', hashes = '';
+  // Plain ruled field background, matching the team's real install-sheet diagrams:
+  // light background, thin gray yard lines every 5 yards, ruler-style hash ticks
+  // spanning the width of each line, and rotated yard-number labels every 10 yards.
+  const bg = `<rect x="0" y="0" width="${VW}" height="${VH}" fill="#FAFAF7"/>`;
+  let yLines = '', hashes = '', numbers = '';
+  let yardCount = 0;
   for (let y = VH - 35; y >= 10; y -= 35) {
-    yLines += `<line x1="0" y1="${y}" x2="${VW}" y2="${y}" stroke="#EFEFEF" stroke-width="1" opacity="0.5"/>`;
-    for (let x = 55; x <= VW - 55; x += 14)
-      hashes += `<line x1="${x}" y1="${y - 3}" x2="${x}" y2="${y + 3}" stroke="#EFEFEF" stroke-width="1" opacity="0.4"/>`;
+    yardCount += 5;
+    yLines += `<line x1="0" y1="${y}" x2="${VW}" y2="${y}" stroke="#999" stroke-width="1" opacity="0.55"/>`;
+    for (let x = 16; x <= VW - 16; x += 12)
+      hashes += `<line x1="${x}" y1="${y - 3}" x2="${x}" y2="${y + 3}" stroke="#999" stroke-width="0.75" opacity="0.5"/>`;
+    if (yardCount % 10 === 0) {
+      const num = yardCount > 50 ? 100 - yardCount : yardCount;
+      numbers += `<text x="10" y="${y+3}" font-size="7" fill="#888" font-family="sans-serif" font-weight="700" transform="rotate(-90 10 ${y+3})">${num}</text>`;
+      numbers += `<text x="${VW-10}" y="${y+3}" text-anchor="end" font-size="7" fill="#888" font-family="sans-serif" font-weight="700" transform="rotate(-90 ${VW-10} ${y+3})">${num}</text>`;
+    }
   }
-  const sides = `<line x1="6" y1="0" x2="6" y2="${VH}" stroke="#EFEFEF" stroke-width="2.5" opacity="0.6"/>
-    <line x1="${VW-6}" y1="0" x2="${VW-6}" y2="${VH}" stroke="#EFEFEF" stroke-width="2.5" opacity="0.6"/>`;
-  const los = `<line x1="0" y1="${LOS}" x2="${VW}" y2="${LOS}" stroke="#FFE680" stroke-width="2" stroke-dasharray="9 5" opacity="0.85"/>
-    <text x="5" y="${LOS-4}" font-size="8" fill="#FFE680" opacity="0.8" font-family="sans-serif" font-weight="700">LOS</text>`;
-  const bndry = `<text x="14" y="18" font-size="7" fill="#E8C96A" opacity="0.55" font-family="sans-serif" font-weight="700">◀ BNDRY</text>`;
-  const field = `<text x="${VW-14}" y="18" text-anchor="end" font-size="7" fill="#E8C96A" opacity="0.55" font-family="sans-serif" font-weight="700">FIELD ▶</text>`;
-  const lbl = label ? `<text x="${VW/2}" y="${VH-5}" text-anchor="middle" font-size="11" fill="#E8C96A" opacity="0.6" font-family="sans-serif" font-weight="800" letter-spacing="1">${label}</text>` : '';
+  const sides = `<line x1="6" y1="0" x2="6" y2="${VH}" stroke="#999" stroke-width="1.5" opacity="0.6"/>
+    <line x1="${VW-6}" y1="0" x2="${VW-6}" y2="${VH}" stroke="#999" stroke-width="1.5" opacity="0.6"/>`;
+  const los = `<line x1="0" y1="${LOS}" x2="${VW}" y2="${LOS}" stroke="#CC0000" stroke-width="1.5" opacity="0.85"/>
+    <text x="5" y="${LOS-4}" font-size="8" fill="#CC0000" opacity="0.8" font-family="sans-serif" font-weight="700">LOS</text>`;
+  const lbl = label ? `<text x="${VW/2}" y="${VH-5}" text-anchor="middle" font-size="11" fill="#666" opacity="0.7" font-family="sans-serif" font-weight="800" letter-spacing="1">${label}</text>` : '';
   return `<svg viewBox="0 0 ${VW} ${VH}" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <filter id="glow"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   </defs>
-  ${stripes}${yLines}${hashes}${sides}${los}${bndry}${field}${players}${lbl}</svg>`;
+  ${bg}${yLines}${hashes}${numbers}${sides}${los}${players}${lbl}</svg>`;
 }
 const OL_R = 10, WR_R = 9, QB_R = 10, RB_R = 9, TE_R = 10;
 function olC(x,y,l) {
-  return `<circle cx="${x}" cy="${y}" r="${OL_R}" fill="#CC0000" stroke="white" stroke-width="2"/>
-    <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="7" font-weight="900" fill="white" font-family="sans-serif">${l}</text>`;
+  if (l === 'C') {
+    return `<rect x="${x-OL_R}" y="${y-OL_R}" width="${OL_R*2}" height="${OL_R*2}" fill="white" stroke="#333" stroke-width="2"/>`;
+  }
+  return `<circle cx="${x}" cy="${y}" r="${OL_R}" fill="white" stroke="#333" stroke-width="2"/>`;
 }
 function wrC(x,y,l) {
   return `<circle cx="${x}" cy="${y}" r="${WR_R}" fill="white" stroke="#CC0000" stroke-width="2"/>
@@ -346,7 +349,7 @@ const formationInfo = [
 ];
 
 // ==================== ROUTE PATHS / PLAY DIAGRAMS ====================
-const ROUTE_COLORS = { Z:'#FF4444', H:'#E8C96A', Y:'#4488FF', X:'#44DD88', B:'#FF8844', T:'#CC88FF' };
+const ROUTE_COLORS = { Z:'#CC0000', H:'#B8860B', Y:'#1A56DB', X:'#0F8A3C', B:'#D2691E', T:'#7A3FBF' };
 
 const YDS = 7; // px per yard of depth/lateral distance, for realistic route scaling
 
@@ -437,8 +440,14 @@ function drawPlaySVG(formation, routes, selectedPos, cardId) {
     const isBlock = /^(BLOCK|CRACK|RUN OFF STALK|STALK)/.test(info.route.toUpperCase());
     const opacity = selectedPos === null ? 1 : (selectedPos === pos ? 1 : 0.15);
     const pathId = `${cardId}-path-${pos}`;
-    const dash = isBlock ? ' stroke-dasharray="1 4"' : '';
-    arrows += `<path id="${pathId}" d="${d}" stroke="${col}" stroke-width="${selectedPos===pos?2.75:2.25}" fill="none" stroke-linecap="${isBlock?'round':'butt'}" stroke-linejoin="miter"${dash} opacity="${opacity}" marker-end="url(#arrowR${pos})"/>`;
+    // Real install sheets draw blocking assignments as a solid line ending in a
+    // filled dot (no arrowhead, no dash); pass routes get a clean arrowhead.
+    const marker = isBlock ? '' : ` marker-end="url(#arrowR${pos})"`;
+    arrows += `<path id="${pathId}" d="${d}" stroke="${col}" stroke-width="${selectedPos===pos?2.75:2.25}" fill="none" stroke-linecap="butt" stroke-linejoin="miter" opacity="${opacity}"${marker}/>`;
+    if (isBlock) {
+      const m = d.match(/L([\d.\-]+),([\d.\-]+)\s*$/);
+      if (m) arrows += `<circle cx="${m[1]}" cy="${m[2]}" r="2.5" fill="${col}" opacity="${opacity}"/>`;
+    }
     defs += `<defs><marker id="arrowR${pos}" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L2,4 Z" fill="${col}"/></marker></defs>`;
     movers += `<g class="mover" data-pos="${pos}" data-ox="${pp.x}" data-oy="${pp.y}" transform="translate(0,0)" opacity="${opacity}">
       <circle cx="${pp.x}" cy="${pp.y}" r="${r}" fill="white" stroke="${col}" stroke-width="2"/>
