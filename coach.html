@@ -1478,15 +1478,32 @@ function ssCategoryBucket(r) {
   const p = String(r.protection == null ? '' : r.protection).trim().toUpperCase();
   return SS_PROTECTION_CATEGORY[p] || null;
 }
-function ssConceptBucket(r) {
+// CONCEPT alone doesn't say run-or-pass (RPO rows reuse it for either result), so
+// pass/run concept breakdowns must each filter by actual PLAY TYPE (ssIsPass/ssIsRun)
+// before grouping — otherwise a run-result RPO snap pollutes the passing numbers and vice versa.
+function ssPassConceptBucket(r) {
+  const c = String(r.concept == null ? '' : r.concept).trim().toUpperCase();
+  if (c) return c;
+  const t = String(r.passTag == null ? '' : r.passTag).trim().toUpperCase();
+  if (t) return t;
+  const p = String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase();
+  return p || null;
+}
+function ssRunConceptBucket(r) {
+  const t = String(r.runTag == null ? '' : r.runTag).trim().toUpperCase();
+  if (t) return t;
   const c = String(r.concept == null ? '' : r.concept).trim().toUpperCase();
   if (c) return c;
   const p = String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase();
   return p || null;
 }
-function ssRunTagBucket(r) {
-  const v = String(r.runTag == null ? '' : r.runTag).trim().toUpperCase();
-  return v || null;
+function ssRPOComboBucket(r) {
+  // Only pull a run tag from rows that actually resulted in a run, and a pass tag/concept from
+  // rows that actually resulted in a pass — CONCEPT holds a run-tag value on run-result RPO rows,
+  // so reading it unconditionally would falsely echo the run tag into the pass side of the combo.
+  const runPart = ssIsRun(r) ? (String(r.runTag == null ? '' : r.runTag).trim().toUpperCase() || String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase()) : '';
+  const passPart = ssIsPass(r) ? (String(r.concept == null ? '' : r.concept).trim().toUpperCase() || String(r.passTag == null ? '' : r.passTag).trim().toUpperCase()) : '';
+  return (runPart || '—') + ' / ' + (passPart || '—');
 }
 
 function ssRunPassSplitHTML(rs) {
@@ -1572,52 +1589,58 @@ function ssRenderGroupTable(rows, groupFn, title, columnLabel, orderList) {
 }
 
 function ssRenderCategoryTable(rows) {
-  const groups = dbGroupBy(rows, ssCategoryBucket);
-  const buckets = SS_CATEGORY_ORDER.filter(k => groups[k]);
+  // Pass-protection categories describe HOW the ball was protected to throw it, so this
+  // table is pass-exclusive: an RPO call that resulted in a run belongs in run concepts, not here.
+  const passRows = rows.filter(ssIsPass);
+  const groups = dbGroupBy(passRows, ssCategoryBucket);
+  const buckets = SS_CATEGORY_ORDER.filter(k => k !== 'RPO' && groups[k]);
   if (!buckets.length) return '<div class="db-empty">No PROTECTION values matched a known pass-concept category yet.</div>';
   const trs = buckets.map(b => {
     const rs = groups[b];
-    const passRs = rs.filter(ssIsPass);
-    const comp = passRs.filter(ssIsComplete).length;
+    const comp = rs.filter(ssIsComplete).length;
     const yards = rs.reduce((s, r) => s + dbYards(r), 0);
     const td = rs.filter(dbIsTD).length;
-    const to = rs.filter(r => ssIsInterception(r) || ssIsFumble(r)).length;
+    const to = rs.filter(ssIsInterception).length;
     return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
-      <td><strong>${dbEscapeHTML(b)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} plays${dbLowSampleTag(rs.length)}</span></td>
-      <td>${passRs.length ? comp + '/' + passRs.length : '—'}</td>
-      <td>${yards} <span style="color:var(--gray);font-size:11px">(${rs.length ? Math.round(yards / rs.length * 10) / 10 : 0}/play)</span></td>
+      <td><strong>${dbEscapeHTML(b)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} attempts${dbLowSampleTag(rs.length)}</span></td>
+      <td>${comp}/${rs.length}</td>
+      <td>${yards} <span style="color:var(--gray);font-size:11px">(${rs.length ? Math.round(yards / rs.length * 10) / 10 : 0}/att)</span></td>
       <td>${td}</td>
       <td>${to}</td>
       <td>${ssSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap('BY PASS CONCEPT CATEGORY', `<div class="db-table-wrap"><table class="db-table"><tr><th>CATEGORY</th><th>COMP/ATT</th><th>YARDS</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('BY PASS CONCEPT CATEGORY (PASS RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>CATEGORY</th><th>COMP/ATT</th><th>YARDS</th><th>TD</th><th>INT</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
 }
 
-function ssRenderConceptTable(rows) {
-  const groups = dbGroupBy(rows, ssConceptBucket);
+function ssRenderPassConceptTable(rows) {
+  const passRows = rows.filter(ssIsPass);
+  const groups = dbGroupBy(passRows, ssPassConceptBucket);
   const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length).slice(0, 30);
-  if (!entries.length) return '';
+  if (!entries.length) return '<div class="db-empty">No pass plays with a CONCEPT/PASS TAG found yet.</div>';
   const trs = entries.map(([concept, rs]) => {
-    const cat = ssCategoryBucket(rs[0]) || rs.map(ssCategoryBucket).find(Boolean) || '—';
+    const comp = rs.filter(ssIsComplete).length;
+    const yards = rs.reduce((s, r) => s + dbYards(r), 0);
+    const ypa = rs.length ? Math.round(yards / rs.length * 10) / 10 : 0;
     const td = rs.filter(dbIsTD).length;
-    const to = rs.filter(r => ssIsInterception(r) || ssIsFumble(r)).length;
+    const ints = rs.filter(ssIsInterception).length;
     return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
-      <td><strong>${dbEscapeHTML(concept)}</strong><br><span style="color:var(--gray);font-size:11px">${dbEscapeHTML(cat)} — ${rs.length} plays${dbLowSampleTag(rs.length)}</span></td>
-      <td>${ssRunPassSplitHTML(rs)}</td>
+      <td><strong>${dbEscapeHTML(concept)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} attempts${dbLowSampleTag(rs.length)}</span></td>
+      <td>${comp}/${rs.length}</td>
+      <td>${yards} <span style="color:var(--gray);font-size:11px">(${ypa}/att)</span></td>
       <td>${td}</td>
-      <td>${to}</td>
+      <td>${ints}</td>
       <td>${ssSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap('BY CONCEPT / PLAY', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT</th><th>RUN/PASS</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('BEST PASSING CONCEPTS (PASS RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT</th><th>COMP/ATT</th><th>YARDS</th><th>TD</th><th>INT</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
 }
 
-function ssRenderRunTagTable(rows) {
+function ssRenderRunConceptTable(rows) {
   const runRows = rows.filter(ssIsRun);
-  const groups = dbGroupBy(runRows, ssRunTagBucket);
+  const groups = dbGroupBy(runRows, ssRunConceptBucket);
   const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
-  if (!entries.length) return '<div class="db-empty">No run plays with a RUN TAG found yet.</div>';
+  if (!entries.length) return '<div class="db-empty">No run plays with a RUN TAG/CONCEPT found yet.</div>';
   const trs = entries.map(([tag, rs]) => {
     const yards = rs.reduce((s, r) => s + dbYards(r), 0);
     const ypc = rs.length ? Math.round(yards / rs.length * 10) / 10 : 0;
@@ -1632,7 +1655,35 @@ function ssRenderRunTagTable(rows) {
       <td>${ssSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap('RUN GAME — BY RUN TAG', `<div class="db-table-wrap"><table class="db-table"><tr><th>RUN TAG</th><th>YARDS</th><th>Y/CARRY</th><th>TD</th><th>FUM</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('BEST RUN CONCEPTS (RUN RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>RUN TAG / CONCEPT</th><th>YARDS</th><th>Y/CARRY</th><th>TD</th><th>FUM</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+}
+
+function ssRenderRPOTable(rows) {
+  const rpoRows = rows.filter(r => ssCategoryBucket(r) === 'RPO');
+  if (!rpoRows.length) return '<div class="db-empty">No RPO (protection = RUN) plays charted yet.</div>';
+  const groups = dbGroupBy(rpoRows, ssRPOComboBucket);
+  const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+  const trs = entries.map(([combo, rs]) => {
+    const runRs = rs.filter(ssIsRun);
+    const passRs = rs.filter(ssIsPass);
+    const runYards = runRs.reduce((s, r) => s + dbYards(r), 0);
+    const ypc = runRs.length ? Math.round(runYards / runRs.length * 10) / 10 : 0;
+    const comp = passRs.filter(ssIsComplete).length;
+    const passYards = passRs.reduce((s, r) => s + dbYards(r), 0);
+    const ypa = passRs.length ? Math.round(passYards / passRs.length * 10) / 10 : 0;
+    const td = rs.filter(dbIsTD).length;
+    const to = rs.filter(r => ssIsInterception(r) || ssIsFumble(r)).length;
+    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+      <td><strong>${dbEscapeHTML(combo)}</strong><br><span style="color:var(--gray);font-size:11px">RUN TAG / PASS TAG — ${rs.length} reps${dbLowSampleTag(rs.length)}</span></td>
+      <td>${runRs.length} give / ${passRs.length} pull</td>
+      <td>${runRs.length ? runYards + ' yds (' + ypc + '/carry)' : '—'}</td>
+      <td>${passRs.length ? comp + '/' + passRs.length + ' (' + passYards + ' yds, ' + ypa + '/att)' : '—'}</td>
+      <td>${td}</td>
+      <td>${to}</td>
+      <td>${ssSuccessCellHTML(rs)}</td>
+    </tr>`;
+  }).join('');
+  return dbPanelWrap('RPO — RUN TAG / PASS TAG EFFICIENCY', `<div class="db-table-wrap"><table class="db-table"><tr><th>RUN TAG / PASS TAG</th><th>GIVE / PULL</th><th>RUN RESULT</th><th>PASS RESULT</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
 }
 
 function ssRenderEffectivenessBarGroup(title, rows, groupFn, n, sortAsc) {
@@ -1647,12 +1698,17 @@ function ssRenderEffectivenessBarGroup(title, rows, groupFn, n, sortAsc) {
 }
 
 function ssRenderBarSection(rows) {
+  const passRows = rows.filter(ssIsPass);
+  const runRows = rows.filter(ssIsRun);
   const groups = [
-    dbRenderBarGroup('MOST USED CATEGORIES', dbFreqByFn(rows, ssCategoryBucket), 7),
-    ssRenderEffectivenessBarGroup('MOST SUCCESSFUL CATEGORIES', rows, ssCategoryBucket, 7, false),
-    dbRenderBarGroup('MOST USED CONCEPTS', dbFreqByFn(rows, ssConceptBucket), 6),
-    ssRenderEffectivenessBarGroup('MOST SUCCESSFUL CONCEPTS', rows, ssConceptBucket, 6, false),
-    ssRenderEffectivenessBarGroup('LEAST SUCCESSFUL CONCEPTS (NEEDS WORK)', rows, ssConceptBucket, 6, true),
+    dbRenderBarGroup('MOST USED CATEGORIES', dbFreqByFn(passRows, ssCategoryBucket), 7),
+    ssRenderEffectivenessBarGroup('MOST SUCCESSFUL CATEGORIES', passRows, ssCategoryBucket, 7, false),
+    dbRenderBarGroup('MOST USED PASS CONCEPTS', dbFreqByFn(passRows, ssPassConceptBucket), 6),
+    ssRenderEffectivenessBarGroup('MOST SUCCESSFUL PASS CONCEPTS', passRows, ssPassConceptBucket, 6, false),
+    ssRenderEffectivenessBarGroup('LEAST SUCCESSFUL PASS CONCEPTS (NEEDS WORK)', passRows, ssPassConceptBucket, 6, true),
+    dbRenderBarGroup('MOST USED RUN CONCEPTS', dbFreqByFn(runRows, ssRunConceptBucket), 6),
+    ssRenderEffectivenessBarGroup('MOST SUCCESSFUL RUN CONCEPTS', runRows, ssRunConceptBucket, 6, false),
+    ssRenderEffectivenessBarGroup('LEAST SUCCESSFUL RUN CONCEPTS (NEEDS WORK)', runRows, ssRunConceptBucket, 6, true),
   ].filter(Boolean);
   if (!groups.length) return '';
   return dbSectionWrap('TENDENCY OVERVIEW', `<div class="db-bar-grid">${groups.join('')}</div>`);
@@ -1661,8 +1717,8 @@ function ssRenderBarSection(rows) {
 function ssGenerateInsights(rows) {
   const items = [];
   // Best/worst categories and concepts — what's working, what needs emphasis.
-  [[ssCategoryBucket, 'pass-concept category'], [ssConceptBucket, 'concept']].forEach(([groupFn, label]) => {
-    const groups = dbGroupBy(rows, groupFn);
+  [[rows.filter(ssIsPass), ssCategoryBucket, 'pass-concept category'], [rows.filter(ssIsPass), ssPassConceptBucket, 'passing concept'], [rows.filter(ssIsRun), ssRunConceptBucket, 'run concept']].forEach(([rowSet, groupFn, label]) => {
+    const groups = dbGroupBy(rowSet, groupFn);
     const entries = Object.entries(groups)
       .map(([key, rs]) => ({ key, rs, stats: dbSuccessStats(rs) }))
       .filter(e => e.stats && e.stats.n >= 5);
@@ -1698,14 +1754,23 @@ function ssGenerateInsights(rows) {
       }
     });
   });
-  // Turnover-prone concepts.
-  const conceptGroups = dbGroupBy(rows, ssConceptBucket);
-  Object.entries(conceptGroups).forEach(([concept, rs]) => {
+  // Turnover-prone concepts — interceptions for pass concepts, fumbles for run concepts.
+  const passConceptGroups = dbGroupBy(rows.filter(ssIsPass), ssPassConceptBucket);
+  Object.entries(passConceptGroups).forEach(([concept, rs]) => {
     if (rs.length < 5) return;
-    const toCount = rs.filter(r => ssIsInterception(r) || ssIsFumble(r)).length;
+    const toCount = rs.filter(ssIsInterception).length;
     const toPct = Math.round(toCount / rs.length * 100);
     if (toPct >= 15) {
-      items.push({ weight: rs.length * 2, text: `<strong>${dbEscapeHTML(concept)}</strong> has turned the ball over on ${toPct}% of its snaps (${toCount}/${rs.length}) — point of emphasis.` });
+      items.push({ weight: rs.length * 2, text: `<strong>${dbEscapeHTML(concept)}</strong> pass concept has been intercepted on ${toPct}% of its snaps (${toCount}/${rs.length}) — point of emphasis.` });
+    }
+  });
+  const runConceptGroups = dbGroupBy(rows.filter(ssIsRun), ssRunConceptBucket);
+  Object.entries(runConceptGroups).forEach(([concept, rs]) => {
+    if (rs.length < 5) return;
+    const toCount = rs.filter(ssIsFumble).length;
+    const toPct = Math.round(toCount / rs.length * 100);
+    if (toPct >= 15) {
+      items.push({ weight: rs.length * 2, text: `<strong>${dbEscapeHTML(concept)}</strong> run concept has fumbled on ${toPct}% of its snaps (${toCount}/${rs.length}) — point of emphasis.` });
     }
   });
   items.sort((a, b) => b.weight - a.weight);
@@ -1714,8 +1779,9 @@ function ssGenerateInsights(rows) {
 
 const SS_TABS = [
   { id: 'category', label: 'PASS CATEGORY', render: rows => ssRenderCategoryTable(rows) },
-  { id: 'concept', label: 'BY CONCEPT', render: rows => ssRenderConceptTable(rows) },
-  { id: 'rungame', label: 'RUN GAME', render: rows => ssRenderRunTagTable(rows) },
+  { id: 'passconcept', label: 'PASS CONCEPTS', render: rows => ssRenderPassConceptTable(rows) },
+  { id: 'runconcept', label: 'RUN CONCEPTS', render: rows => ssRenderRunConceptTable(rows) },
+  { id: 'rpo', label: 'RPO', render: rows => ssRenderRPOTable(rows) },
   { id: 'formation', label: 'FORMATION', render: rows => ssRenderGroupTable(rows, dbFormPersonnelBucket, 'BY FORMATION & PERSONNEL', 'FORMATION') },
   { id: 'downdist', label: 'DOWN & DISTANCE', render: rows => ssRenderGroupTable(rows, dbDownDistBucket, 'BY DOWN & DISTANCE', 'SITUATION') },
   { id: 'zone', label: 'FIELD ZONE', render: rows => ssRenderGroupTable(rows, dbZoneBucket, 'BY FIELD ZONE', 'ZONE', DB_ZONE_ORDER) },
