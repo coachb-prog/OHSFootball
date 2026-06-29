@@ -317,6 +317,8 @@ body {
 .db-opp-pill.active .db-opp-gamecount { color: rgba(255,255,255,0.7); }
 .db-games-title { font-size: 10px; letter-spacing: 1px; color: var(--gray); font-weight: 700; margin-top: 4px; }
 .db-game-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--white); background: var(--black3); border-radius: 6px; padding: 6px 10px; margin-top: 4px; }
+.db-game-filter { cursor: pointer; border: 1px solid transparent; }
+.db-game-filter.active { border-color: var(--red); background: rgba(204,0,0,0.18); }
 .db-game-del { color: var(--gray); font-weight: 900; cursor: pointer; padding: 0 4px; }
 .db-print-btn { background: var(--black3); border: 1px solid var(--gold); color: var(--gold); border-radius: 10px; padding: 12px; font-size: 13px; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; }
 .db-print-btn:hover, .db-print-btn:active { background: var(--gold); color: var(--black); }
@@ -342,6 +344,9 @@ body {
 .db-table th { background: var(--red); color: white; padding: 8px; text-align: left; font-size: 10px; letter-spacing: 1px; }
 .db-table td { padding: 8px; border-bottom: 1px solid #2a2a2a; vertical-align: top; }
 .db-table tr:hover td { background: var(--black3); }
+.db-table tr.db-low-sample td { opacity: 0.55; }
+.db-low-tag { display: inline-block; color: var(--gold); border: 1px solid var(--gold); border-radius: 4px; padding: 0 4px; font-size: 9px; letter-spacing: 0.5px; margin-left: 4px; white-space: nowrap; }
+.db-bar-row.db-low-sample { opacity: 0.55; }
 .db-empty { text-align: center; color: var(--gray); padding: 24px; font-size: 13px; }
 .db-bar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .db-bar-group-title { font-size: 11px; color: var(--gray); letter-spacing: 1px; margin-bottom: 6px; font-weight: 700; }
@@ -1866,6 +1871,7 @@ const DB_COLUMN_ALIASES = {
 let currentDefOpponent = null;
 let dbCollapsedSections = new Set();
 let dbActiveTab = null;
+let dbActiveGameId = 'ALL';
 let dbXLSXLoading = null;
 
 function dbNormHeader(h) { return String(h == null ? '' : h).trim().toUpperCase().replace(/\s+/g, ' '); }
@@ -1974,6 +1980,13 @@ function getOpponentRows(name) {
   if (!entry) return [];
   return entry.games.reduce((acc, g) => acc.concat(g.rows), []);
 }
+function dbGetActiveRows(name) {
+  const entry = getDefOpponents()[name];
+  if (!entry) return [];
+  if (dbActiveGameId === 'ALL') return entry.games.reduce((acc, g) => acc.concat(g.rows), []);
+  const g = entry.games.find(g => g.id === dbActiveGameId);
+  return g ? g.rows : [];
+}
 function addGameToOpponent(name, label, rows) {
   const all = getDefOpponents();
   if (!all[name]) all[name] = { games: [] };
@@ -2045,21 +2058,40 @@ function renderGamesList() {
   if (!currentDefOpponent) { listEl.innerHTML = ''; return; }
   const entry = getDefOpponents()[currentDefOpponent];
   if (!entry) { listEl.innerHTML = ''; return; }
-  listEl.innerHTML = `<div class="db-games-title">GAMES LOADED FOR ${dbEscapeHTML(currentDefOpponent)}</div>` + entry.games.map(g => {
-    return `<div class="db-game-row"><span>${dbEscapeHTML(g.label)} — ${g.rows.length} plays</span><span class="db-game-del" data-game-del="${dbEscapeHTML(g.id)}">×</span></div>`;
+  const totalPlays = entry.games.reduce((s, g) => s + g.rows.length, 0);
+  let html = `<div class="db-games-title">GAMES LOADED FOR ${dbEscapeHTML(currentDefOpponent)}</div>`;
+  if (entry.games.length > 1) {
+    html += `<div class="db-game-row db-game-filter${dbActiveGameId === 'ALL' ? ' active' : ''}" data-game-filter="ALL"><span>ALL GAMES — ${totalPlays} plays</span></div>`;
+  }
+  html += entry.games.map(g => {
+    return `<div class="db-game-row db-game-filter${dbActiveGameId === g.id ? ' active' : ''}" data-game-filter="${dbEscapeHTML(g.id)}"><span>${dbEscapeHTML(g.label)} — ${g.rows.length} plays</span><span class="db-game-del" data-game-del="${dbEscapeHTML(g.id)}">×</span></div>`;
   }).join('');
+  listEl.innerHTML = html;
   listEl.querySelectorAll('.db-game-del').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); deleteGame(currentDefOpponent, el.dataset.gameDel); });
+  });
+  listEl.querySelectorAll('.db-game-filter').forEach(el => {
+    el.addEventListener('click', () => {
+      dbActiveGameId = el.dataset.gameFilter;
+      renderGamesList();
+      const rows = dbGetActiveRows(currentDefOpponent);
+      renderDefDashboard(rows);
+    });
   });
 }
 
 function selectDefOpponent(name) {
   currentDefOpponent = name;
+  dbActiveGameId = 'ALL';
   renderOppList();
-  const rows = getOpponentRows(name);
+  const rows = dbGetActiveRows(name);
   if (rows.length) renderDefDashboard(rows);
 }
 
+const DB_LOW_SAMPLE_N = 5;
+function dbLowSampleTag(n) {
+  return n < DB_LOW_SAMPLE_N ? ' <span class="db-low-tag">LOW SAMPLE</span>' : '';
+}
 function dbFreq(rows, field) {
   const counts = {}; let total = 0;
   rows.forEach(r => {
@@ -2333,8 +2365,8 @@ function dbRenderGroupTable(rows, groupFn, title) {
   const trs = buckets.map(b => {
     const rs = groups[b];
     const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
-    return `<tr>
-      <td><strong>${dbEscapeHTML(b)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps</span></td>
+    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+      <td><strong>${dbEscapeHTML(b)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps${dbLowSampleTag(rs.length)}</span></td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'defFront'), 4)}</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'coverage'), 4)}</td>
       <td>${blitzPct}%</td>
@@ -2354,9 +2386,9 @@ function dbRenderComboTable(rows, title) {
     const pct = total ? Math.round(rs.length / total * 100) : 0;
     const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
     const stunt = dbTop(dbFreq(rs, 'stunt'), 1)[0];
-    return `<tr>
+    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
       <td><strong>${dbEscapeHTML(combo)}</strong></td>
-      <td>${rs.length} <span style="color:var(--gold)">(${pct}%)</span></td>
+      <td>${rs.length} <span style="color:var(--gold)">(${pct}%)</span>${dbLowSampleTag(rs.length)}</td>
       <td>${blitzPct}%</td>
       <td>${stunt ? dbEscapeHTML(stunt.label) + ' <span style="color:var(--gold)">' + stunt.pct + '%</span>' : '—'}</td>
       <td>${dbSuccessCellHTML(rs)}</td>
@@ -2373,8 +2405,8 @@ function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLab
   const trs = entries.map(([key, rs]) => {
     const pct = total ? Math.round(rs.length / total * 100) : 0;
     const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
-    return `<tr>
-      <td><strong>${dbEscapeHTML(key)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps (${pct}%)</span></td>
+    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+      <td><strong>${dbEscapeHTML(key)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps (${pct}%)${dbLowSampleTag(rs.length)}</span></td>
       <td>${dbFreqDistHTML(dbFreq(rs, otherField), 4)}</td>
       <td>${blitzPct}%</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
@@ -2392,8 +2424,8 @@ function dbRenderTopBlitzesByFront(rows, topN) {
   if (!entries.length) return '';
   const trs = entries.map(([front, rs]) => {
     const pct = blitzRows.length ? Math.round(rs.length / blitzRows.length * 100) : 0;
-    return `<tr>
-      <td><strong>${dbEscapeHTML(front)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} blitz snaps (${pct}% of all blitzes)</span></td>
+    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+      <td><strong>${dbEscapeHTML(front)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} blitz snaps (${pct}% of all blitzes)${dbLowSampleTag(rs.length)}</span></td>
       <td>${dbFreqDistHTML(dbFreqByFn(rs, dbBlitzLabel), 4)}</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'coverage'), 3)}</td>
       <td>${dbSuccessCellHTML(rs)}</td>
@@ -2402,14 +2434,37 @@ function dbRenderTopBlitzesByFront(rows, topN) {
   return dbPanelWrap('TOP BLITZES BY FRONT', `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT</th><th>BLITZ CALLS (ALL)</th><th>COVERAGE BEHIND IT</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
 }
 
-function dbBarRow(label, pct, isTop) {
-  return `<div class="db-bar-row"><span class="db-bar-label">${dbEscapeHTML(label)}</span><div class="db-bar-track"><div class="db-bar-fill${isTop ? ' top' : ''}" style="width:${pct}%"></div></div><span class="db-bar-pct">${pct}%</span></div>`;
+const DB_ZONE_ORDER = ['BACKED UP (OWN TERRITORY)', 'OPEN FIELD (MIDFIELD)', 'FRINGE (+35 TO +26)', 'REDZONE (+25 TO +11)', 'GOALLINE (+10 AND IN)'];
+
+function dbRenderZoneTable(rows) {
+  const groups = dbGroupBy(rows, dbZoneBucket);
+  const buckets = DB_ZONE_ORDER.filter(z => groups[z]);
+  if (!buckets.length) return '';
+  const trs = buckets.map(b => {
+    const rs = groups[b];
+    const blitzPct = rs.length ? Math.round(rs.filter(dbIsBlitz).length / rs.length * 100) : 0;
+    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+      <td><strong>${dbEscapeHTML(b)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} snaps${dbLowSampleTag(rs.length)}</span></td>
+      <td>${dbFreqDistHTML(dbFreqByFn(rs, dbDownDistBucket), 4)}</td>
+      <td>${dbFreqDistHTML(dbFreq(rs, 'defFront'), 4)}</td>
+      <td>${dbFreqDistHTML(dbFreq(rs, 'coverage'), 4)}</td>
+      <td>${blitzPct}%</td>
+      <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
+      <td>${dbSuccessCellHTML(rs)}</td>
+    </tr>`;
+  }).join('');
+  return dbPanelWrap('BY FIELD ZONE', `<div class="db-table-wrap"><table class="db-table"><tr><th>ZONE</th><th>DOWN & DISTANCE (ALL)</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
+}
+
+function dbBarRow(label, pct, isTop, count) {
+  const lowSample = count != null && count < DB_LOW_SAMPLE_N;
+  return `<div class="db-bar-row${lowSample ? ' db-low-sample' : ''}"><span class="db-bar-label">${dbEscapeHTML(label)}</span><div class="db-bar-track"><div class="db-bar-fill${isTop ? ' top' : ''}" style="width:${pct}%"></div></div><span class="db-bar-pct">${pct}%${lowSample ? dbLowSampleTag(count) : ''}</span></div>`;
 }
 
 function dbRenderBarGroup(title, freq, n) {
   const top = dbTop(freq, n);
   if (!top.length) return '';
-  return `<div><div class="db-bar-group-title">${title}</div>${top.map((t, i) => dbBarRow(t.label, t.pct, i === 0)).join('')}</div>`;
+  return `<div><div class="db-bar-group-title">${title}</div>${top.map((t, i) => dbBarRow(t.label, t.pct, i === 0, t.count)).join('')}</div>`;
 }
 
 function dbRenderEffectivenessBarGroup(title, rows, groupFn, n) {
@@ -2420,7 +2475,7 @@ function dbRenderEffectivenessBarGroup(title, rows, groupFn, n) {
   if (!entries.length) return '';
   entries.sort((a, b) => a.stats.successPct - b.stats.successPct);
   const top = entries.slice(0, n);
-  return `<div><div class="db-bar-group-title">${title}</div>${top.map((e, i) => dbBarRow(e.key, e.stats.successPct, i === 0)).join('')}</div>`;
+  return `<div><div class="db-bar-group-title">${title}</div>${top.map((e, i) => dbBarRow(e.key, e.stats.successPct, i === 0, e.stats.n)).join('')}</div>`;
 }
 
 function dbRenderBarSection(rows) {
@@ -2452,7 +2507,7 @@ const DB_TABS = [
   { id: 'blitz', label: 'BLITZ DETAIL', render: rows => dbRenderTopBlitzesByFront(rows, 5) },
   { id: 'downdist', label: 'DOWN & DISTANCE', render: rows => dbRenderGroupTable(rows, dbDownDistBucket, 'BY DOWN & DISTANCE') },
   { id: 'hash', label: 'HASH', render: rows => dbRenderGroupTable(rows, dbHashBucket, 'BY HASH') },
-  { id: 'zone', label: 'FIELD ZONE', render: rows => dbRenderGroupTable(rows, dbZoneBucket, 'BY FIELD ZONE') },
+  { id: 'zone', label: 'FIELD ZONE', render: rows => dbRenderZoneTable(rows) },
   { id: 'formation', label: 'FORMATION', render: rows => dbRenderGroupTable(rows, dbFormPersonnelBucket, 'BY OFFENSIVE FORMATION & PERSONNEL FACED') },
   { id: 'personnel', label: 'PERSONNEL', render: rows => dbRenderGroupTable(rows, dbPersonnelBucket, 'BY OFFENSIVE PERSONNEL FACED') }
 ];
@@ -2500,8 +2555,11 @@ function renderDefDashboard(rows) {
 function printGameCard() {
   if (!currentDefOpponent) { alert('Select an opponent with loaded data first.'); return; }
   const entry = getDefOpponents()[currentDefOpponent];
-  const rows = getOpponentRows(currentDefOpponent);
+  const rows = dbGetActiveRows(currentDefOpponent);
   if (!rows.length) { alert('No data loaded for this opponent yet.'); return; }
+  const gamesLabel = dbActiveGameId === 'ALL'
+    ? `${entry.games.length} game${entry.games.length > 1 ? 's' : ''} loaded (${entry.games.map(g => dbEscapeHTML(g.label)).join(', ')})`
+    : dbEscapeHTML((entry.games.find(g => g.id === dbActiveGameId) || {}).label || '');
   let defRows = rows.filter(r => String(r.odk == null ? '' : r.odk).trim().toUpperCase().charAt(0) === 'D');
   if (!defRows.length) defRows = rows;
   const overall = dbComputeOverall(defRows);
@@ -2515,7 +2573,7 @@ function printGameCard() {
   const card = document.getElementById('db-print-card');
   card.innerHTML = `
     <div class="pc-title">SCOUTING REPORT — ${dbEscapeHTML(currentDefOpponent)}</div>
-    <div class="pc-sub">${entry.games.length} game${entry.games.length > 1 ? 's' : ''} loaded (${entry.games.map(g => dbEscapeHTML(g.label)).join(', ')}) — ${defRows.length} defensive snaps charted</div>
+    <div class="pc-sub">${gamesLabel} — ${defRows.length} defensive snaps charted</div>
     <div class="pc-section">
       <div class="pc-section-title">OVERVIEW</div>
       <table><tr><th>SNAPS</th><th>TOP FRONT</th><th>TOP COVERAGE</th><th>BLITZ RATE</th><th>OFF SUCCESS% ALLOWED</th><th>AVG YDS ALLOWED</th></tr>
