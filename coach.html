@@ -1673,6 +1673,39 @@ function ssRenderPassConceptTable(rows) {
   return dbPanelWrap('BEST PASSING CONCEPTS (PASS RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT</th><th>COMP/ATT</th><th>YARDS</th><th>TD</th><th>INT</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
 }
 
+// PRO/CON is the run's strong/weak direction (right/left) — same field ssOffPlayBase
+// strips out when grouping concepts, so the direction breakdown reads it back off OFF PLAY directly.
+function ssRunDirection(r) {
+  const p = String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase();
+  if (/\bPRO\b/.test(p)) return 'RIGHT (PRO)';
+  if (/\bCON\b/.test(p)) return 'LEFT (CON)';
+  return null;
+}
+function ssRenderRunDirectionTable(rows) {
+  // RPO gives belong on the RPO tab, not here — same exclusion as the run concept table.
+  const runRows = rows.filter(r => ssIsRun(r) && !ssIsRPORow(r));
+  if (!runRows.length) return '';
+  const rightRows = runRows.filter(r => ssRunDirection(r) === 'RIGHT (PRO)');
+  const leftRows = runRows.filter(r => ssRunDirection(r) === 'LEFT (CON)');
+  const sections = [['OVERALL', runRows], ['RIGHT (PRO)', rightRows], ['LEFT (CON)', leftRows]].filter(([, rs]) => rs.length);
+  if (sections.length < 2) return '';
+  const trs = sections.map(([label, rs]) => {
+    const yards = rs.reduce((s, r) => s + dbYards(r), 0);
+    const ypc = rs.length ? Math.round(yards / rs.length * 10) / 10 : 0;
+    const td = rs.filter(dbIsTD).length;
+    const fum = rs.filter(ssIsFumble).length;
+    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+      <td><strong>${dbEscapeHTML(label)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} carries${dbLowSampleTag(rs.length)}</span></td>
+      <td>${yards}</td>
+      <td>${ypc}</td>
+      <td>${td}</td>
+      <td>${fum}</td>
+      <td>${ssSuccessCellHTML(rs)}</td>
+    </tr>`;
+  }).join('');
+  return dbPanelWrap('RUN GAME BY DIRECTION (RUN RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>DIRECTION</th><th>YARDS</th><th>Y/CARRY</th><th>TD</th><th>FUM</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+}
+
 function ssRenderRunConceptTable(rows) {
   // RPO gives have their own dedicated tab — leave them out here so they don't double count.
   const runRows = rows.filter(r => ssIsRun(r) && !ssIsRPORow(r));
@@ -1822,7 +1855,7 @@ function ssGenerateInsights(rows) {
 const SS_TABS = [
   { id: 'category', label: 'PASS CATEGORY', render: rows => ssRenderCategoryTable(rows) },
   { id: 'passconcept', label: 'PASS CONCEPTS', render: rows => ssRenderPassConceptTable(rows) },
-  { id: 'runconcept', label: 'RUN CONCEPTS', render: rows => ssRenderRunConceptTable(rows) },
+  { id: 'runconcept', label: 'RUN CONCEPTS', render: rows => ssRenderRunDirectionTable(rows) + ssRenderRunConceptTable(rows) },
   { id: 'rpo', label: 'RPO', render: rows => ssRenderRPOTable(rows) },
   { id: 'formation', label: 'FORMATION', render: rows => ssRenderGroupTable(rows, dbFormPersonnelBucket, 'BY FORMATION & PERSONNEL', 'FORMATION') },
   { id: 'downdist', label: 'DOWN & DISTANCE', render: rows => ssRenderGroupTable(rows, dbDownDistBucket, 'BY DOWN & DISTANCE', 'SITUATION') },
