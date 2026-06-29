@@ -402,6 +402,7 @@ function routePath(ox, oy, route, r) {
     case 'SWING': return wp([{x:ox+toOut*20,y:y(-0.5)},{x:ox+toOut*60,y:y(0)}]);
     case 'RAIL': return wp([{x:ox+toOut*4,y:y(11)}]);
     case 'TUNNEL SCREEN': return wp([{x:ox,y:y(-1.5)},{x:ox+toCtr*32,y:y(-1)}]);
+    case 'SUCKER': return wp([{x:ox,y:y(4.3)},{x:ox+toOut*16,y:20}]);
     case 'BLOCK MDM': case 'BLOCK #1': case 'BLOCK #2': return wp([{x:ox+toCtr*20,y:y(1.5)}]);
     case 'CRACK': return wp([{x:ox+toCtr*32,y:y(2)}]);
     case 'RUN OFF STALK': case 'STALK': return wp([{x:ox,y:y(8)}]);
@@ -499,6 +500,9 @@ const playbookData = {
     { name:'CLEMSON (BUNCH WHIP)', surface:'3×1', formation:'BUNCH', family:'SLANTS',
       routes: { Z:{route:'WHIP',assignment:'Whip — bust out then settle back underneath'}, H:{route:'SPRAY SLANT',assignment:'Spray slant — flatter angle, full speed inside'}, Y:{route:'FADE',assignment:'Fade — backside clear'}, X:{route:'SLANT',assignment:'Slant'}, B:{route:'-',assignment:'Pass protection'} },
       qbNotes: ['1 big step drop','Whip tag — man-beater, game-week call','Alert fade vs. Man coverage'] },
+    { name:'TEXAS (X SUCKER)', surface:'2×2', formation:'DEUCE', family:'STACKING-OUTSIDE',
+      routes: { Z:{route:'SLOT FADE',assignment:'Press vertical & fade to numbers'}, H:{route:'SLOT FADE',assignment:'Press vertical & fade to numbers'}, Y:{route:'SLOT FADE',assignment:'Press vertical & fade to numbers'}, X:{route:'SUCKER',assignment:'Push on hitch, stutter feet, come off slot fade’s butt'}, B:{route:'-',assignment:'Pass protection'} },
+      qbNotes: ['Dropback concept','Progression: Slot fade opposite / Sucker / Back','Variant of TEXAS that disguises the fade with a sucker route'] },
   ],
   screens: [
     { name:'SMU (TUNNEL)', surface:'3×1', formation:'BASE', family:'TUNNEL SCREEN',
@@ -507,9 +511,15 @@ const playbookData = {
     { name:'LSU 1 (BOUNDARY)', surface:'3×1', formation:'BASE', family:'ALLEY SCREEN',
       routes: { Z:{route:'BLOCK MDM',assignment:'Block most dangerous man'}, H:{route:'TUNNEL SCREEN',assignment:'Tunnel screen — ride the wave'}, Y:{route:'PUSH 3 VERTICAL KICK OUT #1',assignment:'Push 3 vertical, kick out #1'}, X:{route:'3 STEPS VERTICAL/ RETRACE/ ATTACK BALL/ "RIDE THE WAVE"',assignment:'3 steps vertical, retrace, attack ball'}, B:{route:'SWING',assignment:'Swing OPPOSITE of call — expect a throw'} },
       qbNotes: ['Presnap swing — one step, eyes to swing','Retreat and throw alley','PST: High wall; PSG: Set & kick #2','C: Set & block #3; BSG: Rat kill'] },
+    { name:'LSU 2 (MIRROR)', surface:'3×1', formation:'BASE', family:'ALLEY SCREEN',
+      routes: { Z:{route:'BLOCK #1',assignment:'Block #1'}, H:{route:'3 STEPS VERTICAL/ RETRACE/ ATTACK BALL/ "RIDE THE WAVE"',assignment:'3 steps vertical, retrace, attack ball, ride the wave'}, Y:{route:'PUSH 3 VERTICAL KICK OUT #2',assignment:'Push up 3 & kick out #2'}, X:{route:'BLOCK MDM',assignment:'Block most dangerous man'}, B:{route:'SWING',assignment:'Swing OPPOSITE of call — expect a throw'} },
+      qbNotes: ['Mirror of LSU 1 — screen flipped to the H side','Presnap swing — one step, eyes to swing','PST: High wall; PSG/C: Set & block #3','BSG: Rat kill; BST: High wall'] },
     { name:'FSU 1 (BOUNDARY)', surface:'3×1', formation:'BASE', family:'OL SCREEN',
       routes: { Z:{route:'BLOCK MDM',assignment:'Block most dangerous man'}, H:{route:'BLOCK MDM',assignment:'Block most dangerous man'}, Y:{route:'PUSH 3 VERTICAL KICK OUT #1',assignment:'Push 3 vertical, kick out #1'}, X:{route:'3 STEPS VERTICAL/ RETRACE/ ATTACK BALL/ "RIDE THE WAVE"',assignment:'3 steps vertical, retrace, catch ball'}, B:{route:'SWING',assignment:'Fake Chargers away from screen'} },
       qbNotes: ['Fake Chargers away / retreat / throw screen','PST: Chargers opposite 2 steps / kick out #2','PSG: Chargers opposite / block #3','C: Chargers opposite / rat kill'] },
+    { name:'FSU 2 (MIRROR)', surface:'3×1', formation:'BASE', family:'OL SCREEN',
+      routes: { Z:{route:'BLOCK #1',assignment:'Block #1'}, H:{route:'3 STEPS VERTICAL/ RETRACE/ ATTACK BALL/ "RIDE THE WAVE"',assignment:'3 steps vertical, retrace, attack ball, ride the wave'}, Y:{route:'PUSH 3 VERTICAL KICK OUT #2',assignment:'Push up 3 & kick out #2'}, X:{route:'BLOCK MDM',assignment:'Block most dangerous man'}, B:{route:'SWING',assignment:'Fake Chargers away from screen'} },
+      qbNotes: ['Mirror of FSU 1 with Chargers fake action','Fake Chargers opposite / retreat / throw screen','PST: Chargers opposite 2 steps, kick #3','PSG: Chargers opposite 2 steps, block #4','C: Chargers opposite, rat kill; BSG/BST: Chargers opposite'] },
     { name:'USC (ARROW)', surface:'3×1', formation:'BASE', family:'ARROW SCREEN',
       routes: { Z:{route:'RUN OFF STALK',assignment:'Run off stalk (CB)'}, H:{route:'RUN OFF STALK',assignment:'Run off stalk'}, Y:{route:'PUSH 3 VERTICAL KICK OUT #1',assignment:'Push 3 vertical, kick out #1'}, X:{route:'RUN OFF STALK',assignment:'Run off stalk'}, B:{route:'ARROW',assignment:'6 steps on arrow, stop, face QB'} },
       qbNotes: ['1 step, sell pass, drift back','1. Throw arrow screen to B','2. Throw tunnel if needed','PST: High wall; PSG/C: Set & release on tunnel'] },
@@ -525,6 +535,9 @@ const motions = [
   { name:'TIP', desc:'Same path as TRADE, but the receiver lands tight to the offensive line as a sniffer (2–3 yards off the ball). Can lead-block on the run.' },
   { name:'HOP', desc:'A very short inside hop — just a step or two. Often used as a simple pre-snap RPO read trigger.' },
   { name:'BAM', desc:'Receiver motions toward the boundary, away from the field. Creates a boundary overload.' },
+  { name:'SHUFFLE', desc:'Pre-snap motion AWAY from the direction of the break — if the route breaks in, shuffle out; if it breaks out, shuffle in. Disguises the route\'s eventual direction.' },
+  { name:'JET', desc:'Traditional jet sweep motion — full speed in front of the QB at the snap.' },
+  { name:'BOOM', desc:'Begins like ZOOM, then turns around into JET motion roughly 2 yards outside the tackle. Combines a delayed read with full jet speed.' },
 ];
 
 // ==================== COVERAGES ====================
