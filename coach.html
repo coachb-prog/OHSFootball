@@ -1497,13 +1497,23 @@ function ssRunConceptBucket(r) {
   const p = String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase();
   return p || null;
 }
+// OFF PLAY carries a PRO/CON suffix that's just the strong/weak run direction, not part of the
+// call's identity — strip it so the same RPO call groups together regardless of run direction.
+function ssOffPlayBase(r) {
+  const p = String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase();
+  return p.replace(/\b(PRO|CON)\b/g, '').replace(/\s+/g, ' ').trim();
+}
 function ssRPOComboBucket(r) {
-  // Only pull a run tag from rows that actually resulted in a run, and a pass tag/concept from
-  // rows that actually resulted in a pass — CONCEPT holds a run-tag value on run-result RPO rows,
-  // so reading it unconditionally would falsely echo the run tag into the pass side of the combo.
-  const runPart = ssIsRun(r) ? (String(r.runTag == null ? '' : r.runTag).trim().toUpperCase() || String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase()) : '';
-  const passPart = ssIsPass(r) ? (String(r.concept == null ? '' : r.concept).trim().toUpperCase() || String(r.passTag == null ? '' : r.passTag).trim().toUpperCase()) : '';
-  return (runPart || '—') + ' / ' + (passPart || '—');
+  // RUN TAG holds the called RPO tag (e.g. "HAWAII") on every rep of that call, whether the read
+  // ended up a give or a pull — so "GIANTS PRO" + RUN TAG "HAWAII" groups as "GIANTS HAWAII"
+  // regardless of which side of the RPO actually hit. Fall back to PASS TAG/CONCEPT only if a
+  // row genuinely has no RUN TAG charted.
+  const base = ssOffPlayBase(r);
+  const tag = String(r.runTag == null ? '' : r.runTag).trim().toUpperCase()
+    || String(r.passTag == null ? '' : r.passTag).trim().toUpperCase()
+    || String(r.concept == null ? '' : r.concept).trim().toUpperCase();
+  if (base && tag) return base + ' ' + tag;
+  return base || tag || '—';
 }
 
 function ssRunPassSplitHTML(rs) {
@@ -1674,7 +1684,7 @@ function ssRenderRPOTable(rows) {
     const td = rs.filter(dbIsTD).length;
     const to = rs.filter(r => ssIsInterception(r) || ssIsFumble(r)).length;
     return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
-      <td><strong>${dbEscapeHTML(combo)}</strong><br><span style="color:var(--gray);font-size:11px">RUN TAG / PASS TAG — ${rs.length} reps${dbLowSampleTag(rs.length)}</span></td>
+      <td><strong>${dbEscapeHTML(combo)}</strong><br><span style="color:var(--gray);font-size:11px">OFF PLAY + TAG — ${rs.length} reps${dbLowSampleTag(rs.length)}</span></td>
       <td>${runRs.length} give / ${passRs.length} pull</td>
       <td>${runRs.length ? runYards + ' yds (' + ypc + '/carry)' : '—'}</td>
       <td>${passRs.length ? comp + '/' + passRs.length + ' (' + passYards + ' yds, ' + ypa + '/att)' : '—'}</td>
@@ -1683,7 +1693,7 @@ function ssRenderRPOTable(rows) {
       <td>${ssSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap('RPO — RUN TAG / PASS TAG EFFICIENCY', `<div class="db-table-wrap"><table class="db-table"><tr><th>RUN TAG / PASS TAG</th><th>GIVE / PULL</th><th>RUN RESULT</th><th>PASS RESULT</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('RPO — OFF PLAY + TAG EFFICIENCY', `<div class="db-table-wrap"><table class="db-table"><tr><th>OFF PLAY + TAG</th><th>GIVE / PULL</th><th>RUN RESULT</th><th>PASS RESULT</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
 }
 
 function ssRenderEffectivenessBarGroup(title, rows, groupFn, n, sortAsc) {
