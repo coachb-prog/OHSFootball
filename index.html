@@ -2178,6 +2178,12 @@ function dbPersonnelBucket(r) {
   const v = String(r.personnel == null ? '' : r.personnel).trim().toUpperCase();
   return v || null;
 }
+function dbFormPersonnelBucket(r) {
+  const f = String(r.offForm == null ? '' : r.offForm).trim().toUpperCase();
+  const p = String(r.personnel == null ? '' : r.personnel).trim().toUpperCase();
+  if (!f) return null;
+  return p ? f + ' — ' + p : f;
+}
 
 function dbComputeOverall(rows) {
   const total = rows.length;
@@ -2447,7 +2453,7 @@ const DB_TABS = [
   { id: 'downdist', label: 'DOWN & DISTANCE', render: rows => dbRenderGroupTable(rows, dbDownDistBucket, 'BY DOWN & DISTANCE') },
   { id: 'hash', label: 'HASH', render: rows => dbRenderGroupTable(rows, dbHashBucket, 'BY HASH') },
   { id: 'zone', label: 'FIELD ZONE', render: rows => dbRenderGroupTable(rows, dbZoneBucket, 'BY FIELD ZONE') },
-  { id: 'formation', label: 'FORMATION', render: rows => dbRenderGroupTable(rows, dbFormBucket, 'BY OFFENSIVE FORMATION FACED') },
+  { id: 'formation', label: 'FORMATION', render: rows => dbRenderGroupTable(rows, dbFormPersonnelBucket, 'BY OFFENSIVE FORMATION & PERSONNEL FACED') },
   { id: 'personnel', label: 'PERSONNEL', render: rows => dbRenderGroupTable(rows, dbPersonnelBucket, 'BY OFFENSIVE PERSONNEL FACED') }
 ];
 
