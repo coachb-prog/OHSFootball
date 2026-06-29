@@ -322,6 +322,9 @@ body {
 .db-game-del { color: var(--gray); font-weight: 900; cursor: pointer; padding: 0 4px; }
 .db-print-btn { background: var(--black3); border: 1px solid var(--gold); color: var(--gold); border-radius: 10px; padding: 12px; font-size: 13px; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; }
 .db-print-btn:hover, .db-print-btn:active { background: var(--gold); color: var(--black); }
+.db-backup-row { display: flex; gap: 8px; }
+.db-backup-btn { display: block; text-align: center; flex: 1; background: var(--black3); border: 1px solid #444; color: var(--white); border-radius: 10px; padding: 11px; font-size: 12px; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; }
+.db-backup-btn:hover, .db-backup-btn:active { background: #333; }
 .db-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .db-stat { background: var(--black2); border: 1px solid #333; border-radius: 10px; padding: 14px; text-align: center; }
 .db-stat-num { font-size: 18px; font-weight: 900; color: var(--gold); word-break: break-word; }
@@ -665,6 +668,13 @@ body {
       </label>
       <div class="db-upload-status" id="db-upload-status"></div>
       <button class="db-print-btn" onclick="printGameCard()">🖨️ PRINT GAME CARD</button>
+      <div class="db-backup-row">
+        <button class="db-backup-btn" onclick="dbExportData()">⬇️ EXPORT ALL DATA</button>
+        <label for="db-import-input">
+          <input type="file" id="db-import-input" accept=".json" onchange="handleDefImportFile(this)" style="display:none">
+          <span class="db-backup-btn">⬆️ IMPORT DATA</span>
+        </label>
+      </div>
     </div>
     <div id="db-dashboard"></div>
   </div>
@@ -2017,6 +2027,57 @@ function deleteDefOpponent(name) {
     document.getElementById('db-dashboard').innerHTML = '<div class="db-empty">Upload a breakdown file to see opponent tendencies.</div>';
   }
   renderOppList();
+}
+
+function dbExportData() {
+  const data = localStorage.getItem('rd_defbreak') || '{}';
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'defense-breakdown-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function handleDefImportFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('db-upload-status');
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (!imported || typeof imported !== 'object') throw new Error('Invalid file format');
+      const all = getDefOpponents();
+      let addedGames = 0;
+      Object.keys(imported).forEach(name => {
+        const entry = imported[name];
+        if (!entry || !Array.isArray(entry.games)) return;
+        if (!all[name]) all[name] = { games: [] };
+        const existingIds = new Set(all[name].games.map(g => g.id));
+        entry.games.forEach(g => {
+          if (!g || !g.id || !Array.isArray(g.rows) || existingIds.has(g.id)) return;
+          all[name].games.push(g);
+          existingIds.add(g.id);
+          addedGames++;
+        });
+      });
+      localStorage.setItem('rd_defbreak', JSON.stringify(all));
+      statusEl.textContent = '✅ Imported ' + addedGames + ' game(s)';
+      statusEl.className = 'db-upload-status ok';
+      renderOppList();
+      const names = Object.keys(all);
+      if (names.length) selectDefOpponent((currentDefOpponent && all[currentDefOpponent]) ? currentDefOpponent : names[names.length - 1]);
+    } catch (err) {
+      statusEl.textContent = '❌ ' + err.message;
+      statusEl.className = 'db-upload-status err';
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
 }
 
 function startDefBreakdown() {
