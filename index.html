@@ -2165,8 +2165,10 @@ function dbZoneBucket(r) {
   const y = parseFloat(r.yardLn);
   if (isNaN(y)) return null;
   if (y <= -20) return 'BACKED UP (OWN TERRITORY)';
-  if (y < 20) return 'OPEN FIELD (MIDFIELD)';
-  return 'PLUS / SCORING TERRITORY';
+  if (y <= 10) return 'GOALLINE (+10 AND IN)';
+  if (y <= 25) return 'REDZONE (+25 TO +11)';
+  if (y <= 35) return 'FRINGE (+35 TO +26)';
+  return 'OPEN FIELD (MIDFIELD)';
 }
 function dbFormBucket(r) {
   const v = String(r.offForm == null ? '' : r.offForm).trim().toUpperCase();
