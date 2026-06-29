@@ -1478,30 +1478,53 @@ function ssCategoryBucket(r) {
   const p = String(r.protection == null ? '' : r.protection).trim().toUpperCase();
   return SS_PROTECTION_CATEGORY[p] || null;
 }
+// Install/concept sheet lookup: maps a charted call word to its real concept/family name, keyed
+// by the pass-protection category it's called from (the same call word can mean a different
+// concept depending on protection — e.g. "HAWAII" is the HITCHES route as an RPO tag but the ATF
+// family as a dropback call). Free-text CONCEPT/TAG fields are inconsistent across charters, so
+// this lookup is the source of truth whenever the charted word matches the install.
+const SS_CONCEPT_LOOKUP = {
+  RUN: { GIANTS: 'INSIDE ZONE', CHARGERS: 'OUTSIDE ZONE', RAMS: 'POWER', CINCY: 'COUNTER', DENVER: 'DUO', BUCS: 'PIN & PULL', CHICAGO: 'ISO' },
+  RPO: { HAWAII: 'HITCHES', OREGON: 'OUT', CLEMSON: 'SLANT ARROW', MIAMI: 'SLANT WHEEL', PITTSBURGH: 'SPOT', TEXAS: 'SLOT FADE', COKES: 'GLANCE' },
+  'DROP BACK': { HAWAII: 'ATF', OREGON: 'HOLE', TEXAS: 'SMASH', PITTSBURGH: 'HOLE', CLEMSON: 'INSIDE/OUT', MIAMI: 'INSIDE/OUT', FLORIDA: 'FLOOD', LOUISVILLE: 'INSIDE/OUT', TENNESSEE: 'ATF', INDIANA: 'SMASH', KENTUCKY: 'VERT', SYRACUSE: 'STACKING', HOUSTON: 'INSIDE/OUT', MICHIGAN: 'MESH', 'WHIP/DIG': 'STACKING' },
+  SCREENS: { SMOKES: 'RPO SCREEN', FSU: 'RUN ACTION SCREEN', LSU: 'PASS ACTION SCREEN', SMU: 'DOUBLE SCREEN', USC: 'SLOW SCREEN' },
+  PLAYACTION: { WATER: 'TOP DOWN', ICE: 'TOP DOWN' },
+};
+function ssConceptFamilyLookup(category, word) {
+  const table = SS_CONCEPT_LOOKUP[category];
+  if (!table) return null;
+  const key = String(word == null ? '' : word).trim().toUpperCase().replace(/\s+/g, ' ');
+  return table[key] || null;
+}
+// OFF PLAY carries a PRO/CON suffix that's just the strong/weak run direction, not part of the
+// call's identity — strip it so the same call groups together regardless of run direction.
+function ssOffPlayBase(r) {
+  const p = String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase();
+  return p.replace(/\b(PRO|CON)\b/g, '').replace(/\s+/g, ' ').trim();
+}
 // CONCEPT alone doesn't say run-or-pass (RPO rows reuse it for either result), so
 // pass/run concept breakdowns must each filter by actual PLAY TYPE (ssIsPass/ssIsRun)
 // before grouping — otherwise a run-result RPO snap pollutes the passing numbers and vice versa.
 function ssPassConceptBucket(r) {
+  const playWord = ssOffPlayBase(r);
+  const cat = ssCategoryBucket(r);
+  const family = ssConceptFamilyLookup(cat, playWord);
+  if (family) return family + ' (' + playWord + ')';
   const c = String(r.concept == null ? '' : r.concept).trim().toUpperCase();
   if (c) return c;
   const t = String(r.passTag == null ? '' : r.passTag).trim().toUpperCase();
   if (t) return t;
-  const p = String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase();
-  return p || null;
+  return playWord || null;
 }
 function ssRunConceptBucket(r) {
+  const playWord = ssOffPlayBase(r);
+  const family = ssConceptFamilyLookup('RUN', playWord);
+  if (family) return family + ' (' + playWord + ')';
   const t = String(r.runTag == null ? '' : r.runTag).trim().toUpperCase();
   if (t) return t;
   const c = String(r.concept == null ? '' : r.concept).trim().toUpperCase();
   if (c) return c;
-  const p = String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase();
-  return p || null;
-}
-// OFF PLAY carries a PRO/CON suffix that's just the strong/weak run direction, not part of the
-// call's identity — strip it so the same RPO call groups together regardless of run direction.
-function ssOffPlayBase(r) {
-  const p = String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase();
-  return p.replace(/\b(PRO|CON)\b/g, '').replace(/\s+/g, ' ').trim();
+  return playWord || null;
 }
 function ssRPOComboBucket(r) {
   // RUN TAG holds the called RPO tag (e.g. "HAWAII") on every rep of that call, whether the read
@@ -1512,8 +1535,9 @@ function ssRPOComboBucket(r) {
   const tag = String(r.runTag == null ? '' : r.runTag).trim().toUpperCase()
     || String(r.passTag == null ? '' : r.passTag).trim().toUpperCase()
     || String(r.concept == null ? '' : r.concept).trim().toUpperCase();
-  if (base && tag) return base + ' ' + tag;
-  return base || tag || '—';
+  const label = (base && tag) ? base + ' ' + tag : (base || tag || '—');
+  const route = ssConceptFamilyLookup('RPO', tag);
+  return route ? label + ' (' + route + ')' : label;
 }
 
 function ssRunPassSplitHTML(rs) {
@@ -1623,8 +1647,11 @@ function ssRenderCategoryTable(rows) {
   return dbPanelWrap('BY PASS CONCEPT CATEGORY (PASS RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>CATEGORY</th><th>COMP/ATT</th><th>YARDS</th><th>TD</th><th>INT</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
 }
 
+function ssIsRPORow(r) { return ssCategoryBucket(r) === 'RPO'; }
 function ssRenderPassConceptTable(rows) {
-  const passRows = rows.filter(ssIsPass);
+  // RPO pulls have their own dedicated tab — leave them out here so a run-tagged RPO call
+  // doesn't show up as a "pass concept" just because that particular rep was thrown.
+  const passRows = rows.filter(r => ssIsPass(r) && !ssIsRPORow(r));
   const groups = dbGroupBy(passRows, ssPassConceptBucket);
   const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length).slice(0, 30);
   if (!entries.length) return '<div class="db-empty">No pass plays with a CONCEPT/PASS TAG found yet.</div>';
@@ -1647,7 +1674,8 @@ function ssRenderPassConceptTable(rows) {
 }
 
 function ssRenderRunConceptTable(rows) {
-  const runRows = rows.filter(ssIsRun);
+  // RPO gives have their own dedicated tab — leave them out here so they don't double count.
+  const runRows = rows.filter(r => ssIsRun(r) && !ssIsRPORow(r));
   const groups = dbGroupBy(runRows, ssRunConceptBucket);
   const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
   if (!entries.length) return '<div class="db-empty">No run plays with a RUN TAG/CONCEPT found yet.</div>';
@@ -1710,15 +1738,19 @@ function ssRenderEffectivenessBarGroup(title, rows, groupFn, n, sortAsc) {
 function ssRenderBarSection(rows) {
   const passRows = rows.filter(ssIsPass);
   const runRows = rows.filter(ssIsRun);
+  // RPO has its own dedicated tab, so leave those reps out of the pass/run concept bars —
+  // otherwise an RPO pull shows up as a "pass concept" just because that rep was thrown.
+  const passConceptRows = passRows.filter(r => !ssIsRPORow(r));
+  const runConceptRows = runRows.filter(r => !ssIsRPORow(r));
   const groups = [
     dbRenderBarGroup('MOST USED CATEGORIES', dbFreqByFn(passRows, ssCategoryBucket), 7),
     ssRenderEffectivenessBarGroup('MOST SUCCESSFUL CATEGORIES', passRows, ssCategoryBucket, 7, false),
-    dbRenderBarGroup('MOST USED PASS CONCEPTS', dbFreqByFn(passRows, ssPassConceptBucket), 6),
-    ssRenderEffectivenessBarGroup('MOST SUCCESSFUL PASS CONCEPTS', passRows, ssPassConceptBucket, 6, false),
-    ssRenderEffectivenessBarGroup('LEAST SUCCESSFUL PASS CONCEPTS (NEEDS WORK)', passRows, ssPassConceptBucket, 6, true),
-    dbRenderBarGroup('MOST USED RUN CONCEPTS', dbFreqByFn(runRows, ssRunConceptBucket), 6),
-    ssRenderEffectivenessBarGroup('MOST SUCCESSFUL RUN CONCEPTS', runRows, ssRunConceptBucket, 6, false),
-    ssRenderEffectivenessBarGroup('LEAST SUCCESSFUL RUN CONCEPTS (NEEDS WORK)', runRows, ssRunConceptBucket, 6, true),
+    dbRenderBarGroup('MOST USED PASS CONCEPTS', dbFreqByFn(passConceptRows, ssPassConceptBucket), 6),
+    ssRenderEffectivenessBarGroup('MOST SUCCESSFUL PASS CONCEPTS', passConceptRows, ssPassConceptBucket, 6, false),
+    ssRenderEffectivenessBarGroup('LEAST SUCCESSFUL PASS CONCEPTS (NEEDS WORK)', passConceptRows, ssPassConceptBucket, 6, true),
+    dbRenderBarGroup('MOST USED RUN CONCEPTS', dbFreqByFn(runConceptRows, ssRunConceptBucket), 6),
+    ssRenderEffectivenessBarGroup('MOST SUCCESSFUL RUN CONCEPTS', runConceptRows, ssRunConceptBucket, 6, false),
+    ssRenderEffectivenessBarGroup('LEAST SUCCESSFUL RUN CONCEPTS (NEEDS WORK)', runConceptRows, ssRunConceptBucket, 6, true),
   ].filter(Boolean);
   if (!groups.length) return '';
   return dbSectionWrap('TENDENCY OVERVIEW', `<div class="db-bar-grid">${groups.join('')}</div>`);
@@ -1727,7 +1759,7 @@ function ssRenderBarSection(rows) {
 function ssGenerateInsights(rows) {
   const items = [];
   // Best/worst categories and concepts — what's working, what needs emphasis.
-  [[rows.filter(ssIsPass), ssCategoryBucket, 'pass-concept category'], [rows.filter(ssIsPass), ssPassConceptBucket, 'passing concept'], [rows.filter(ssIsRun), ssRunConceptBucket, 'run concept']].forEach(([rowSet, groupFn, label]) => {
+  [[rows.filter(ssIsPass), ssCategoryBucket, 'pass-concept category'], [rows.filter(r => ssIsPass(r) && !ssIsRPORow(r)), ssPassConceptBucket, 'passing concept'], [rows.filter(r => ssIsRun(r) && !ssIsRPORow(r)), ssRunConceptBucket, 'run concept']].forEach(([rowSet, groupFn, label]) => {
     const groups = dbGroupBy(rowSet, groupFn);
     const entries = Object.entries(groups)
       .map(([key, rs]) => ({ key, rs, stats: dbSuccessStats(rs) }))
@@ -1765,7 +1797,7 @@ function ssGenerateInsights(rows) {
     });
   });
   // Turnover-prone concepts — interceptions for pass concepts, fumbles for run concepts.
-  const passConceptGroups = dbGroupBy(rows.filter(ssIsPass), ssPassConceptBucket);
+  const passConceptGroups = dbGroupBy(rows.filter(r => ssIsPass(r) && !ssIsRPORow(r)), ssPassConceptBucket);
   Object.entries(passConceptGroups).forEach(([concept, rs]) => {
     if (rs.length < 5) return;
     const toCount = rs.filter(ssIsInterception).length;
@@ -1774,7 +1806,7 @@ function ssGenerateInsights(rows) {
       items.push({ weight: rs.length * 2, text: `<strong>${dbEscapeHTML(concept)}</strong> pass concept has been intercepted on ${toPct}% of its snaps (${toCount}/${rs.length}) — point of emphasis.` });
     }
   });
-  const runConceptGroups = dbGroupBy(rows.filter(ssIsRun), ssRunConceptBucket);
+  const runConceptGroups = dbGroupBy(rows.filter(r => ssIsRun(r) && !ssIsRPORow(r)), ssRunConceptBucket);
   Object.entries(runConceptGroups).forEach(([concept, rs]) => {
     if (rs.length < 5) return;
     const toCount = rs.filter(ssIsFumble).length;
