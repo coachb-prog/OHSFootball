@@ -421,13 +421,13 @@ body {
         </div>
         <div class="mode-badge">▶</div>
       </button>
-      <button class="mode-btn mode-btn-soon" disabled>
+      <button class="mode-btn mode-btn-featured" onclick="startSelfScout()">
         <div class="mode-icon">🔄</div>
         <div class="mode-info">
           <div class="mode-name">SELF SCOUT</div>
           <div class="mode-desc">Analyze our own offensive tendencies</div>
         </div>
-        <div class="mode-badge">SOON</div>
+        <div class="mode-badge">▶</div>
       </button>
       <button class="mode-btn mode-btn-soon" disabled>
         <div class="mode-icon">🧰</div>
@@ -679,6 +679,35 @@ body {
     <div id="db-dashboard"></div>
   </div>
   <div id="db-print-card"></div>
+</div>
+
+<!-- SELF SCOUT -->
+<div id="selfscout-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">SELF SCOUT</div>
+    <div class="header-xp"></div>
+  </div>
+  <div class="db-wrap">
+    <div class="db-card">
+      <div class="db-card-title">GAMES</div>
+      <div id="ss-games-list"></div>
+      <input class="db-input" id="ss-game-label" placeholder="GAME LABEL (optional, e.g. WK 3 @ TRINITY)" maxlength="32">
+      <label for="ss-file-input">
+        <input type="file" id="ss-file-input" accept=".csv,.xlsx,.xls" onchange="handleSSFile(this)" style="display:none">
+        <span class="db-upload-btn">📁 UPLOAD OFFENSE BREAKDOWN FILE (.csv / .xlsx)</span>
+      </label>
+      <div class="db-upload-status" id="ss-upload-status"></div>
+      <div class="db-backup-row">
+        <button class="db-backup-btn" onclick="ssExportData()">⬇️ EXPORT ALL DATA</button>
+        <label for="ss-import-input">
+          <input type="file" id="ss-import-input" accept=".json" onchange="handleSSImportFile(this)" style="display:none">
+          <span class="db-backup-btn">⬆️ IMPORT DATA</span>
+        </label>
+      </div>
+    </div>
+    <div id="ss-dashboard"></div>
+  </div>
 </div>
 
 <!-- SCORE SCREEN -->
@@ -2660,6 +2689,468 @@ function printGameCard() {
     </div>` : ''}
   `;
   window.print();
+}
+
+// ==================== SELF SCOUT ====================
+// Same Hudl-style CSV/columns as Defense Breakdown, but filtered to our own
+// offensive snaps (ODK = O) and analyzed for what's working vs. not.
+let ssActiveGameId = 'ALL';
+let ssActiveTab = null;
+
+function getSSData() {
+  const raw = JSON.parse(localStorage.getItem('rd_selfscout') || 'null');
+  return (raw && Array.isArray(raw.games)) ? raw : { games: [] };
+}
+function saveSSData(data) {
+  localStorage.setItem('rd_selfscout', JSON.stringify(data));
+}
+function ssAddGame(label, rows) {
+  const data = getSSData();
+  data.games.push({ id: 'sg' + Date.now(), label: label || ('GAME ' + (data.games.length + 1)), rows, savedAt: Date.now() });
+  saveSSData(data);
+}
+function ssDeleteGame(gameId) {
+  const data = getSSData();
+  data.games = data.games.filter(g => g.id !== gameId);
+  saveSSData(data);
+  if (ssActiveGameId === gameId) ssActiveGameId = 'ALL';
+  renderSSGamesList();
+  renderSSDashboardFromState();
+}
+function ssGetActiveRows() {
+  const data = getSSData();
+  if (ssActiveGameId === 'ALL') return data.games.reduce((acc, g) => acc.concat(g.rows), []);
+  const g = data.games.find(g => g.id === ssActiveGameId);
+  return g ? g.rows : [];
+}
+function renderSSDashboardFromState() {
+  const rows = ssGetActiveRows();
+  if (rows.length) renderSSDashboard(rows);
+  else document.getElementById('ss-dashboard').innerHTML = '<div class="db-empty">Upload an offense breakdown file to see season tendencies.</div>';
+}
+
+async function handleSSFile(input) {
+  const file = input.files[0];
+  const statusEl = document.getElementById('ss-upload-status');
+  if (!file) return;
+  statusEl.textContent = 'Reading file…';
+  statusEl.className = 'db-upload-status';
+  try {
+    const ext = file.name.split('.').pop().toLowerCase();
+    let aoa;
+    if (ext === 'csv') {
+      const text = await file.text();
+      aoa = dbParseCSV(text);
+    } else {
+      await dbLoadXLSXLib();
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+    }
+    const rows = dbRowsToObjects(aoa);
+    if (!rows.length) throw new Error('No data rows found in that file');
+    const label = document.getElementById('ss-game-label').value.trim().toUpperCase();
+    ssAddGame(label, rows);
+    document.getElementById('ss-game-label').value = '';
+    statusEl.textContent = '✅ Loaded ' + rows.length + ' plays';
+    statusEl.className = 'db-upload-status ok';
+    ssActiveGameId = 'ALL';
+    renderSSGamesList();
+    renderSSDashboardFromState();
+  } catch (err) {
+    statusEl.textContent = '❌ ' + err.message;
+    statusEl.className = 'db-upload-status err';
+  }
+  input.value = '';
+}
+
+function ssExportData() {
+  const data = localStorage.getItem('rd_selfscout') || '{"games":[]}';
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'self-scout-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function handleSSImportFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('ss-upload-status');
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (!imported || !Array.isArray(imported.games)) throw new Error('Invalid file format');
+      const data = getSSData();
+      const existingIds = new Set(data.games.map(g => g.id));
+      let addedGames = 0;
+      imported.games.forEach(g => {
+        if (!g || !g.id || !Array.isArray(g.rows) || existingIds.has(g.id)) return;
+        data.games.push(g);
+        existingIds.add(g.id);
+        addedGames++;
+      });
+      saveSSData(data);
+      statusEl.textContent = '✅ Imported ' + addedGames + ' game(s)';
+      statusEl.className = 'db-upload-status ok';
+      renderSSGamesList();
+      renderSSDashboardFromState();
+    } catch (err) {
+      statusEl.textContent = '❌ ' + err.message;
+      statusEl.className = 'db-upload-status err';
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function renderSSGamesList() {
+  const data = getSSData();
+  const listEl = document.getElementById('ss-games-list');
+  if (!data.games.length) { listEl.innerHTML = ''; return; }
+  const totalPlays = data.games.reduce((s, g) => s + g.rows.length, 0);
+  let html = `<div class="db-games-title">GAMES LOADED THIS SEASON</div>`;
+  if (data.games.length > 1) {
+    html += `<div class="db-game-row db-game-filter${ssActiveGameId === 'ALL' ? ' active' : ''}" data-game-filter="ALL"><span>ALL GAMES — ${totalPlays} plays</span></div>`;
+  }
+  html += data.games.map(g => {
+    return `<div class="db-game-row db-game-filter${ssActiveGameId === g.id ? ' active' : ''}" data-game-filter="${dbEscapeHTML(g.id)}"><span>${dbEscapeHTML(g.label)} — ${g.rows.length} plays</span><span class="db-game-del" data-game-del="${dbEscapeHTML(g.id)}">×</span></div>`;
+  }).join('');
+  listEl.innerHTML = html;
+  listEl.querySelectorAll('.db-game-del').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); ssDeleteGame(el.dataset.gameDel); });
+  });
+  listEl.querySelectorAll('.db-game-filter').forEach(el => {
+    el.addEventListener('click', () => {
+      ssActiveGameId = el.dataset.gameFilter;
+      renderSSGamesList();
+      renderSSDashboardFromState();
+    });
+  });
+}
+
+function startSelfScout() {
+  showScreen('selfscout-screen');
+  renderSSGamesList();
+  renderSSDashboardFromState();
+}
+
+// ---- offense-specific buckets (reuses dbYards/dbIsTD/dbIsTurnover/dbIsDeadPlay/dbIsOffenseSuccess) ----
+function ssIsRun(r) { return String(r.playType == null ? '' : r.playType).trim().toUpperCase().startsWith('R'); }
+function ssIsPass(r) { return String(r.playType == null ? '' : r.playType).trim().toUpperCase().startsWith('P'); }
+function ssIsComplete(r) { return dbResultStr(r).startsWith('COMPLETE'); }
+function ssIsInterception(r) { return dbResultStr(r).includes('INTERCEPTION'); }
+function ssIsFumble(r) { return dbResultStr(r).includes('FUMBLE'); }
+function ssIsConversion(r) {
+  if (dbIsTD(r)) return true;
+  const dist = parseFloat(r.dist);
+  if (isNaN(dist)) return false;
+  return dbYards(r) >= dist;
+}
+const SS_PROTECTION_CATEGORY = {
+  '60': 'QUICK GAME', '61': 'QUICK GAME',
+  '90': 'DROP BACK', '91': 'DROP BACK',
+  '70': 'PLAYACTION', '80': 'PLAYACTION',
+  'RIVER': 'SPRINT OUT', 'LAKE': 'SPRINT OUT',
+  'BOSTON': 'BOOTS',
+  'RUN': 'RPO',
+  'SCREEN': 'SCREENS',
+};
+const SS_CATEGORY_ORDER = ['QUICK GAME', 'DROP BACK', 'PLAYACTION', 'SPRINT OUT', 'BOOTS', 'RPO', 'SCREENS'];
+function ssCategoryBucket(r) {
+  const p = String(r.protection == null ? '' : r.protection).trim().toUpperCase();
+  return SS_PROTECTION_CATEGORY[p] || null;
+}
+function ssConceptBucket(r) {
+  const c = String(r.concept == null ? '' : r.concept).trim().toUpperCase();
+  if (c) return c;
+  const p = String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase();
+  return p || null;
+}
+function ssRunTagBucket(r) {
+  const v = String(r.runTag == null ? '' : r.runTag).trim().toUpperCase();
+  return v || null;
+}
+
+function ssRunPassSplitHTML(rs) {
+  const runs = rs.filter(ssIsRun).length;
+  const passes = rs.filter(ssIsPass).length;
+  return `${runs}R / ${passes}P`;
+}
+
+function ssComputeOverall(rows, numGames) {
+  const chartable = rows.filter(r => !dbIsDeadPlay(r));
+  const runRows = chartable.filter(ssIsRun);
+  const passRows = chartable.filter(ssIsPass);
+  const passAtt = passRows.length;
+  const passComp = passRows.filter(ssIsComplete).length;
+  const passYards = passRows.reduce((s, r) => s + dbYards(r), 0);
+  const passTD = passRows.filter(dbIsTD).length;
+  const passInt = passRows.filter(ssIsInterception).length;
+  const rushYards = runRows.reduce((s, r) => s + dbYards(r), 0);
+  const rushTD = runRows.filter(dbIsTD).length;
+  const rushFumbles = runRows.filter(ssIsFumble).length;
+  const totalYards = chartable.reduce((s, r) => s + dbYards(r), 0);
+  const totalTD = chartable.filter(dbIsTD).length;
+  const thirdDownRows = chartable.filter(r => parseInt(r.down, 10) === 3);
+  const fourthDownRows = chartable.filter(r => parseInt(r.down, 10) === 4);
+  const thirdConv = thirdDownRows.filter(ssIsConversion).length;
+  const fourthConv = fourthDownRows.filter(ssIsConversion).length;
+  return {
+    total: chartable.length,
+    runCount: runRows.length,
+    passCount: passRows.length,
+    passing: { comp: passComp, att: passAtt, compPct: passAtt ? Math.round(passComp / passAtt * 100) : 0, yards: passYards, ypa: passAtt ? Math.round(passYards / passAtt * 10) / 10 : 0, td: passTD, int: passInt },
+    rushing: { carries: runRows.length, yards: rushYards, ypc: runRows.length ? Math.round(rushYards / runRows.length * 10) / 10 : 0, td: rushTD, fumbles: rushFumbles },
+    totalYards, yardsPerPlay: chartable.length ? Math.round(totalYards / chartable.length * 10) / 10 : 0,
+    yardsPerGame: numGames ? Math.round(totalYards / numGames) : null,
+    totalTD,
+    successStats: dbSuccessStats(rows),
+    thirdDown: { att: thirdDownRows.length, conv: thirdConv, pct: thirdDownRows.length ? Math.round(thirdConv / thirdDownRows.length * 100) : null },
+    fourthDown: { att: fourthDownRows.length, conv: fourthConv, pct: fourthDownRows.length ? Math.round(fourthConv / fourthDownRows.length * 100) : null },
+  };
+}
+
+function ssRenderStats(overall) {
+  return `<div class="db-stats-grid">
+    <div class="db-stat"><div class="db-stat-num">${overall.total}</div><div class="db-stat-label">PLAYS CHARTED</div></div>
+    <div class="db-stat"><div class="db-stat-num">${overall.totalYards}</div><div class="db-stat-label">TOTAL YARDS</div></div>
+    <div class="db-stat"><div class="db-stat-num">${overall.yardsPerPlay}</div><div class="db-stat-label">YDS / PLAY</div></div>
+    <div class="db-stat"><div class="db-stat-num">${overall.runCount}R / ${overall.passCount}P</div><div class="db-stat-label">RUN-PASS SPLIT</div></div>
+    <div class="db-stat"><div class="db-stat-num">${overall.successStats ? overall.successStats.successPct + '%' : '—'}</div><div class="db-stat-label">SUCCESS RATE</div></div>
+    <div class="db-stat"><div class="db-stat-num">${overall.totalTD}</div><div class="db-stat-label">OFFENSIVE TDs</div></div>
+    <div class="db-stat"><div class="db-stat-num">${overall.thirdDown.pct != null ? overall.thirdDown.pct + '%' : '—'}</div><div class="db-stat-label">3RD DOWN CONV (${overall.thirdDown.conv}/${overall.thirdDown.att})</div></div>
+    <div class="db-stat"><div class="db-stat-num">${overall.fourthDown.pct != null ? overall.fourthDown.pct + '%' : '—'}</div><div class="db-stat-label">4TH DOWN CONV (${overall.fourthDown.conv}/${overall.fourthDown.att})</div></div>
+  </div>`;
+}
+
+function ssRenderPassRushSummary(overall) {
+  const p = overall.passing, r = overall.rushing;
+  return dbSectionWrap('PASSING & RUSHING SUMMARY', `<div class="db-table-wrap"><table class="db-table">
+    <tr><th></th><th>COMP/ATT</th><th>COMP %</th><th>YARDS</th><th>Y/ATT or Y/CARRY</th><th>TD</th><th>INT / FUMBLES</th></tr>
+    <tr><td><strong>PASSING</strong></td><td>${p.comp}/${p.att}</td><td>${p.compPct}%</td><td>${p.yards}</td><td>${p.ypa}</td><td>${p.td}</td><td>${p.int}</td></tr>
+    <tr><td><strong>RUSHING</strong></td><td>—</td><td>—</td><td>${r.yards}</td><td>${r.ypc}</td><td>${r.td}</td><td>${r.fumbles}</td></tr>
+  </table></div>`);
+}
+
+function ssSuccessCellHTML(rs) { return dbSuccessCellHTML(rs); }
+
+function ssRenderGroupTable(rows, groupFn, title, columnLabel, orderList) {
+  const groups = dbGroupBy(rows, groupFn);
+  const buckets = orderList ? orderList.filter(k => groups[k]) : Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
+  if (!buckets.length) return '';
+  const trs = buckets.map(b => {
+    const rs = groups[b];
+    const td = rs.filter(dbIsTD).length;
+    const to = rs.filter(r => ssIsInterception(r) || ssIsFumble(r)).length;
+    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+      <td><strong>${dbEscapeHTML(b)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} plays${dbLowSampleTag(rs.length)}</span></td>
+      <td>${ssRunPassSplitHTML(rs)}</td>
+      <td>${td}</td>
+      <td>${to}</td>
+      <td>${ssSuccessCellHTML(rs)}</td>
+    </tr>`;
+  }).join('');
+  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>${columnLabel}</th><th>RUN/PASS</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+}
+
+function ssRenderCategoryTable(rows) {
+  const groups = dbGroupBy(rows, ssCategoryBucket);
+  const buckets = SS_CATEGORY_ORDER.filter(k => groups[k]);
+  if (!buckets.length) return '<div class="db-empty">No PROTECTION values matched a known pass-concept category yet.</div>';
+  const trs = buckets.map(b => {
+    const rs = groups[b];
+    const passRs = rs.filter(ssIsPass);
+    const comp = passRs.filter(ssIsComplete).length;
+    const yards = rs.reduce((s, r) => s + dbYards(r), 0);
+    const td = rs.filter(dbIsTD).length;
+    const to = rs.filter(r => ssIsInterception(r) || ssIsFumble(r)).length;
+    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+      <td><strong>${dbEscapeHTML(b)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} plays${dbLowSampleTag(rs.length)}</span></td>
+      <td>${passRs.length ? comp + '/' + passRs.length : '—'}</td>
+      <td>${yards} <span style="color:var(--gray);font-size:11px">(${rs.length ? Math.round(yards / rs.length * 10) / 10 : 0}/play)</span></td>
+      <td>${td}</td>
+      <td>${to}</td>
+      <td>${ssSuccessCellHTML(rs)}</td>
+    </tr>`;
+  }).join('');
+  return dbPanelWrap('BY PASS CONCEPT CATEGORY', `<div class="db-table-wrap"><table class="db-table"><tr><th>CATEGORY</th><th>COMP/ATT</th><th>YARDS</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+}
+
+function ssRenderConceptTable(rows) {
+  const groups = dbGroupBy(rows, ssConceptBucket);
+  const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length).slice(0, 30);
+  if (!entries.length) return '';
+  const trs = entries.map(([concept, rs]) => {
+    const cat = ssCategoryBucket(rs[0]) || rs.map(ssCategoryBucket).find(Boolean) || '—';
+    const td = rs.filter(dbIsTD).length;
+    const to = rs.filter(r => ssIsInterception(r) || ssIsFumble(r)).length;
+    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+      <td><strong>${dbEscapeHTML(concept)}</strong><br><span style="color:var(--gray);font-size:11px">${dbEscapeHTML(cat)} — ${rs.length} plays${dbLowSampleTag(rs.length)}</span></td>
+      <td>${ssRunPassSplitHTML(rs)}</td>
+      <td>${td}</td>
+      <td>${to}</td>
+      <td>${ssSuccessCellHTML(rs)}</td>
+    </tr>`;
+  }).join('');
+  return dbPanelWrap('BY CONCEPT / PLAY', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT</th><th>RUN/PASS</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+}
+
+function ssRenderRunTagTable(rows) {
+  const runRows = rows.filter(ssIsRun);
+  const groups = dbGroupBy(runRows, ssRunTagBucket);
+  const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+  if (!entries.length) return '<div class="db-empty">No run plays with a RUN TAG found yet.</div>';
+  const trs = entries.map(([tag, rs]) => {
+    const yards = rs.reduce((s, r) => s + dbYards(r), 0);
+    const ypc = rs.length ? Math.round(yards / rs.length * 10) / 10 : 0;
+    const td = rs.filter(dbIsTD).length;
+    const fum = rs.filter(ssIsFumble).length;
+    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+      <td><strong>${dbEscapeHTML(tag)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} carries${dbLowSampleTag(rs.length)}</span></td>
+      <td>${yards}</td>
+      <td>${ypc}</td>
+      <td>${td}</td>
+      <td>${fum}</td>
+      <td>${ssSuccessCellHTML(rs)}</td>
+    </tr>`;
+  }).join('');
+  return dbPanelWrap('RUN GAME — BY RUN TAG', `<div class="db-table-wrap"><table class="db-table"><tr><th>RUN TAG</th><th>YARDS</th><th>Y/CARRY</th><th>TD</th><th>FUM</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+}
+
+function ssRenderEffectivenessBarGroup(title, rows, groupFn, n, sortAsc) {
+  const groups = dbGroupBy(rows, groupFn);
+  const entries = Object.entries(groups)
+    .map(([key, rs]) => ({ key, stats: dbSuccessStats(rs) }))
+    .filter(e => e.stats && e.stats.n >= 5);
+  if (!entries.length) return '';
+  entries.sort((a, b) => sortAsc ? a.stats.successPct - b.stats.successPct : b.stats.successPct - a.stats.successPct);
+  const top = entries.slice(0, n);
+  return `<div><div class="db-bar-group-title">${title}</div>${top.map((e, i) => dbBarRow(e.key, e.stats.successPct, i === 0, e.stats.n)).join('')}</div>`;
+}
+
+function ssRenderBarSection(rows) {
+  const groups = [
+    dbRenderBarGroup('MOST USED CATEGORIES', dbFreqByFn(rows, ssCategoryBucket), 7),
+    ssRenderEffectivenessBarGroup('MOST SUCCESSFUL CATEGORIES', rows, ssCategoryBucket, 7, false),
+    dbRenderBarGroup('MOST USED CONCEPTS', dbFreqByFn(rows, ssConceptBucket), 6),
+    ssRenderEffectivenessBarGroup('MOST SUCCESSFUL CONCEPTS', rows, ssConceptBucket, 6, false),
+    ssRenderEffectivenessBarGroup('LEAST SUCCESSFUL CONCEPTS (NEEDS WORK)', rows, ssConceptBucket, 6, true),
+  ].filter(Boolean);
+  if (!groups.length) return '';
+  return dbSectionWrap('TENDENCY OVERVIEW', `<div class="db-bar-grid">${groups.join('')}</div>`);
+}
+
+function ssGenerateInsights(rows) {
+  const items = [];
+  // Best/worst categories and concepts — what's working, what needs emphasis.
+  [[ssCategoryBucket, 'pass-concept category'], [ssConceptBucket, 'concept']].forEach(([groupFn, label]) => {
+    const groups = dbGroupBy(rows, groupFn);
+    const entries = Object.entries(groups)
+      .map(([key, rs]) => ({ key, rs, stats: dbSuccessStats(rs) }))
+      .filter(e => e.stats && e.stats.n >= 5);
+    if (!entries.length) return;
+    entries.sort((a, b) => b.stats.successPct - a.stats.successPct);
+    const best = entries[0], worst = entries[entries.length - 1];
+    if (best && best.stats.successPct >= 60) {
+      items.push({ weight: best.rs.length * 2, text: `<strong>${dbEscapeHTML(best.key)}</strong> ${label} is working well — ${best.stats.successPct}% success rate (${best.stats.avgYards} yds/play, ${best.stats.n} plays). Keep leaning on it.` });
+    }
+    if (worst && worst.stats.successPct <= 35 && worst.key !== (best && best.key)) {
+      items.push({ weight: worst.rs.length * 2, text: `<strong>${dbEscapeHTML(worst.key)}</strong> ${label} is struggling — only ${worst.stats.successPct}% success rate (${worst.stats.avgYards} yds/play, ${worst.stats.n} plays). Point of emphasis for the rest of the season.` });
+    }
+    // High-volume + underperforming = priority fix.
+    entries.forEach(e => {
+      const usagePct = rows.length ? Math.round(e.rs.length / rows.length * 100) : 0;
+      if (usagePct >= 15 && e.stats.successPct <= 40) {
+        items.push({ weight: e.rs.length * 3, text: `<strong>${dbEscapeHTML(e.key)}</strong> ${label} is heavily used (${usagePct}% of plays) but only ${e.stats.successPct}% success — high priority to fix or scale back.` });
+      } else if (usagePct <= 8 && e.stats.successPct >= 65 && e.stats.n >= 5) {
+        items.push({ weight: e.rs.length * 2, text: `<strong>${dbEscapeHTML(e.key)}</strong> ${label} is barely used (${usagePct}% of plays) but ${e.stats.successPct}% success — consider calling it more.` });
+      }
+    });
+  });
+  // Situational tendencies — down/distance and field zone effectiveness.
+  [[dbDownDistBucket, 'situation'], [dbZoneBucket, 'field zone'], [dbFormPersonnelBucket, 'formation/personnel']].forEach(([fn, label]) => {
+    const groups = dbGroupBy(rows, fn);
+    Object.entries(groups).forEach(([bucket, rs]) => {
+      const stats = dbSuccessStats(rs);
+      if (!stats || stats.n < 5) return;
+      if (stats.successPct <= 30) {
+        items.push({ weight: rs.length * 2, text: `On <strong>${dbEscapeHTML(bucket)}</strong> (${label}), only ${stats.successPct}% success rate (${stats.n} plays) — needs attention.` });
+      } else if (stats.successPct >= 70) {
+        items.push({ weight: rs.length * 2, text: `On <strong>${dbEscapeHTML(bucket)}</strong> (${label}), ${stats.successPct}% success rate (${stats.n} plays) — a real strength.` });
+      }
+    });
+  });
+  // Turnover-prone concepts.
+  const conceptGroups = dbGroupBy(rows, ssConceptBucket);
+  Object.entries(conceptGroups).forEach(([concept, rs]) => {
+    if (rs.length < 5) return;
+    const toCount = rs.filter(r => ssIsInterception(r) || ssIsFumble(r)).length;
+    const toPct = Math.round(toCount / rs.length * 100);
+    if (toPct >= 15) {
+      items.push({ weight: rs.length * 2, text: `<strong>${dbEscapeHTML(concept)}</strong> has turned the ball over on ${toPct}% of its snaps (${toCount}/${rs.length}) — point of emphasis.` });
+    }
+  });
+  items.sort((a, b) => b.weight - a.weight);
+  return items.slice(0, 30).map(i => i.text);
+}
+
+const SS_TABS = [
+  { id: 'category', label: 'PASS CATEGORY', render: rows => ssRenderCategoryTable(rows) },
+  { id: 'concept', label: 'BY CONCEPT', render: rows => ssRenderConceptTable(rows) },
+  { id: 'rungame', label: 'RUN GAME', render: rows => ssRenderRunTagTable(rows) },
+  { id: 'formation', label: 'FORMATION', render: rows => ssRenderGroupTable(rows, dbFormPersonnelBucket, 'BY FORMATION & PERSONNEL', 'FORMATION') },
+  { id: 'downdist', label: 'DOWN & DISTANCE', render: rows => ssRenderGroupTable(rows, dbDownDistBucket, 'BY DOWN & DISTANCE', 'SITUATION') },
+  { id: 'zone', label: 'FIELD ZONE', render: rows => ssRenderGroupTable(rows, dbZoneBucket, 'BY FIELD ZONE', 'ZONE', DB_ZONE_ORDER) },
+  { id: 'hash', label: 'HASH', render: rows => ssRenderGroupTable(rows, dbHashBucket, 'BY HASH', 'HASH') },
+];
+
+function ssRenderTabSection(rows) {
+  if (!SS_TABS.some(t => t.id === ssActiveTab)) ssActiveTab = SS_TABS[0].id;
+  const tabsHtml = SS_TABS.map(t => `<div class="db-tab${t.id === ssActiveTab ? ' active' : ''}" data-tab="${t.id}">${t.label}</div>`).join('');
+  const active = SS_TABS.find(t => t.id === ssActiveTab);
+  const bodyHtml = active.render(rows) || '<div class="db-empty">No data available for this breakdown.</div>';
+  return `<div class="db-tabs">${tabsHtml}</div><div class="db-tab-panel">${bodyHtml}</div>`;
+}
+
+function renderSSDashboard(rows) {
+  const dash = document.getElementById('ss-dashboard');
+  if (!rows || !rows.length) { dash.innerHTML = '<div class="db-empty">No data found in this file.</div>'; return; }
+  let offRows = rows.filter(r => String(r.odk == null ? '' : r.odk).trim().toUpperCase().charAt(0) === 'O');
+  let usedAll = false;
+  if (!offRows.length) { offRows = rows; usedAll = true; }
+  const data = getSSData();
+  const numGames = ssActiveGameId === 'ALL' ? Math.max(data.games.length, 1) : 1;
+  const overall = ssComputeOverall(offRows, numGames);
+  const insights = ssGenerateInsights(offRows);
+  dash.innerHTML = `
+    ${usedAll ? '<div class="db-note">No ODK column marking offensive snaps was found — showing tendencies across all charted plays.</div>' : ''}
+    ${ssRenderStats(overall)}
+    ${ssRenderPassRushSummary(overall)}
+    ${ssRenderBarSection(offRows)}
+    ${dbSectionWrap('POINTS OF EMPHASIS', insights.length ? '<ul class="db-insights">' + insights.map(i => `<li>${i}</li>`).join('') + '</ul>' : '<div class="db-empty">Not enough data yet to detect strong patterns. Upload more charted plays.</div>')}
+    ${ssRenderTabSection(offRows)}
+  `;
+  dash.querySelectorAll('.db-section-title').forEach(el => {
+    el.addEventListener('click', () => {
+      const key = el.dataset.secToggle;
+      const sec = el.closest('.db-section');
+      sec.classList.toggle('collapsed');
+      if (sec.classList.contains('collapsed')) dbCollapsedSections.add(key); else dbCollapsedSections.delete(key);
+    });
+  });
+  dash.querySelectorAll('.db-tab').forEach(el => {
+    el.addEventListener('click', () => {
+      ssActiveTab = el.dataset.tab;
+      renderSSDashboard(rows);
+    });
+  });
 }
 </script>
 </body>
