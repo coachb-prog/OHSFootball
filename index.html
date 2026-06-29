@@ -403,6 +403,12 @@ function routePath(ox, oy, route, r) {
     case 'RAIL': return wp([{x:ox+toOut*4,y:y(11)}]);
     case 'TUNNEL SCREEN': return wp([{x:ox,y:y(-1.5)},{x:ox+toCtr*32,y:y(-1)}]);
     case 'SUCKER': return wp([{x:ox,y:y(4.3)},{x:ox+toOut*16,y:20}]);
+    case 'LOW CROSS': return wp([{x:ox,y:y(7)},{x:ox+toCtr*140,y:y(7.5)}]);
+    case 'COMEBACK': return wp([{x:ox,y:y(14)},{x:ox+toOut*6,y:y(12)}]);
+    case 'DIG': return wp([{x:ox,y:y(14)},{x:ox+toCtr*60,y:y(14.5)}]);
+    case 'POST CURL': return wp([{x:ox,y:y(12)},{x:ox+toCtr*10,y:y(10)}]);
+    case 'BENCH': return wp([{x:ox,y:y(10)},{x:ox+toOut*26,y:y(10.5)}]);
+    case 'SMOKE': return wp([{x:ox+toOut*4,y:y(-1)}]);
     case 'BLOCK MDM': case 'BLOCK #1': case 'BLOCK #2': return wp([{x:ox+toCtr*20,y:y(1.5)}]);
     case 'CRACK': return wp([{x:ox+toCtr*32,y:y(2)}]);
     case 'RUN OFF STALK': case 'STALK': return wp([{x:ox,y:y(8)}]);
@@ -503,8 +509,26 @@ const playbookData = {
     { name:'TEXAS (X SUCKER)', surface:'2×2', formation:'DEUCE', family:'STACKING-OUTSIDE',
       routes: { Z:{route:'SLOT FADE',assignment:'Press vertical & fade to numbers'}, H:{route:'SLOT FADE',assignment:'Press vertical & fade to numbers'}, Y:{route:'SLOT FADE',assignment:'Press vertical & fade to numbers'}, X:{route:'SUCKER',assignment:'Push on hitch, stutter feet, come off slot fade’s butt'}, B:{route:'-',assignment:'Pass protection'} },
       qbNotes: ['Dropback concept','Progression: Slot fade opposite / Sucker / Back','Variant of TEXAS that disguises the fade with a sucker route'] },
+    { name:'FLORIDA 1', surface:'3×1', formation:'BASE', family:'FLOOD',
+      routes: { Z:{route:'COMEBACK',assignment:'14, stick at 12 on outside foot'}, H:{route:'CORNER',assignment:'7 steps & stick — 25&in: back pylon / 26+: front pylon'}, Y:{route:'WHIP',assignment:'3 steps on crosser, whip out to flat at 4'}, X:{route:'LOW CROSS',assignment:'6-8 yd crosser'}, B:{route:'-',assignment:'Pass protection'} },
+      qbNotes: ['Dropback or sprint-out concept','Progression: High / Medium / Low','Alert corner, whip, and crosser vs. Man'] },
+    { name:'FLORIDA 2', surface:'3×1', formation:'BASE', family:'FLOOD',
+      routes: { Z:{route:'GO',assignment:'MOR Go — mandatory outside release, clear out for corner'}, H:{route:'BENCH',assignment:'Square out at 10'}, Y:{route:'ARROW',assignment:'2 steps at 45° then flatten'}, X:{route:'LOW CROSS',assignment:'6-8 yd crosser'}, B:{route:'-',assignment:'Pass protection'} },
+      qbNotes: ['"1", "2", "3" tags are the same for QBs','Progression: High / Medium / Low'] },
+    { name:'FLORIDA 3', surface:'3×1', formation:'BASE', family:'FLOOD',
+      routes: { Z:{route:'GO',assignment:'MOR Go — mandatory outside release, clear out for corner'}, H:{route:'ARROW',assignment:'2 steps at 45° then flatten'}, Y:{route:'BENCH',assignment:'Square out at 10'}, X:{route:'LOW CROSS',assignment:'6-8 yd crosser'}, B:{route:'-',assignment:'Pass protection'} },
+      qbNotes: ['"1", "2", "3" tags are the same for QBs','Progression: High / Medium / Low'] },
+    { name:'LOUISVILLE', surface:'3×1', formation:'BASE', family:'INSIDE-OUT',
+      routes: { Z:{route:'POST CURL',assignment:'7-step post, curl at 12'}, H:{route:'WHEEL',assignment:'2-step wheel off #1\'s butt'}, Y:{route:'BEND SEAM',assignment:'Seam — attack the safety'}, X:{route:'DIG',assignment:'8-step dig'}, B:{route:'SWING',assignment:'Swing straight to the numbers'} },
+      qbNotes: ['Dropback, 3×1 only','Progression: Seam / Post-curl / Back','Alert wheel vs. corner sitting on the back of the curl','Alert wheel vs. Man coverage'] },
   ],
   screens: [
+    { name:'Z SMOKE', surface:'3×1', formation:'BASE', family:'SMOKES',
+      routes: { Z:{route:'SMOKE',assignment:'Smoke/bubble — quick catch & run'}, H:{route:'BLOCK #1',assignment:'Block #1'}, Y:{route:'-',assignment:'Pass protection'}, X:{route:'-',assignment:'Pass protection'}, B:{route:'-',assignment:'Pass protection'} },
+      qbNotes: ['Pre-snap quick (60 protection)','Throw on the move based on leverage','MDM blocking for the perimeter'] },
+    { name:'X SMOKE', surface:'2×2', formation:'DEUCE', family:'SMOKES',
+      routes: { X:{route:'SMOKE',assignment:'Smoke/bubble — quick catch & run'}, H:{route:'BLOCK #1',assignment:'Block #1'}, Y:{route:'-',assignment:'Pass protection'}, Z:{route:'-',assignment:'Pass protection'}, B:{route:'-',assignment:'Pass protection'} },
+      qbNotes: ['Pre-snap quick (60 protection)','Fade vs. press — MOR release','MDM blocking for the perimeter'] },
     { name:'SMU (TUNNEL)', surface:'3×1', formation:'BASE', family:'TUNNEL SCREEN',
       routes: { Z:{route:'BLOCK #1',assignment:'Block #1 (CB)'}, H:{route:'TUNNEL SCREEN',assignment:'Tunnel screen — come back to receive'}, Y:{route:'PUSH 3 VERTICAL KICK OUT #1',assignment:'Push 3 vertical then kick out #2'}, X:{route:'CRACK',assignment:'Crack first defender inside'}, B:{route:'SWING',assignment:'1 shuffle toward Q, run swing — look for tackle kickout'} },
       qbNotes: ['3 step drop — read the field EMOL','EMOL rushes → throw RB swing','EMOL chases back → throw tunnel to H','PST/PSG release; C/BSG set & release'] },
@@ -533,11 +557,18 @@ const motions = [
   { name:'YOYO', desc:'Receiver arcs out to tackle depth, then comes back to the same spot. Creates a jet sweep threat and forces the defense to declare.' },
   { name:'TRADE', desc:'Receiver starts on the opposite side and crosses all the way to the formation/call side. Shifts the surface and forces a defensive adjustment.' },
   { name:'TIP', desc:'Same path as TRADE, but the receiver lands tight to the offensive line as a sniffer (2–3 yards off the ball). Can lead-block on the run.' },
-  { name:'HOP', desc:'A very short inside hop — just a step or two. Often used as a simple pre-snap RPO read trigger.' },
-  { name:'BAM', desc:'Receiver motions toward the boundary, away from the field. Creates a boundary overload.' },
+  { name:'HOP', desc:'Tagged WR motions back into the fullback/RB alignment. Ex: (10) BASE Y HOP.' },
+  { name:'BOUNCE', desc:'Tagged WR motions outside of its original alignment. Ex: (10) BASE Y BOUNCE.' },
   { name:'SHUFFLE', desc:'Pre-snap motion AWAY from the direction of the break — if the route breaks in, shuffle out; if it breaks out, shuffle in. Disguises the route\'s eventual direction.' },
   { name:'JET', desc:'Traditional jet sweep motion — full speed in front of the QB at the snap.' },
   { name:'BOOM', desc:'Begins like ZOOM, then turns around into JET motion roughly 2 yards outside the tackle. Combines a delayed read with full jet speed.' },
+  { name:'BAM (RB)', desc:'RB fast motion to the field.' },
+  { name:'BANG (RB)', desc:'RB aligns as the boundary #1, then moves to the backfield.' },
+  { name:'FANG (RB)', desc:'RB aligns as #3 to the field, then moves to the backfield.' },
+  { name:'TAXI (TE)', desc:'Double motion — two players from the same side move to the other side one after the other. The first player (e.g. Y) must get set before the snap.' },
+  { name:'TANGO (TE)', desc:'Shift version of TAXI — both players move at the same time instead of sequentially.' },
+  { name:'TARZAN (TE)', desc:'Double motion — Player 1 motions to replace the player inside and opposite of him; Player 2 motions to replace the spot Player 1 just vacated.' },
+  { name:'TRIPLE (TE)', desc:'A TE trade combined with a WR zip motion on the trade side.' },
 ];
 
 // ==================== COVERAGES ====================
