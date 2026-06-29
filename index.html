@@ -199,6 +199,7 @@ mark { background: var(--gold); color: var(--black); border-radius: 3px; padding
     <button class="tab-btn" data-tab="passing" onclick="showTab('passing')">PASS GAME</button>
     <button class="tab-btn" data-tab="screens" onclick="showTab('screens')">SCREENS</button>
     <button class="tab-btn" data-tab="runs" onclick="showTab('runs')">RUN GAME</button>
+    <button class="tab-btn" data-tab="olterms" onclick="showTab('olterms')">OL TERMS</button>
     <button class="tab-btn" data-tab="motions" onclick="showTab('motions')">MOTIONS</button>
     <button class="tab-btn" data-tab="coverages" onclick="showTab('coverages')">COVERAGES</button>
     <button class="tab-btn" data-tab="assignments" onclick="showTab('assignments')">ASSIGNMENTS</button>
@@ -223,6 +224,11 @@ mark { background: var(--gold); color: var(--black); border-radius: 3px; padding
     <div class="section" id="section-runs">
       <div class="section-title">Run Game</div>
       <div id="runs-list"></div>
+    </div>
+
+    <div class="section" id="section-olterms">
+      <div class="section-title">OL Terminology Manual</div>
+      <div id="olterms-list"></div>
     </div>
 
     <div class="section" id="section-motions">
@@ -652,6 +658,63 @@ function renderRunGame() {
   }).join('');
 }
 
+// ==================== OL TERMINOLOGY MANUAL ====================
+const olTerms = [
+  // ---- Alignment & gaps ----
+  { cat:'ALIGNMENT & GAPS', name:'Strong Side (close side)', desc:'The side to the TE, or the side to the field.' },
+  { cat:'ALIGNMENT & GAPS', name:'Weak Side (open side)', desc:'The side with the TE away from the field, or the side away from the field.' },
+  { cat:'ALIGNMENT & GAPS', name:'Gaps & Techniques', desc:'DL alignment numbers: 0/1 = A gap, 2i/2/3 = B gap, 4i/4/5 = C gap, 6i/6/7/9 = D gap.' },
+  { cat:'ALIGNMENT & GAPS', name:'Tight Front (404)', desc:'404 with the Nose playing a 0. Jack can be off the ball or on the LOS.' },
+  { cat:'ALIGNMENT & GAPS', name:'3-4', desc:'3 down linemen with two 5-techs and a 0 nose. Common on passing downs / 3rd & long.' },
+  { cat:'ALIGNMENT & GAPS', name:'3-3 Stack', desc:'Center is covered, both guards are uncovered, with 3 LBs stacked in the box.' },
+  { cat:'ALIGNMENT & GAPS', name:'Over (3 to the field)', desc:'4 down linemen with a 3-tech to the play side/field and a 1-tech away.' },
+  // ---- Fronts ----
+  { cat:'FRONTS', name:'Under Front (1 to the field)', desc:'Weak side guard covered, playside guard uncovered. If the frontside DT is a 1-tech, it is "Under G".' },
+  { cat:'FRONTS', name:'Bear Front', desc:'Both guards covered with a nose — built to stop the run; common in short yardage / goal line.' },
+  { cat:'FRONTS', name:'FOX', desc:'The free safety is down in the box.' },
+  { cat:'FRONTS', name:'Dog', desc:'The boundary safety is down in the box.' },
+  { cat:'FRONTS', name:'Manning', desc:'Both inside backers are walked up showing blitz.' },
+  { cat:'FRONTS', name:'Cub', desc:'The linebacker has walked up and is showing blitz.' },
+  // ---- Double teams ----
+  { cat:'DOUBLE TEAMS', name:'Deuce to #1', desc:'Tackle and Guard double team, climbing to the assigned LB (normally #1).' },
+  { cat:'DOUBLE TEAMS', name:'Trey to #1', desc:'Tackle and TE double team, climbing to the assigned LB (normally #1).' },
+  { cat:'DOUBLE TEAMS', name:'Ace to #2 / Mike Call', desc:'Center and play-side Guard double team, climbing to the assigned LB (Mike call = Ace #2).' },
+  { cat:'DOUBLE TEAMS', name:'Scoop', desc:'Center and backside Guard double team (or reach double team), climbing to the assigned LB.' },
+  { cat:'DOUBLE TEAMS', name:'Thin', desc:'Quick call telling the helper on a double team he can climb fast — the other blocker can handle the man alone.' },
+  { cat:'DOUBLE TEAMS', name:'Laundry (TUG)', desc:'Backside Tackle and Guard work a backside wrap ("Tackle Under Guard") to block the 3/4i and the backside LB when there is no C-gap threat.' },
+  { cat:'DOUBLE TEAMS', name:'Bastard Call', desc:'Breaks the normal guard-pull rule and tells the opposite puller to pull instead (e.g. on Pro, RG pulls instead of LG).' },
+  // ---- Stunts / pressure ID ----
+  { cat:'STUNTS & PRESSURE ID', name:'Kill', desc:'Tells the line the puller is off — zone the front side. "Lisa" is called when the tagged man shows pre-snap blitz.' },
+  { cat:'STUNTS & PRESSURE ID', name:'Out', desc:'Called when a tagged man comes down pre-snap into the C gap on the frontside of a run play.' },
+  { cat:'STUNTS & PRESSURE ID', name:'Scoop Call', desc:'Backside 2nd-level player shows pre-snap blitz inside or outside.' },
+  { cat:'STUNTS & PRESSURE ID', name:'Big', desc:'A non-ID or ID man comes down pre-snap into the C gap of the frontside on a passing play.' },
+  { cat:'STUNTS & PRESSURE ID', name:'Splash / Safari / Slide / Hot', desc:'Backside 2nd-level player shows pre-snap blitz inside or outside on a passing play.' },
+  { cat:'STUNTS & PRESSURE ID', name:'EAT / TEA (twist)', desc:'2-man twist: a penetrator and a looper. EN/ET = DE first, NG second. Needs a post-snap looper alert call.' },
+  { cat:'STUNTS & PRESSURE ID', name:'TEA / NUT (twist)', desc:'2-man twist: a penetrator and a looper. JT = Jack first, T second; TN = T first, NG second. Needs a post-snap looper alert.' },
+  { cat:'STUNTS & PRESSURE ID', name:'Pirate / Sword (super twist)', desc:'3-or-more-man twist with 2 penetrators and a looper. Needs a post-snap looper alert call.' },
+  { cat:'STUNTS & PRESSURE ID', name:'Rifle', desc:'Tackle echo call telling the RG there are 4 strong to the LT.' },
+  { cat:'STUNTS & PRESSURE ID', name:'Cannon', desc:'Tackle echo call telling the LG there are 4 strong to the RT.' },
+  // ---- Pass pro schemes ----
+  { cat:'PASS PRO SCHEMES', name:'60 / 70 Pass Pro', desc:'Quick game and play-action-pass protection — 3-step drop. Fast, hard sets that look like run; used for RPOs, hitches, slants.' },
+  { cat:'PASS PRO SCHEMES', name:'80 / 90 Pass Pro', desc:'Drop-back protection — full 5-step drop, base "dish" pass pro using 1-set/2-set/3-set progressions.' },
+  { cat:'PASS PRO SCHEMES', name:'Scat Call', desc:'Tells the line to block opposite rules — on an 80 Scat, use 90 rules; on a 90 Scat, use 80 rules.' },
+  { cat:'PASS PRO SCHEMES', name:'River / Lake', desc:'Sprint-out protection — River moves the pocket right, Lake moves it left.' },
+  { cat:'PASS PRO SCHEMES', name:'Boston Pro / Con', desc:'Bootleg protection — fakes the run one way and sprints the QB out the other to pull the defense.' },
+  { cat:'PASS PRO SCHEMES', name:'Dash Pro / Con', desc:'Drop-back sprint-out protection — same rule family as Boston, away from the play-side gap rules.' },
+  { cat:'PASS PRO SCHEMES', name:'P32 / P33', desc:'7-man play-action-pass protection — the "P" tells the OL it is a pass with PAP run action; the number tells which run scheme to sell before blocking down, without releasing linemen down field.' },
+  { cat:'PASS PRO SCHEMES', name:'Check Call', desc:'Y is the checker — releases into a route only after confirming pass pro is secure.' },
+];
+const olCatOrder = ['ALIGNMENT & GAPS','FRONTS','DOUBLE TEAMS','STUNTS & PRESSURE ID','PASS PRO SCHEMES'];
+function renderOLTerms() {
+  document.getElementById('olterms-list').innerHTML = olCatOrder.map(cat => `
+    <div class="section-title" style="font-size:15px;margin-top:18px">${cat}</div>
+    ${olTerms.filter(t=>t.cat===cat).map(t => `
+      <div class="motion-card" data-search="${t.cat} ${t.name} ${t.desc}">
+        <div class="motion-name">${t.name}</div>
+        <div class="motion-desc">${t.desc}</div>
+      </div>`).join('')}`).join('');
+}
+
 // ==================== MOTIONS ====================
 const motions = [
   { name:'ZOOM', desc:'Receiver crosses ALL THE WAY to the opposite side, behind the QB. Watch the CB on the snap — if he follows, it\'s MAN; if he stays in his zone, it\'s ZONE.' },
@@ -898,6 +961,7 @@ renderFormations();
 renderPlayCategory('passing');
 renderPlayCategory('screens');
 renderRunGame();
+renderOLTerms();
 renderMotions();
 renderCoverages();
 renderAssignments();
