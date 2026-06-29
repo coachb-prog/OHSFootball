@@ -329,6 +329,12 @@ body {
 .db-sec-chevron { transition: transform 0.15s; display: inline-block; }
 .db-section.collapsed .db-sec-chevron { transform: rotate(-90deg); }
 .db-section.collapsed .db-section-body { display: none; }
+.db-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.db-tab { background: var(--black3); border: 1px solid #444; border-radius: 8px; padding: 8px 12px; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; color: var(--gray); cursor: pointer; user-select: none; }
+.db-tab:hover { color: var(--white); }
+.db-tab.active { background: var(--red); border-color: var(--red); color: white; }
+.db-tab-panel { background: var(--black2); border: 1px solid #333; border-radius: 14px; padding: 14px; }
+.db-tab-panel-title { font-size: 12px; letter-spacing: 2px; color: var(--gold); font-weight: 800; margin-bottom: 10px; }
 .db-insights { display: flex; flex-direction: column; gap: 8px; padding-left: 18px; }
 .db-insights li { font-size: 13px; line-height: 1.4; color: #ddd; }
 .db-table-wrap { overflow-x: auto; }
@@ -1859,6 +1865,7 @@ const DB_COLUMN_ALIASES = {
 };
 let currentDefOpponent = null;
 let dbCollapsedSections = new Set();
+let dbActiveTab = null;
 let dbXLSXLoading = null;
 
 function dbNormHeader(h) { return String(h == null ? '' : h).trim().toUpperCase().replace(/\s+/g, ' '); }
@@ -2169,13 +2176,6 @@ function dbPersonnelBucket(r) {
   const v = String(r.personnel == null ? '' : r.personnel).trim().toUpperCase();
   return v || null;
 }
-function dbPlayTypeBucket(r) {
-  const v = String(r.playType == null ? '' : r.playType).trim().toUpperCase();
-  if (!v) return null;
-  if (v.includes('PASS') || v.includes('RPO') || v.includes('SCREEN')) return 'PASS';
-  if (v.includes('RUN')) return 'RUN';
-  return null;
-}
 
 function dbComputeOverall(rows) {
   const total = rows.length;
@@ -2292,6 +2292,10 @@ function dbSectionWrap(title, bodyHtml) {
   </div>`;
 }
 
+function dbPanelWrap(title, bodyHtml) {
+  return `<div class="db-tab-panel-title">${title}</div>${bodyHtml}`;
+}
+
 function dbFreqDistHTML(freq, n) {
   const all = dbTop(freq, 9999);
   if (!all.length) return '—';
@@ -2330,7 +2334,7 @@ function dbRenderGroupTable(rows, groupFn, title) {
       <td>${dbSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
+  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderComboTable(rows, title) {
@@ -2350,7 +2354,7 @@ function dbRenderComboTable(rows, title) {
       <td>${dbSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT / COVERAGE</th><th>SNAPS</th><th>BLITZ %</th><th>TOP STUNT</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
+  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT / COVERAGE</th><th>SNAPS</th><th>BLITZ %</th><th>TOP STUNT</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLabel, title) {
@@ -2369,7 +2373,7 @@ function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLab
       <td>${dbSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbSectionWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel} (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
+  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel} (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderTopBlitzesByFront(rows, topN) {
@@ -2387,7 +2391,7 @@ function dbRenderTopBlitzesByFront(rows, topN) {
       <td>${dbSuccessCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbSectionWrap('TOP BLITZES BY FRONT', `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT</th><th>BLITZ CALLS (ALL)</th><th>COVERAGE BEHIND IT</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('TOP BLITZES BY FRONT', `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT</th><th>BLITZ CALLS (ALL)</th><th>COVERAGE BEHIND IT</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbBarRow(label, pct, isTop) {
@@ -2412,10 +2416,8 @@ function dbRenderEffectivenessBarGroup(title, rows, groupFn, n) {
 }
 
 function dbRenderBarSection(rows) {
-  const runPass = dbFreqByFn(rows, dbPlayTypeBucket);
   const blitzFreq = dbFreqByFn(rows, r => dbIsBlitz(r) ? 'BLITZ' : 'NO BLITZ');
   const groups = [
-    dbRenderBarGroup('RUN vs PASS', runPass, 2),
     dbRenderBarGroup('BLITZ vs NO BLITZ', blitzFreq, 2),
     dbRenderBarGroup('TOP FRONTS', dbFreq(rows, 'defFront'), 5),
     dbRenderBarGroup('TOP COVERAGES', dbFreq(rows, 'coverage'), 5),
@@ -2435,6 +2437,26 @@ function dbRenderTopComboBanner(rows) {
   return `<div class="db-note" style="background:rgba(204,0,0,0.15);border-left-color:var(--red)">🎯 Most common defensive call: <strong>${dbEscapeHTML(combo)}</strong> — ${rs.length} snaps (${pct}% of all charted plays)</div>`;
 }
 
+const DB_TABS = [
+  { id: 'calls', label: 'DEFENSIVE CALLS', render: rows => dbRenderComboTable(rows, 'MOST COMMON DEFENSIVE CALLS (FRONT + COVERAGE)') },
+  { id: 'front', label: 'FRONT DETAIL', render: rows => dbRenderPairTable(rows, dbDefFrontBucket, 'FRONT', 'coverage', 'TOP COVERAGE', 'BY FRONT — WHAT THEY PLAY BEHIND IT') },
+  { id: 'coverage', label: 'COVERAGE DETAIL', render: rows => dbRenderPairTable(rows, dbCoverageBucket, 'COVERAGE', 'defFront', 'TOP FRONT', 'BY COVERAGE — WHAT FRONT IT COMES FROM') },
+  { id: 'blitz', label: 'BLITZ DETAIL', render: rows => dbRenderTopBlitzesByFront(rows, 5) },
+  { id: 'downdist', label: 'DOWN & DISTANCE', render: rows => dbRenderGroupTable(rows, dbDownDistBucket, 'BY DOWN & DISTANCE') },
+  { id: 'hash', label: 'HASH', render: rows => dbRenderGroupTable(rows, dbHashBucket, 'BY HASH') },
+  { id: 'zone', label: 'FIELD ZONE', render: rows => dbRenderGroupTable(rows, dbZoneBucket, 'BY FIELD ZONE') },
+  { id: 'formation', label: 'FORMATION', render: rows => dbRenderGroupTable(rows, dbFormBucket, 'BY OFFENSIVE FORMATION FACED') },
+  { id: 'personnel', label: 'PERSONNEL', render: rows => dbRenderGroupTable(rows, dbPersonnelBucket, 'BY OFFENSIVE PERSONNEL FACED') }
+];
+
+function dbRenderTabSection(rows) {
+  if (!DB_TABS.some(t => t.id === dbActiveTab)) dbActiveTab = DB_TABS[0].id;
+  const tabsHtml = DB_TABS.map(t => `<div class="db-tab${t.id === dbActiveTab ? ' active' : ''}" data-tab="${t.id}">${t.label}</div>`).join('');
+  const active = DB_TABS.find(t => t.id === dbActiveTab);
+  const bodyHtml = active.render(rows) || '<div class="db-empty">No data available for this breakdown.</div>';
+  return `<div class="db-tabs">${tabsHtml}</div><div class="db-tab-panel">${bodyHtml}</div>`;
+}
+
 function renderDefDashboard(rows) {
   const dash = document.getElementById('db-dashboard');
   if (!rows || !rows.length) { dash.innerHTML = '<div class="db-empty">No data found in this file.</div>'; return; }
@@ -2449,16 +2471,7 @@ function renderDefDashboard(rows) {
     ${dbRenderTopComboBanner(defRows)}
     ${dbRenderBarSection(defRows)}
     ${dbSectionWrap('KEY TENDENCIES', insights.length ? '<ul class="db-insights">' + insights.map(i => `<li>${i}</li>`).join('') + '</ul>' : '<div class="db-empty">Not enough data yet to detect strong tendencies. Upload more charted plays.</div>')}
-    ${dbRenderComboTable(defRows, 'MOST COMMON DEFENSIVE CALLS (FRONT + COVERAGE)')}
-    ${dbRenderPairTable(defRows, dbDefFrontBucket, 'FRONT', 'coverage', 'TOP COVERAGE', 'BY FRONT — WHAT THEY PLAY BEHIND IT')}
-    ${dbRenderPairTable(defRows, dbCoverageBucket, 'COVERAGE', 'defFront', 'TOP FRONT', 'BY COVERAGE — WHAT FRONT IT COMES FROM')}
-    ${dbRenderTopBlitzesByFront(defRows, 5)}
-    ${dbRenderGroupTable(defRows, dbPlayTypeBucket, 'BY RUN vs PASS')}
-    ${dbRenderGroupTable(defRows, dbDownDistBucket, 'BY DOWN & DISTANCE')}
-    ${dbRenderGroupTable(defRows, dbHashBucket, 'BY HASH')}
-    ${dbRenderGroupTable(defRows, dbZoneBucket, 'BY FIELD ZONE')}
-    ${dbRenderGroupTable(defRows, dbFormBucket, 'BY OFFENSIVE FORMATION FACED')}
-    ${dbRenderGroupTable(defRows, dbPersonnelBucket, 'BY OFFENSIVE PERSONNEL FACED')}
+    ${dbRenderTabSection(defRows)}
   `;
   dash.querySelectorAll('.db-section-title').forEach(el => {
     el.addEventListener('click', () => {
@@ -2466,6 +2479,12 @@ function renderDefDashboard(rows) {
       const sec = el.closest('.db-section');
       sec.classList.toggle('collapsed');
       if (sec.classList.contains('collapsed')) dbCollapsedSections.add(key); else dbCollapsedSections.delete(key);
+    });
+  });
+  dash.querySelectorAll('.db-tab').forEach(el => {
+    el.addEventListener('click', () => {
+      dbActiveTab = el.dataset.tab;
+      renderDefDashboard(rows);
     });
   });
 }
@@ -2479,7 +2498,6 @@ function printGameCard() {
   if (!defRows.length) defRows = rows;
   const overall = dbComputeOverall(defRows);
   const insights = dbGenerateInsights(defRows).slice(0, 5);
-  const runPass = dbTop(dbFreqByFn(defRows, dbPlayTypeBucket), 2);
   const topFronts = dbTop(overall.frontFreq, 5);
   const topCovs = dbTop(overall.covFreq, 5);
   const blitzRows = defRows.filter(dbIsBlitz);
@@ -2494,11 +2512,6 @@ function printGameCard() {
       <div class="pc-section-title">OVERVIEW</div>
       <table><tr><th>SNAPS</th><th>TOP FRONT</th><th>TOP COVERAGE</th><th>BLITZ RATE</th><th>OFF SUCCESS% ALLOWED</th><th>AVG YDS ALLOWED</th></tr>
       <tr><td>${overall.total}</td><td>${dbEscapeHTML(dbTop(overall.frontFreq, 1)[0]?.label || '—')}</td><td>${dbEscapeHTML(dbTop(overall.covFreq, 1)[0]?.label || '—')}</td><td>${overall.blitzPct}%</td><td>${overall.successStats ? overall.successStats.successPct + '%' : '—'}</td><td>${overall.successStats ? overall.successStats.avgYards : '—'}</td></tr></table>
-    </div>
-    <div class="pc-section">
-      <div class="pc-section-title">RUN vs PASS</div>
-      <table><tr>${runPass.map(t => `<th>${dbEscapeHTML(t.label)}</th>`).join('')}</tr>
-      <tr>${runPass.map(t => `<td>${t.pct}% (${t.count})</td>`).join('')}</tr></table>
     </div>
     <div class="pc-section">
       <div class="pc-section-title">TOP FRONTS</div>
