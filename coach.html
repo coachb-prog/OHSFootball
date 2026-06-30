@@ -1516,15 +1516,24 @@ function ssPassConceptBucket(r) {
   if (t) return t;
   return playWord || null;
 }
+// For designed runs, CONCEPT is the charted call name itself (GIANTS, RAVENS, DART, ...) and is
+// reliable even when OFF PLAY carries a tempo/formation prefix (e.g. "Q CHARGERS PRO") that breaks
+// the OFF-PLAY-based lookup below. RUN TAG is NOT a concept on these rows — it holds a blocking-
+// scheme/personnel note layered on top of the call (LOCK, SAME, TOSS, LEAD, READ), so a run that
+// isn't in the concept sheet must NOT fall back to RUN TAG or it groups under the wrong label.
 function ssRunConceptBucket(r) {
   const playWord = ssOffPlayBase(r);
-  const family = ssConceptFamilyLookup('RUN', playWord);
-  if (family) return family + ' (' + playWord + ')';
-  const t = String(r.runTag == null ? '' : r.runTag).trim().toUpperCase();
-  if (t) return t;
   const c = String(r.concept == null ? '' : r.concept).trim().toUpperCase();
-  if (c) return c;
-  return playWord || null;
+  const callWord = (c && c !== 'NONE') ? c : playWord;
+  if (!callWord) return null;
+  const family = ssConceptFamilyLookup('RUN', callWord);
+  return family ? family + ' (' + callWord + ')' : callWord;
+}
+// SCRAMBLE means the QB never handed the ball off — the called run concept didn't actually execute,
+// so that snap shouldn't count toward the concept's numbers. PENALTY/TIMEOUT are dead plays (no snap).
+function ssIsRunHandoff(r) {
+  if (dbIsDeadPlay(r)) return false;
+  return !dbResultStr(r).includes('SCRAMBLE');
 }
 function ssRPOComboBucket(r) {
   // RUN TAG holds the called RPO tag (e.g. "HAWAII") on every rep of that call, whether the read
@@ -1681,52 +1690,52 @@ function ssRunDirection(r) {
   if (/\bCON\b/.test(p)) return 'LEFT (CON)';
   return null;
 }
+function ssRunDirectionRowHTML(label, rs, indent) {
+  const yards = rs.reduce((s, r) => s + dbYards(r), 0);
+  const ypc = rs.length ? Math.round(yards / rs.length * 10) / 10 : 0;
+  const td = rs.filter(dbIsTD).length;
+  const fum = rs.filter(ssIsFumble).length;
+  const labelHTML = indent
+    ? `<span style="padding-left:14px;color:var(--gray)">↳ ${dbEscapeHTML(label)}</span>`
+    : `<strong>${dbEscapeHTML(label)}</strong>`;
+  return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+    <td>${labelHTML}<br><span style="color:var(--gray);font-size:11px">${rs.length} carries${dbLowSampleTag(rs.length)}</span></td>
+    <td>${yards}</td>
+    <td>${ypc}</td>
+    <td>${td}</td>
+    <td>${fum}</td>
+    <td>${ssSuccessCellHTML(rs)}</td>
+  </tr>`;
+}
+// Shared by the season-wide direction table and the per-concept breakdown below: an OVERALL row
+// plus RIGHT (PRO)/LEFT (CON) sub-rows whenever that group actually has carries in that direction.
+function ssRunDirectionRowsHTML(overallLabel, rs) {
+  const rightRows = rs.filter(r => ssRunDirection(r) === 'RIGHT (PRO)');
+  const leftRows = rs.filter(r => ssRunDirection(r) === 'LEFT (CON)');
+  let html = ssRunDirectionRowHTML(overallLabel, rs, false);
+  if (rightRows.length) html += ssRunDirectionRowHTML('RIGHT (PRO)', rightRows, true);
+  if (leftRows.length) html += ssRunDirectionRowHTML('LEFT (CON)', leftRows, true);
+  return html;
+}
 function ssRenderRunDirectionTable(rows) {
   // RPO gives belong on the RPO tab, not here — same exclusion as the run concept table.
-  const runRows = rows.filter(r => ssIsRun(r) && !ssIsRPORow(r));
+  const runRows = rows.filter(r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r));
   if (!runRows.length) return '';
   const rightRows = runRows.filter(r => ssRunDirection(r) === 'RIGHT (PRO)');
   const leftRows = runRows.filter(r => ssRunDirection(r) === 'LEFT (CON)');
-  const sections = [['OVERALL', runRows], ['RIGHT (PRO)', rightRows], ['LEFT (CON)', leftRows]].filter(([, rs]) => rs.length);
-  if (sections.length < 2) return '';
-  const trs = sections.map(([label, rs]) => {
-    const yards = rs.reduce((s, r) => s + dbYards(r), 0);
-    const ypc = rs.length ? Math.round(yards / rs.length * 10) / 10 : 0;
-    const td = rs.filter(dbIsTD).length;
-    const fum = rs.filter(ssIsFumble).length;
-    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
-      <td><strong>${dbEscapeHTML(label)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} carries${dbLowSampleTag(rs.length)}</span></td>
-      <td>${yards}</td>
-      <td>${ypc}</td>
-      <td>${td}</td>
-      <td>${fum}</td>
-      <td>${ssSuccessCellHTML(rs)}</td>
-    </tr>`;
-  }).join('');
+  if (!rightRows.length && !leftRows.length) return '';
+  const trs = ssRunDirectionRowsHTML('OVERALL', runRows);
   return dbPanelWrap('RUN GAME BY DIRECTION (RUN RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>DIRECTION</th><th>YARDS</th><th>Y/CARRY</th><th>TD</th><th>FUM</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
 }
 
 function ssRenderRunConceptTable(rows) {
   // RPO gives have their own dedicated tab — leave them out here so they don't double count.
-  const runRows = rows.filter(r => ssIsRun(r) && !ssIsRPORow(r));
+  const runRows = rows.filter(r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r));
   const groups = dbGroupBy(runRows, ssRunConceptBucket);
   const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
-  if (!entries.length) return '<div class="db-empty">No run plays with a RUN TAG/CONCEPT found yet.</div>';
-  const trs = entries.map(([tag, rs]) => {
-    const yards = rs.reduce((s, r) => s + dbYards(r), 0);
-    const ypc = rs.length ? Math.round(yards / rs.length * 10) / 10 : 0;
-    const td = rs.filter(dbIsTD).length;
-    const fum = rs.filter(ssIsFumble).length;
-    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
-      <td><strong>${dbEscapeHTML(tag)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} carries${dbLowSampleTag(rs.length)}</span></td>
-      <td>${yards}</td>
-      <td>${ypc}</td>
-      <td>${td}</td>
-      <td>${fum}</td>
-      <td>${ssSuccessCellHTML(rs)}</td>
-    </tr>`;
-  }).join('');
-  return dbPanelWrap('BEST RUN CONCEPTS (RUN RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>RUN TAG / CONCEPT</th><th>YARDS</th><th>Y/CARRY</th><th>TD</th><th>FUM</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  if (!entries.length) return '<div class="db-empty">No run plays with a CONCEPT found yet.</div>';
+  const trs = entries.map(([tag, rs]) => ssRunDirectionRowsHTML(tag, rs)).join('');
+  return dbPanelWrap('BEST RUN CONCEPTS BY DIRECTION (HANDOFFS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT</th><th>YARDS</th><th>Y/CARRY</th><th>TD</th><th>FUM</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
 }
 
 function ssRenderRPOTable(rows) {
@@ -1774,7 +1783,7 @@ function ssRenderBarSection(rows) {
   // RPO has its own dedicated tab, so leave those reps out of the pass/run concept bars —
   // otherwise an RPO pull shows up as a "pass concept" just because that rep was thrown.
   const passConceptRows = passRows.filter(r => !ssIsRPORow(r));
-  const runConceptRows = runRows.filter(r => !ssIsRPORow(r));
+  const runConceptRows = runRows.filter(r => !ssIsRPORow(r) && ssIsRunHandoff(r));
   const groups = [
     dbRenderBarGroup('MOST USED CATEGORIES', dbFreqByFn(passRows, ssCategoryBucket), 7),
     ssRenderEffectivenessBarGroup('MOST SUCCESSFUL CATEGORIES', passRows, ssCategoryBucket, 7, false),
@@ -1847,7 +1856,7 @@ function ssRenderTrendsTab() {
   if (games.length < 2) return '<div class="db-empty">Load at least 2 games to see week-over-week trends. Trends always cover every game loaded this season, regardless of the game filter above.</div>';
   const body = [
     ssRenderConceptTrendTable(games, r => ssIsPass(r) && !ssIsRPORow(r), ssPassConceptBucket, 'PASS CONCEPT TREND (WEEK BY WEEK)'),
-    ssRenderConceptTrendTable(games, r => ssIsRun(r) && !ssIsRPORow(r), ssRunConceptBucket, 'RUN CONCEPT TREND (WEEK BY WEEK)'),
+    ssRenderConceptTrendTable(games, r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r), ssRunConceptBucket, 'RUN CONCEPT TREND (WEEK BY WEEK)'),
     ssRenderConceptTrendTable(games, ssIsRPORow, ssRPOComboBucket, 'RPO TREND (WEEK BY WEEK)'),
   ].filter(Boolean).join('');
   return body || '<div class="db-empty">Not enough concept volume yet to show trends.</div>';
@@ -1895,7 +1904,7 @@ function ssRenderPredictabilityTable(rows) {
 function ssGenerateInsights(rows) {
   const items = [];
   // Best/worst categories and concepts — what's working, what needs emphasis.
-  [[rows.filter(ssIsPass), ssCategoryBucket, 'pass-concept category'], [rows.filter(r => ssIsPass(r) && !ssIsRPORow(r)), ssPassConceptBucket, 'passing concept'], [rows.filter(r => ssIsRun(r) && !ssIsRPORow(r)), ssRunConceptBucket, 'run concept']].forEach(([rowSet, groupFn, label]) => {
+  [[rows.filter(ssIsPass), ssCategoryBucket, 'pass-concept category'], [rows.filter(r => ssIsPass(r) && !ssIsRPORow(r)), ssPassConceptBucket, 'passing concept'], [rows.filter(r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r)), ssRunConceptBucket, 'run concept']].forEach(([rowSet, groupFn, label]) => {
     const groups = dbGroupBy(rowSet, groupFn);
     const entries = Object.entries(groups)
       .map(([key, rs]) => ({ key, rs, stats: dbSuccessStats(rs) }))
@@ -1942,7 +1951,7 @@ function ssGenerateInsights(rows) {
       items.push({ weight: rs.length * 2, text: `<strong>${dbEscapeHTML(concept)}</strong> pass concept has been intercepted on ${toPct}% of its snaps (${toCount}/${rs.length}) — point of emphasis.` });
     }
   });
-  const runConceptGroups = dbGroupBy(rows.filter(r => ssIsRun(r) && !ssIsRPORow(r)), ssRunConceptBucket);
+  const runConceptGroups = dbGroupBy(rows.filter(r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r)), ssRunConceptBucket);
   Object.entries(runConceptGroups).forEach(([concept, rs]) => {
     if (rs.length < 5) return;
     const toCount = rs.filter(ssIsFumble).length;
@@ -1961,7 +1970,7 @@ function ssGenerateInsights(rows) {
   // hot streak can hide a concept that's been getting worse the last few games.
   const trendGames = ssGamesChronological();
   if (trendGames.length >= SS_TREND_MIN_GAMES) {
-    [[r => ssIsPass(r) && !ssIsRPORow(r), ssPassConceptBucket, 'passing concept'], [r => ssIsRun(r) && !ssIsRPORow(r), ssRunConceptBucket, 'run concept']].forEach(([filterFn, bucketFn, label]) => {
+    [[r => ssIsPass(r) && !ssIsRPORow(r), ssPassConceptBucket, 'passing concept'], [r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r), ssRunConceptBucket, 'run concept']].forEach(([filterFn, bucketFn, label]) => {
       const series = ssBuildConceptTrend(trendGames, filterFn, bucketFn);
       Object.entries(series).forEach(([concept, points]) => {
         if (ssTrendDirection(points) !== 'DOWN') return;
