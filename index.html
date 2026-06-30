@@ -562,6 +562,47 @@ const playbookData = {
   ],
 };
 
+// ==================== RUN PLAY DIAGRAM ====================
+function drawRunSVG(play) {
+  if (!play.diag) return '';
+  const {dir, blocks} = play.diag;
+  const L = LOS, G = '#E8C96A', PL = '#FFE040', RC = '#eeeeee';
+  const pr = 13;
+  const defs = `<defs>
+    <marker id="rma" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L1.5,4 Z" fill="${G}"/></marker>
+    <marker id="rmp" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L1.5,4 Z" fill="${PL}"/></marker>
+    <marker id="rmr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L1.5,4 Z" fill="${RC}"/></marker>
+  </defs>`;
+  const dirLabel = dir==='left' ? '← PS' : 'PS →';
+  const dirX = dir==='left' ? 34 : 366;
+  let arrowSvg = '', playerSvg = '';
+  blocks.forEach(b => {
+    if (b.pos === 'B') {
+      arrowSvg += `<path d="${b.path}" stroke="${RC}" stroke-width="2.2" fill="none" stroke-dasharray="5,2.5" marker-end="url(#rmr)"/>`;
+      playerSvg += `<circle cx="${b.sx}" cy="${b.sy}" r="12" fill="#1a1a1a" stroke="${RC}" stroke-width="1.5"/>
+        <text x="${b.sx}" y="${b.sy+1}" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="900" fill="${RC}" font-family="sans-serif">B</text>`;
+      return;
+    }
+    const x = b.x, y = L;
+    const isPull = b.type === 'pull-kick' || b.type === 'pull-lead';
+    const col = isPull ? PL : G;
+    const markId = isPull ? 'rmp' : 'rma';
+    if (b.path) {
+      arrowSvg += `<path d="${b.path}" stroke="${col}" stroke-width="2.2" fill="none" marker-end="url(#${markId})"/>`;
+    } else if (b.tx !== undefined) {
+      if (b.blk) {
+        arrowSvg += `<line x1="${x}" y1="${y-pr}" x2="${b.tx}" y2="${b.ty}" stroke="${col}" stroke-width="2.2"/>
+          <circle cx="${b.tx}" cy="${b.ty}" r="3.5" fill="${col}"/>`;
+      } else {
+        arrowSvg += `<line x1="${x}" y1="${y-pr}" x2="${b.tx}" y2="${b.ty}" stroke="${col}" stroke-width="2.2" marker-end="url(#${markId})"/>`;
+      }
+    }
+    playerSvg += `<circle cx="${x}" cy="${y}" r="${pr}" fill="#1a1a1a" stroke="${col}" stroke-width="1.5"/>
+      <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="7" font-weight="900" fill="${col}" font-family="sans-serif">${b.pos}</text>`;
+  });
+  return fieldSVG(defs + `<text x="${dirX}" y="26" text-anchor="middle" font-size="10" font-weight="800" fill="${G}" font-family="sans-serif">${dirLabel}</text>` + arrowSvg + playerSvg, play.name);
+}
+
 // ==================== RUN GAME ====================
 const PRESSURE_COLS = ['Mike Fire','Mike Sting','Star sting','Will sting','Bama','Bama Bozo','NCAA','St Johns'];
 const PRESSURE_KEYS = ['Mike walked','Mike in C gap','Star walked C gap','Will in C gap','Mike & Will Walked','One down opposite A','Mike & Star showing','Double Stings'];
@@ -572,14 +613,30 @@ const runGame = [
     players: [ {pos:'PST',eyes:'PS Gap',assign:'Lock PSE'}, {pos:'PSG',eyes:'PS Gap',assign:'PS Gap to 2nd level'}, {pos:'C',eyes:'PS Gap',assign:'PS Gap to 2nd Level'}, {pos:'BSG',eyes:'PS Gap',assign:'Scoop BS A to 2nd Level'}, {pos:'BST',eyes:'PS Gap',assign:'Scoop BS C to 2nd Level'} ],
     qb: 'No QB read notes filled in on this install sheet.',
     qbNotes: [],
-    pressureProgression: ['Money from the Front side double team','Lisa or Out call','Pontiac or out','Money from the 2nd ace/cog','Money from both double teams','Money from both double teams','Lisa Call with the RPO or Default throw','Lisa and Out call on the BS'] },
+    pressureProgression: ['Money from the Front side double team','Lisa or Out call','Pontiac or out','Money from the 2nd ace/cog','Money from both double teams','Money from both double teams','Lisa Call with the RPO or Default throw','Lisa and Out call on the BS'],
+    diag: { dir:'right', blocks:[
+      {pos:'FST', x:248, tx:276, ty:135},
+      {pos:'FSG', x:221, tx:248, ty:130},
+      {pos:'C',   x:194, tx:221, ty:130},
+      {pos:'BSG', x:167, tx:194, ty:130},
+      {pos:'BST', x:140, tx:167, ty:130},
+      {pos:'B', sx:196, sy:220, path:'M196,220 L232,148'},
+    ]} },
   { name:'GIANTS CON', concept:'Inside Zone', playCall:'Giants Con vs Over front', formation:'BASE', family:'INSIDE ZONE',
     alerts: ['Star Press – Out/Gang','Mike creep – Solo Alert','Will Creep – Solo Alert','Mike walked outside – Out Call','Creep BS – Solo','Point to #2 by C.'],
     baseFormation:'Any 10, 11 formation', blockingStyle:'Zone run blocking (Gap 2 Head up)', variation:'On LOS how is the DT and N playing',
     players: [ {pos:'PST',eyes:'PS Gap',assign:'Lock PSE'}, {pos:'PSG',eyes:'PS Gap',assign:'PS Gap to 2nd level'}, {pos:'C',eyes:'PS Gap',assign:'PS Gap to 2nd Level'}, {pos:'BSG',eyes:'PS Gap',assign:'Scoop BS A to 2nd Level'}, {pos:'BST',eyes:'PS Gap',assign:'Scoop BS C to 2nd Level'} ],
     qb: 'No QB read notes filled in on this install sheet.',
     qbNotes: [],
-    pressureProgression: ['Money from the Front side double team','Lisa or Out call','Pontiac or out','Money from the 2nd ace/cog','Money from both double teams','Money from both double teams','Lisa Call with the RPO or Default throw','Lisa and Out call on the BS'] },
+    pressureProgression: ['Money from the Front side double team','Lisa or Out call','Pontiac or out','Money from the 2nd ace/cog','Money from both double teams','Money from both double teams','Lisa Call with the RPO or Default throw','Lisa and Out call on the BS'],
+    diag: { dir:'left', blocks:[
+      {pos:'FST', x:140, tx:112, ty:135},
+      {pos:'FSG', x:167, tx:140, ty:130},
+      {pos:'C',   x:194, tx:167, ty:130},
+      {pos:'BSG', x:221, tx:194, ty:130},
+      {pos:'BST', x:248, tx:221, ty:130},
+      {pos:'B', sx:196, sy:220, path:'M196,220 L157,148'},
+    ]} },
   { name:'CINCY CON', concept:'Gap Counter (6 man)', playCall:'Cincinnati Con vs Under front', formation:'11/12 PERSONNEL', family:'COUNTER',
     note: 'Cincy con / 35 – this a gap run counter play with the same blocking as Rams with OL on the Kick and Y or 2nd puller on the #1 LB',
     sets: ['FST – B gap to #2','FSG – B gap to #2','C – WK A','BSG – Pull to EMOL','BST – pull 4 PSLB','B – Steps (Lat step, Cross over, Pivot), aiming is Play side A'],
@@ -588,7 +645,15 @@ const runGame = [
     players: [ {pos:'FST',eyes:'B gap',assign:'Double to #2'}, {pos:'FSG',eyes:'B gap',assign:'Double to #2'}, {pos:'C',eyes:'WK A gap',assign:'WK A'}, {pos:'BSG',eyes:'EMOL',assign:'Pull to EMOL'}, {pos:'BST',eyes:'PSLB',assign:'Pull to PSLB'} ],
     qb: 'You have the star from depth',
     qbNotes: ['Hand off or RPO – Cincy Pro/Con is Sidecar and RPO is on reading the BS','D gap pressure – if there is a free man off the backside edge then read option him','—','—','Cowboy (Corner Blitz) treat as D gap back side pressure'],
-    pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'] },
+    pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'],
+    diag: { dir:'left', blocks:[
+      {pos:'FST', x:140, tx:118, ty:145, blk:true},
+      {pos:'FSG', x:167, tx:118, ty:145, blk:true},
+      {pos:'C',   x:194, tx:212, ty:148, blk:true},
+      {pos:'BSG', x:221, type:'pull-kick', path:'M221,162 Q221,192 163,192 Q103,192 100,162'},
+      {pos:'BST', x:248, type:'pull-lead', path:'M248,162 Q248,202 163,202 Q108,202 118,130'},
+      {pos:'B', sx:210, sy:220, path:'M210,220 L224,207 L170,148'},
+    ]} },
   { name:'CINCY CON (ALT)', concept:'Gap Counter (6 man)', playCall:'Cincinnati Con vs Under front (variant)', formation:'11/12 PERSONNEL', family:'COUNTER',
     note: 'Alternate blocking scheme for the same Cincy Con call — confirm with staff which version is current before installing.',
     sets: ['FST – B gap to #2','FSG – A gap to #2','C – WK A gap, kick C gap','BSG – WK B to pull, kick C gap','BST – WK B to WK C, slide hinge','B – Steps (Lat step, Cross over, Pivot), aiming is Play side A'],
@@ -597,7 +662,15 @@ const runGame = [
     players: [ {pos:'FST',eyes:'B gap',assign:'Double to #2'}, {pos:'FSG',eyes:'A gap',assign:'Double to #2'}, {pos:'C',eyes:'WK A gap',assign:'Block WK A gap'}, {pos:'BSG',eyes:'WK B / LB#1',assign:'Block WK B or pull to LB#1'}, {pos:'BST',eyes:'WK B to WK C',assign:'Alert Squeeze and block WK B to WK C'} ],
     qb: 'You have the star from depth',
     qbNotes: ['Hand off or RPO – Cincy Pro/Con is Sidecar and RPO is on reading the BS','D gap pressure – if there is a free man off the backside edge then read option him','—','—','Cowboy (Corner Blitz) treat as D gap back side pressure'],
-    pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'] },
+    pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'],
+    diag: { dir:'left', blocks:[
+      {pos:'FST', x:140, tx:118, ty:145, blk:true},
+      {pos:'FSG', x:167, tx:118, ty:145, blk:true},
+      {pos:'C',   x:194, tx:212, ty:148, blk:true},
+      {pos:'BSG', x:221, type:'pull-lead', path:'M221,162 Q221,185 163,185 Q118,185 118,130'},
+      {pos:'BST', x:248, tx:265, ty:148, blk:true},
+      {pos:'B', sx:210, sy:220, path:'M210,220 L224,207 L170,148'},
+    ]} },
   { name:'CINCY PRO', concept:'Gap Counter (6 man)', playCall:'Cincy Pro vs Over front', formation:'11/12 PERSONNEL', family:'COUNTER',
     note: 'Cincy Pro / 34 – this a gap run counter play with the same blocking as Tampa with OL on the Kick and Y or 2nd puller on the #1 LB',
     sets: ['FST – B gap to #2','FSG – A gap to B gap to #2','C – WK A gap to pull','BSG – Pull to EMOL','BST – Pull 4 PSLB','B – Steps (Lat step, Cross over, Pivot), aiming is Play side A'],
@@ -606,7 +679,15 @@ const runGame = [
     players: [ {pos:'FST',eyes:'Tackle',assign:'Block B'}, {pos:'FSG',eyes:'Tackle/Mike',assign:'DBL B to BSLB'}, {pos:'C',eyes:'Nose',assign:'Block Nose'}, {pos:'BSG',eyes:'Jack',assign:'Pull for EMOL'}, {pos:'BST',eyes:'Will',assign:'Pull for PSLB'} ],
     qb: 'You have the star from depth',
     qbNotes: ['Hand off or RPO – Con is Sidecar and RPO is on reading the BS','D gap pressure – if there is a free man off the backside edge then read option him','Press call by the Y (star is on the outside shoulder of the Y) — T and G should expect a "???" call','—','Cowboy treat as D gap back side pressure'],
-    pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'] },
+    pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'],
+    diag: { dir:'right', blocks:[
+      {pos:'FST', x:248, tx:270, ty:145, blk:true},
+      {pos:'FSG', x:221, tx:270, ty:145, blk:true},
+      {pos:'C',   x:194, tx:176, ty:148, blk:true},
+      {pos:'BSG', x:167, type:'pull-kick', path:'M167,162 Q167,192 225,192 Q287,192 290,162'},
+      {pos:'BST', x:140, type:'pull-lead', path:'M140,162 Q140,202 225,202 Q282,202 270,130'},
+      {pos:'B', sx:196, sy:220, path:'M196,220 L180,207 L218,148'},
+    ]} },
   { name:'RAVENS', concept:'Gap Counter (6 man)', playCall:'Ravens — 10 Personnel, any formation', formation:'10 PERSONNEL', family:'COUNTER',
     note: 'Cincy Con rules out of 10 personnel — FST/FSG now work to the play side linebacker (no extra TE/H to double down on), and C blocks back on the backside A gap instead of working WK A. BSG/BST pulls and B steps stay the same as base Cincy Con.',
     sets: ['FST – work to PSLB','FSG – work to PSLB','C – Block back, BS A gap','BSG – Pull to EMOL','BST – Pull 4 PSLB','B – Steps (Lat step, Cross over, Pivot), aiming is Play side A (same as Cincy)'],
@@ -615,7 +696,15 @@ const runGame = [
     players: [ {pos:'FST',eyes:'PSLB',assign:'Work to PSLB'}, {pos:'FSG',eyes:'PSLB',assign:'Work to PSLB'}, {pos:'C',eyes:'BS A gap',assign:'Block back, BS A gap'}, {pos:'BSG',eyes:'EMOL',assign:'Pull to EMOL'}, {pos:'BST',eyes:'PSLB',assign:'Pull to PSLB'} ],
     qb: 'You have the star from depth',
     qbNotes: ['Hand off or RPO – Cincy Pro/Con is Sidecar and RPO is on reading the BS','D gap pressure – if there is a free man off the backside edge then read option him','—','—','Cowboy (Corner Blitz) treat as D gap back side pressure'],
-    pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'] },
+    pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'],
+    diag: { dir:'left', blocks:[
+      {pos:'FST', x:140, tx:118, ty:128},
+      {pos:'FSG', x:167, tx:118, ty:128},
+      {pos:'C',   x:194, tx:212, ty:148, blk:true},
+      {pos:'BSG', x:221, type:'pull-kick', path:'M221,162 Q221,192 163,192 Q103,192 100,162'},
+      {pos:'BST', x:248, type:'pull-lead', path:'M248,162 Q248,202 163,202 Q108,202 118,130'},
+      {pos:'B', sx:210, sy:220, path:'M210,220 L224,207 L170,148'},
+    ]} },
   { name:'CHARGERS (36)', concept:'Wide Zone Pro', playCall:'36 vs Over front', formation:'10/11/12/20/21 PERSONNEL', family:'WIDE ZONE',
     note: 'Wide Zone Pro – zone play with the frontside of the play trying to reach the outside shoulder of the man over there.',
     sets: ['FST – Reach the C gap','FSG – Reach the B gap','C – Reach the playside A gap','BSG – Cut off A gap','BST – Cut off B gap','B – Pistol, same side and side car, toes at 7.5 yds, aiming point 1 yd outside the tackle. 1st read is the EMOLS'],
@@ -624,7 +713,15 @@ const runGame = [
     players: [ {pos:'FST',eyes:'C gap (DE/Mike)',assign:'Close gap reach / open gap help and climb'}, {pos:'FSG',eyes:'B gap (LB)',assign:'Close gap reach / open gap help and climb'}, {pos:'C',eyes:'A gap',assign:'Close gap reach / open gap help and climb'}, {pos:'BSG',eyes:'WK A',assign:'Cut off A gap DL 3ft / cut off A gap LB 3yds'}, {pos:'BST',eyes:'WK B',assign:'Cut off B gap DL 3ft / cut off B gap LB 3yds'} ],
     qb: 'You have the star from depth',
     qbNotes: ['Check opposite side to see if we need to flip the play','D gap pressure – still a give and boot away','RPO is the game-week plan — wide zone is not a big RPO play','There is no Star RPO read if we have a force, dart, or any other lead call','Cowboy treat as D gap back side pressure, throw cowboy hitch or read pull on'],
-    pressureProgression: ['Reach playside shoulder, Lisa','Triple call','Out call','Scoop call','Lisa and getting the playside shoulder','Lisa and getting the playside shoulder','Out call','Out call'] },
+    pressureProgression: ['Reach playside shoulder, Lisa','Triple call','Out call','Scoop call','Lisa and getting the playside shoulder','Lisa and getting the playside shoulder','Out call','Out call'],
+    diag: { dir:'right', blocks:[
+      {pos:'FST', x:248, tx:280, ty:145},
+      {pos:'FSG', x:221, tx:253, ty:145},
+      {pos:'C',   x:194, tx:226, ty:145},
+      {pos:'BSG', x:167, tx:178, ty:148, blk:true},
+      {pos:'BST', x:140, tx:152, ty:148, blk:true},
+      {pos:'B', sx:196, sy:220, path:'M196,220 Q242,195 270,148'},
+    ]} },
 ];
 function pressureTable(prog) {
   return `<table class="route-table"><tr>${PRESSURE_COLS.map(c=>`<th>${c}</th>`).join('')}</tr>
@@ -646,6 +743,7 @@ function renderRunGame() {
         <div class="card-chevron">›</div>
       </div>
       <div class="card-body">
+        ${r.diag ? `<div style="margin-bottom:12px;border-radius:6px;overflow:hidden">${drawRunSVG(r)}</div>` : ''}
         ${r.note ? `<div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">CONCEPT</div><div style="font-size:13px;color:#ccc">${r.note}</div></div>` : ''}
         ${r.sets ? `<div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">SETS</div><ul>${r.sets.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : ''}
         <div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">ALERTS</div><ul>${(r.alerts||[]).map(a=>`<li>${a}</li>`).join('')}</ul></div>
