@@ -1853,6 +1853,45 @@ function ssRenderTrendsTab() {
   return body || '<div class="db-empty">Not enough concept volume yet to show trends.</div>';
 }
 
+// Cross-tabs down/distance with formation+personnel so a lopsided run/pass split in a specific
+// situation surfaces directly — opposing coordinators will find this same pattern if we don't.
+function ssPredictabilityBucket(r) {
+  const sit = dbDownDistBucket(r);
+  const fp = dbFormPersonnelBucket(r);
+  if (!sit || !fp) return null;
+  return sit + ' / ' + fp;
+}
+const SS_PREDICTABILITY_MIN_N = 5;
+const SS_PREDICTABILITY_PCT = 75;
+function ssPredictabilityEntries(rows) {
+  const chartable = rows.filter(r => ssIsRun(r) || ssIsPass(r));
+  const groups = dbGroupBy(chartable, ssPredictabilityBucket);
+  return Object.entries(groups)
+    .map(([combo, rs]) => {
+      const runCount = rs.filter(ssIsRun).length;
+      const passCount = rs.length - runCount;
+      const runPct = Math.round(runCount / rs.length * 100);
+      return { combo, rs, runCount, passCount, runPct, lean: Math.max(runPct, 100 - runPct) };
+    })
+    .filter(e => e.rs.length >= SS_PREDICTABILITY_MIN_N)
+    .sort((a, b) => b.lean - a.lean || b.rs.length - a.rs.length);
+}
+function ssRenderPredictabilityTable(rows) {
+  const entries = ssPredictabilityEntries(rows);
+  if (!entries.length) return '<div class="db-empty">Not enough plays per situation/formation combo yet to flag tendencies (need at least ' + SS_PREDICTABILITY_MIN_N + ' snaps in the same down/distance + formation/personnel).</div>';
+  const trs = entries.map(e => {
+    const flagged = e.lean >= SS_PREDICTABILITY_PCT;
+    const callLabel = e.runPct >= 50 ? e.runPct + '% RUN' : (100 - e.runPct) + '% PASS';
+    return `<tr>
+      <td><strong>${dbEscapeHTML(e.combo)}</strong><br><span style="color:var(--gray);font-size:11px">${e.rs.length} snaps</span></td>
+      <td>${e.runCount}R / ${e.passCount}P</td>
+      <td>${flagged ? '<span style="color:var(--red)">⚠ ' + callLabel + ' — PREDICTABLE</span>' : callLabel}</td>
+      <td>${ssSuccessCellHTML(e.rs)}</td>
+    </tr>`;
+  }).join('');
+  return dbPanelWrap('SITUATIONAL PREDICTABILITY (RUN/PASS BY SITUATION + FORMATION)', `<div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION / FORMATION</th><th>RUN / PASS</th><th>TENDENCY</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+}
+
 function ssGenerateInsights(rows) {
   const items = [];
   // Best/worst categories and concepts — what's working, what needs emphasis.
@@ -1912,6 +1951,12 @@ function ssGenerateInsights(rows) {
       items.push({ weight: rs.length * 2, text: `<strong>${dbEscapeHTML(concept)}</strong> run concept has fumbled on ${toPct}% of its snaps (${toCount}/${rs.length}) — point of emphasis.` });
     }
   });
+  // Predictability — a lopsided run/pass split in one situation+formation is as much a
+  // self-scout risk as an efficiency problem, since defenses key on it too.
+  ssPredictabilityEntries(rows).filter(e => e.lean >= SS_PREDICTABILITY_PCT).forEach(e => {
+    const callLabel = e.runPct >= 50 ? e.runPct + '% RUN' : (100 - e.runPct) + '% PASS';
+    items.push({ weight: e.rs.length * 2, text: `<strong>${dbEscapeHTML(e.combo)}</strong> is ${callLabel} (${e.rs.length} snaps) — predictable; expect defenses to key on this.` });
+  });
   // Trending down — flag even if the pooled season average still looks fine, since an early
   // hot streak can hide a concept that's been getting worse the last few games.
   const trendGames = ssGamesChronological();
@@ -1936,6 +1981,7 @@ const SS_TABS = [
   { id: 'runconcept', label: 'RUN CONCEPTS', render: rows => ssRenderRunDirectionTable(rows) + ssRenderRunConceptTable(rows) },
   { id: 'rpo', label: 'RPO', render: rows => ssRenderRPOTable(rows) },
   { id: 'trends', label: 'TRENDS', render: () => ssRenderTrendsTab() },
+  { id: 'predictability', label: 'PREDICTABILITY', render: rows => ssRenderPredictabilityTable(rows) },
   { id: 'formation', label: 'FORMATION', render: rows => ssRenderGroupTable(rows, dbFormPersonnelBucket, 'BY FORMATION & PERSONNEL', 'FORMATION') },
   { id: 'downdist', label: 'DOWN & DISTANCE', render: rows => ssRenderGroupTable(rows, dbDownDistBucket, 'BY DOWN & DISTANCE', 'SITUATION') },
   { id: 'zone', label: 'FIELD ZONE', render: rows => ssRenderGroupTable(rows, dbZoneBucket, 'BY FIELD ZONE', 'ZONE', DB_ZONE_ORDER) },
