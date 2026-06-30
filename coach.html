@@ -1536,17 +1536,44 @@ function ssIsRunHandoff(r) {
   return !dbResultStr(r).includes('SCRAMBLE');
 }
 function ssRPOComboBucket(r) {
-  // RUN TAG holds the called RPO tag (e.g. "HAWAII") on every rep of that call, whether the read
-  // ended up a give or a pull — so "GIANTS PRO" + RUN TAG "HAWAII" groups as "GIANTS HAWAII"
-  // regardless of which side of the RPO actually hit. Fall back to PASS TAG/CONCEPT only if a
-  // row genuinely has no RUN TAG charted.
-  const base = ssOffPlayBase(r);
-  const tag = String(r.runTag == null ? '' : r.runTag).trim().toUpperCase()
-    || String(r.passTag == null ? '' : r.passTag).trim().toUpperCase()
-    || String(r.concept == null ? '' : r.concept).trim().toUpperCase();
-  const label = (base && tag) ? base + ' ' + tag : (base || tag || '—');
-  const route = ssConceptFamilyLookup('RPO', tag);
-  return route ? label + ' (' + route + ')' : label;
+  // Group by CONCEPT (the run call) + PASS TAG (the route read).
+  // PASS_TAG identifies the live RPO read; DEFAULT/blank means no read was charted.
+  const concept = String(r.concept == null ? '' : r.concept).trim().toUpperCase() || ssOffPlayBase(r);
+  const passTag = String(r.passTag == null ? '' : r.passTag).trim().toUpperCase();
+  const cleanPassTag = (passTag && passTag !== 'DEFAULT') ? passTag : '';
+  const conceptFamily = ssConceptFamilyLookup('RUN', concept);
+  const conceptLabel = conceptFamily ? conceptFamily + ' (' + concept + ')' : concept;
+  if (!cleanPassTag) return conceptLabel || '—';
+  const passFamily = ssConceptFamilyLookup('RPO', cleanPassTag);
+  const passLabel = passFamily ? passFamily + ' (' + cleanPassTag + ')' : cleanPassTag;
+  return conceptLabel ? conceptLabel + ' + ' + passLabel : passLabel;
+}
+// Returns "GIANTS PRO [LOCK]"-style label for a set of directional rows.
+function ssRPODirectionLabel(rs) {
+  const offPlays = [...new Set(rs.map(r => String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase()).filter(Boolean))];
+  const runTags  = [...new Set(rs.map(r => String(r.runTag  == null ? '' : r.runTag ).trim().toUpperCase()).filter(t => t && t !== 'DEFAULT' && t !== 'NONE'))];
+  const playPart = offPlays.slice(0, 2).join(' / ') || 'PRO/CON';
+  return runTags.length ? playPart + ' [' + runTags.join(', ') + ']' : playPart;
+}
+function ssRPORowHTML(labelHTML, rs) {
+  const runRs  = rs.filter(ssIsRun);
+  const passRs = rs.filter(ssIsPass);
+  const runYards  = runRs.reduce((s, r) => s + dbYards(r), 0);
+  const ypc = runRs.length  ? Math.round(runYards  / runRs.length  * 10) / 10 : 0;
+  const comp = passRs.filter(ssIsComplete).length;
+  const passYards = passRs.reduce((s, r) => s + dbYards(r), 0);
+  const ypa = passRs.length ? Math.round(passYards / passRs.length * 10) / 10 : 0;
+  const td = rs.filter(dbIsTD).length;
+  const to = rs.filter(r => ssIsInterception(r) || ssIsFumble(r)).length;
+  return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+    <td>${labelHTML}</td>
+    <td>${runRs.length}G / ${passRs.length}P</td>
+    <td>${runRs.length  ? runYards  + ' yds (' + ypc + '/carry)' : '—'}</td>
+    <td>${passRs.length ? comp + '/' + passRs.length + ' (' + passYards + ' yds, ' + ypa + '/att)' : '—'}</td>
+    <td>${td}</td>
+    <td>${to}</td>
+    <td>${ssSuccessCellHTML(rs)}</td>
+  </tr>`;
 }
 
 function ssRunPassSplitHTML(rs) {
@@ -1746,26 +1773,23 @@ function ssRenderRPOTable(rows) {
   const groups = dbGroupBy(rpoRows, ssRPOComboBucket);
   const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
   const trs = entries.map(([combo, rs]) => {
-    const runRs = rs.filter(ssIsRun);
-    const passRs = rs.filter(ssIsPass);
-    const runYards = runRs.reduce((s, r) => s + dbYards(r), 0);
-    const ypc = runRs.length ? Math.round(runYards / runRs.length * 10) / 10 : 0;
-    const comp = passRs.filter(ssIsComplete).length;
-    const passYards = passRs.reduce((s, r) => s + dbYards(r), 0);
-    const ypa = passRs.length ? Math.round(passYards / passRs.length * 10) / 10 : 0;
-    const td = rs.filter(dbIsTD).length;
-    const to = rs.filter(r => ssIsInterception(r) || ssIsFumble(r)).length;
-    return `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
-      <td><strong>${dbEscapeHTML(combo)}</strong><br><span style="color:var(--gray);font-size:11px">OFF PLAY + TAG — ${rs.length} reps${dbLowSampleTag(rs.length)}</span></td>
-      <td>${runRs.length} give / ${passRs.length} pull</td>
-      <td>${runRs.length ? runYards + ' yds (' + ypc + '/carry)' : '—'}</td>
-      <td>${passRs.length ? comp + '/' + passRs.length + ' (' + passYards + ' yds, ' + ypa + '/att)' : '—'}</td>
-      <td>${td}</td>
-      <td>${to}</td>
-      <td>${ssSuccessCellHTML(rs)}</td>
-    </tr>`;
+    const rightRs = rs.filter(r => ssRunDirection(r) === 'RIGHT (PRO)');
+    const leftRs  = rs.filter(r => ssRunDirection(r) === 'LEFT (CON)');
+    const runTags = [...new Set(rs.map(r => String(r.runTag == null ? '' : r.runTag).trim().toUpperCase()).filter(t => t && t !== 'DEFAULT' && t !== 'NONE'))];
+    const tagDetail = runTags.length ? ' · RUN TAG: ' + runTags.join(', ') : '';
+    const overallLabel = `<strong>${dbEscapeHTML(combo)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} reps${dbLowSampleTag(rs.length)}${dbEscapeHTML(tagDetail)}</span>`;
+    let html = ssRPORowHTML(overallLabel, rs);
+    if (rightRs.length) {
+      const subLabel = `<span style="padding-left:14px;color:var(--gray)">↳ ${dbEscapeHTML(ssRPODirectionLabel(rightRs))}</span><br><span style="padding-left:14px;color:var(--gray);font-size:11px">${rightRs.length} reps</span>`;
+      html += ssRPORowHTML(subLabel, rightRs);
+    }
+    if (leftRs.length) {
+      const subLabel = `<span style="padding-left:14px;color:var(--gray)">↳ ${dbEscapeHTML(ssRPODirectionLabel(leftRs))}</span><br><span style="padding-left:14px;color:var(--gray);font-size:11px">${leftRs.length} reps</span>`;
+      html += ssRPORowHTML(subLabel, leftRs);
+    }
+    return html;
   }).join('');
-  return dbPanelWrap('RPO — OFF PLAY + TAG EFFICIENCY', `<div class="db-table-wrap"><table class="db-table"><tr><th>OFF PLAY + TAG</th><th>GIVE / PULL</th><th>RUN RESULT</th><th>PASS RESULT</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('RPO — CONCEPT + PASS TAG EFFICIENCY', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT + PASS TAG</th><th>GIVE / PULL</th><th>RUN RESULT</th><th>PASS RESULT</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
 }
 
 function ssRenderEffectivenessBarGroup(title, rows, groupFn, n, sortAsc) {
