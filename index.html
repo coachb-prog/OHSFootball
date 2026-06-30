@@ -102,6 +102,12 @@ body {
 .card.open .card-chevron { transform: rotate(90deg); }
 .card-body { display: none; padding: 0 16px 16px; }
 .card.open .card-body { display: block; }
+.front-btn {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.5px; color: var(--gray);
+  background: var(--black3); border: 1px solid rgba(232,201,106,0.25);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer;
+}
+.front-btn.active { color: #1a1a1a; background: var(--gold); border-color: var(--gold); }
 
 /* ===== FORMATION DIAGRAM ===== */
 .diagram-wrap {
@@ -565,19 +571,28 @@ const playbookData = {
 // ==================== RUN PLAY DIAGRAM ====================
 // Simplified 4-down front overlay (2 DTs, 2 DEs, 2 LBs) drawn above the LOS so
 // the printed blocking arrows can be read against what they're actually blocking.
+const RUN_FRONTS = ['over','under','odd','bear'];
+const GAP_X = { lc:105, lb:153, la:180, ra:207, rb:234, rc:271, n:194 };
+function frontDL(dir, frontType) {
+  if (frontType === 'under') {
+    return dir === 'left'
+      ? [ {x:GAP_X.la,l:'1'}, {x:GAP_X.rb,l:'3'}, {x:GAP_X.lc,l:'5'}, {x:GAP_X.rc,l:'5'} ]
+      : [ {x:GAP_X.ra,l:'1'}, {x:GAP_X.lb,l:'3'}, {x:GAP_X.rc,l:'5'}, {x:GAP_X.lc,l:'5'} ];
+  }
+  if (frontType === 'odd') {
+    return [ {x:GAP_X.n,l:'0'}, {x:GAP_X.lc,l:'5'}, {x:GAP_X.rc,l:'5'} ];
+  }
+  if (frontType === 'bear') {
+    return [ {x:GAP_X.la,l:'1'}, {x:GAP_X.ra,l:'1'}, {x:GAP_X.lb,l:'3'}, {x:GAP_X.rb,l:'3'} ];
+  }
+  // over (default)
+  return dir === 'left'
+    ? [ {x:GAP_X.lb,l:'3'}, {x:GAP_X.ra,l:'1'}, {x:GAP_X.lc,l:'5'}, {x:GAP_X.rc,l:'5'} ]
+    : [ {x:GAP_X.rb,l:'3'}, {x:GAP_X.la,l:'1'}, {x:GAP_X.rc,l:'5'}, {x:GAP_X.lc,l:'5'} ];
+}
 function frontMarkers(dir, frontType) {
   const DC = '#2C4A7C', y1 = 144, y2 = 104;
-  const gaps = { lc:105, lb:153, la:180, ra:207, rb:234, rc:271 };
-  let dl;
-  if (frontType === 'under') {
-    dl = dir === 'left'
-      ? [ {x:gaps.la,l:'1'}, {x:gaps.rb,l:'3'}, {x:gaps.lc,l:'5'}, {x:gaps.rc,l:'5'} ]
-      : [ {x:gaps.ra,l:'1'}, {x:gaps.lb,l:'3'}, {x:gaps.rc,l:'5'}, {x:gaps.lc,l:'5'} ];
-  } else {
-    dl = dir === 'left'
-      ? [ {x:gaps.lb,l:'3'}, {x:gaps.ra,l:'1'}, {x:gaps.lc,l:'5'}, {x:gaps.rc,l:'5'} ]
-      : [ {x:gaps.rb,l:'3'}, {x:gaps.la,l:'1'}, {x:gaps.rc,l:'5'}, {x:gaps.lc,l:'5'} ];
-  }
+  const dl = frontDL(dir, frontType);
   const lbs = [ {x:180,l:'M'}, {x:207,l:'W'} ];
   let s = '';
   dl.forEach(d => {
@@ -590,12 +605,67 @@ function frontMarkers(dir, frontType) {
   });
   return s;
 }
-function drawRunSVG(play) {
+// Gap-coverage table per front, expressed relative to play side (PS) / back side (BS),
+// not absolute left/right — independent of play direction.
+function gapCoverage(front) {
+  if (front === 'under') return { psA:true,  psB:false, bsA:false, bsB:true  };
+  if (front === 'odd')   return { psA:true,  psB:false, bsA:false, bsB:false };
+  if (front === 'bear')  return { psA:true,  psB:true,  bsA:true,  bsB:true  };
+  return                        { psA:false, psB:true,  bsA:true,  bsB:false }; // over
+}
+function psBsGapX(dir) {
+  return dir === 'left'
+    ? { psA:GAP_X.la, psB:GAP_X.lb, bsA:GAP_X.ra, bsB:GAP_X.rb }
+    : { psA:GAP_X.ra, psB:GAP_X.rb, bsA:GAP_X.la, bsB:GAP_X.lb };
+}
+// Pull-curve geometry is fixed by each lineman's stance (which is fixed by play
+// direction, not by front) — reuse the exact curves already proven in the source
+// install-sheet diagrams for BSG/BST, just choose which lineman uses which curve.
+const PULL_CURVES = {
+  left:  { bsgKick:'M221,162 Q221,192 163,192 Q103,192 100,162', bstLead:'M248,162 Q248,202 163,202 Q108,202 118,130' },
+  right: { bsgKick:'M167,162 Q167,192 225,192 Q287,192 290,162', bstLead:'M140,162 Q140,202 225,202 Q282,202 270,130' },
+};
+// Builds a "general gap-scheme convention" blocking picture for a front the install
+// sheets never covered: playside double always combos + climbs; the back side guard
+// blocks down instead of pulling if his own gap is covered (can't vacate); the back
+// side tackle is the lone puller if the guard is tied up, or blocks down too if both
+// back side gaps are covered (no puller available in that case).
+function generalGapBlocks(dir, front, rb) {
+  const cov = gapCoverage(front), X = psBsGapX(dir);
+  const psT = dir==='left'?140:248, psG = dir==='left'?167:221, c=194, bsG = dir==='left'?221:167, bsT = dir==='left'?248:140;
+  const curves = PULL_CURVES[dir];
+  const psTargetX = cov.psB ? X.psB : X.psA;
+  const blocks = [
+    {pos:'FST', x:psT, tx:psTargetX, ty:145, blk:true},
+    {pos:'FSG', x:psG, tx:psTargetX, ty:145, blk:true},
+  ];
+  blocks.push(cov.bsA
+    ? {pos:'C', x:c, tx:X.bsA, ty:148, blk:true}
+    : {pos:'C', x:c, tx: dir==='left' ? X.bsA+8 : X.bsA-8, ty:108});
+  if (!cov.bsA) {
+    blocks.push({pos:'BSG', x:bsG, type:'pull-kick', path:curves.bsgKick});
+    blocks.push(cov.bsB
+      ? {pos:'BST', x:bsT, tx:X.bsB, ty:148, blk:true}
+      : {pos:'BST', x:bsT, type:'pull-lead', path:curves.bstLead});
+  } else {
+    blocks.push({pos:'BSG', x:bsG, tx:X.bsA, ty:148, blk:true});
+    blocks.push(cov.bsB
+      ? {pos:'BST', x:bsT, tx:X.bsB, ty:148, blk:true}
+      : {pos:'BST', x:bsT, type:'pull-lead', path:curves.bstLead});
+  }
+  blocks.push(rb);
+  return blocks;
+}
+function drawRunSVG(play, frontOverride) {
   if (!play.diag) return '';
-  const {dir, blocks, front} = play.diag;
+  const {dir, blocks: nativeBlocks, front: nativeFront} = play.diag;
+  const front = frontOverride || nativeFront || 'over';
+  const isGeneral = play.scheme === 'gap' && front !== (nativeFront || 'over');
+  const rb = nativeBlocks.find(b => b.pos === 'B');
+  const blocks = isGeneral ? generalGapBlocks(dir, front, rb) : nativeBlocks;
   const L = LOS, G = '#E8C96A', PL = '#FFE040', RC = '#eeeeee';
   const pr = 13;
-  const frontSvg = frontMarkers(dir, front || 'over');
+  const frontSvg = frontMarkers(dir, front);
   const defs = `<defs>
     <marker id="rma" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L1.5,4 Z" fill="${G}"/></marker>
     <marker id="rmp" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L1.5,4 Z" fill="${PL}"/></marker>
@@ -628,14 +698,18 @@ function drawRunSVG(play) {
     playerSvg += `<circle cx="${x}" cy="${y}" r="${pr}" fill="#1a1a1a" stroke="${col}" stroke-width="1.5"/>
       <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="7" font-weight="900" fill="${col}" font-family="sans-serif">${b.pos}</text>`;
   });
-  return fieldSVG(defs + frontSvg + `<text x="${dirX}" y="26" text-anchor="middle" font-size="10" font-weight="800" fill="${G}" font-family="sans-serif">${dirLabel}</text>` + arrowSvg + playerSvg, play.name);
+  const banner = isGeneral
+    ? `<rect x="0" y="0" width="${VW}" height="14" fill="#5a3d00" opacity="0.9"/>
+       <text x="${VW/2}" y="10" text-anchor="middle" font-size="7.5" font-weight="800" fill="#FFD27A" font-family="sans-serif">GENERAL RULE — NOT FROM INSTALL SHEET, CONFIRM WITH STAFF</text>`
+    : '';
+  return fieldSVG(defs + frontSvg + `<text x="${dirX}" y="26" text-anchor="middle" font-size="10" font-weight="800" fill="${G}" font-family="sans-serif">${dirLabel}</text>` + arrowSvg + playerSvg + banner, play.name);
 }
 
 // ==================== RUN GAME ====================
 const PRESSURE_COLS = ['Mike Fire','Mike Sting','Star sting','Will sting','Bama','Bama Bozo','NCAA','St Johns'];
 const PRESSURE_KEYS = ['Mike walked','Mike in C gap','Star walked C gap','Will in C gap','Mike & Will Walked','One down opposite A','Mike & Star showing','Double Stings'];
 const runGame = [
-  { name:'GIANTS PRO', concept:'Inside Zone', playCall:'Giants Pro vs Over front', formation:'BASE', family:'INSIDE ZONE',
+  { name:'GIANTS PRO', concept:'Inside Zone', playCall:'Giants Pro vs Over front', formation:'BASE', family:'INSIDE ZONE', scheme:'zone',
     alerts: ['Star Press – Out/Gang','Mike creep – Solo Alert','Will Creep – Solo Alert','Mike walked outside – Out Call','Creep BS – Solo','Point to #1 by C.'],
     baseFormation:'Any 10, 11 formation', blockingStyle:'Zone run blocking (Gap 2 Head up)', variation:'On LOS how is the DT and N playing',
     players: [ {pos:'PST',eyes:'PS Gap',assign:'Lock PSE'}, {pos:'PSG',eyes:'PS Gap',assign:'PS Gap to 2nd level'}, {pos:'C',eyes:'PS Gap',assign:'PS Gap to 2nd Level'}, {pos:'BSG',eyes:'PS Gap',assign:'Scoop BS A to 2nd Level'}, {pos:'BST',eyes:'PS Gap',assign:'Scoop BS C to 2nd Level'} ],
@@ -650,7 +724,7 @@ const runGame = [
       {pos:'BST', x:140, tx:167, ty:130},
       {pos:'B', sx:196, sy:220, path:'M196,220 L232,148'},
     ]} },
-  { name:'GIANTS CON', concept:'Inside Zone', playCall:'Giants Con vs Over front', formation:'BASE', family:'INSIDE ZONE',
+  { name:'GIANTS CON', concept:'Inside Zone', playCall:'Giants Con vs Over front', formation:'BASE', family:'INSIDE ZONE', scheme:'zone',
     alerts: ['Star Press – Out/Gang','Mike creep – Solo Alert','Will Creep – Solo Alert','Mike walked outside – Out Call','Creep BS – Solo','Point to #2 by C.'],
     baseFormation:'Any 10, 11 formation', blockingStyle:'Zone run blocking (Gap 2 Head up)', variation:'On LOS how is the DT and N playing',
     players: [ {pos:'PST',eyes:'PS Gap',assign:'Lock PSE'}, {pos:'PSG',eyes:'PS Gap',assign:'PS Gap to 2nd level'}, {pos:'C',eyes:'PS Gap',assign:'PS Gap to 2nd Level'}, {pos:'BSG',eyes:'PS Gap',assign:'Scoop BS A to 2nd Level'}, {pos:'BST',eyes:'PS Gap',assign:'Scoop BS C to 2nd Level'} ],
@@ -665,7 +739,7 @@ const runGame = [
       {pos:'BST', x:248, tx:221, ty:130},
       {pos:'B', sx:196, sy:220, path:'M196,220 L157,148'},
     ]} },
-  { name:'CINCY CON', concept:'Gap Counter (6 man)', playCall:'Cincinnati Con vs Under front', formation:'11/12 PERSONNEL', family:'COUNTER',
+  { name:'CINCY CON', concept:'Gap Counter (6 man)', playCall:'Cincinnati Con vs Under front', formation:'11/12 PERSONNEL', family:'COUNTER', scheme:'gap',
     note: 'Cincy con / 35 – this a gap run counter play with the same blocking as Rams with OL on the Kick and Y or 2nd puller on the #1 LB',
     sets: ['FST – B gap to #2','FSG – B gap to #2','C – WK A','BSG – Pull to EMOL','BST – pull 4 PSLB','B – Steps (Lat step, Cross over, Pivot), aiming is Play side A'],
     alerts: ['Star Press – Throwing default','Will creep –','Mike Creep –','Mike walked outside –','Creep BS –'],
@@ -682,7 +756,7 @@ const runGame = [
       {pos:'BST', x:248, type:'pull-lead', path:'M248,162 Q248,202 163,202 Q108,202 118,130'},
       {pos:'B', sx:210, sy:220, path:'M210,220 L224,207 L170,148'},
     ]} },
-  { name:'CINCY CON (ALT)', concept:'Gap Counter (6 man)', playCall:'Cincinnati Con vs Under front (variant)', formation:'11/12 PERSONNEL', family:'COUNTER',
+  { name:'CINCY CON (ALT)', concept:'Gap Counter (6 man)', playCall:'Cincinnati Con vs Under front (variant)', formation:'11/12 PERSONNEL', family:'COUNTER', scheme:'gap',
     note: 'Alternate blocking scheme for the same Cincy Con call — confirm with staff which version is current before installing.',
     sets: ['FST – B gap to #2','FSG – A gap to #2','C – WK A gap, kick C gap','BSG – WK B to pull, kick C gap','BST – WK B to WK C, slide hinge','B – Steps (Lat step, Cross over, Pivot), aiming is Play side A'],
     alerts: ['Star Press –','Will creep –','Mike Creep –','Mike walked outside –','Creep BS –'],
@@ -699,7 +773,7 @@ const runGame = [
       {pos:'BST', x:248, tx:265, ty:148, blk:true},
       {pos:'B', sx:210, sy:220, path:'M210,220 L224,207 L170,148'},
     ]} },
-  { name:'CINCY PRO', concept:'Gap Counter (6 man)', playCall:'Cincy Pro vs Over front', formation:'11/12 PERSONNEL', family:'COUNTER',
+  { name:'CINCY PRO', concept:'Gap Counter (6 man)', playCall:'Cincy Pro vs Over front', formation:'11/12 PERSONNEL', family:'COUNTER', scheme:'gap',
     note: 'Cincy Pro / 34 – this a gap run counter play with the same blocking as Tampa with OL on the Kick and Y or 2nd puller on the #1 LB',
     sets: ['FST – B gap to #2','FSG – A gap to B gap to #2','C – WK A gap to pull','BSG – Pull to EMOL','BST – Pull 4 PSLB','B – Steps (Lat step, Cross over, Pivot), aiming is Play side A'],
     alerts: ['Star Press –','Will creep –','Mike Creep –','Mike walked outside –','Creep BS –'],
@@ -716,7 +790,7 @@ const runGame = [
       {pos:'BST', x:140, type:'pull-lead', path:'M140,162 Q140,202 225,202 Q282,202 270,130'},
       {pos:'B', sx:196, sy:220, path:'M196,220 L180,207 L218,148'},
     ]} },
-  { name:'RAVENS', concept:'Gap Counter (6 man)', playCall:'Ravens — 10 Personnel, any formation', formation:'10 PERSONNEL', family:'COUNTER',
+  { name:'RAVENS', concept:'Gap Counter (6 man)', playCall:'Ravens — 10 Personnel, any formation', formation:'10 PERSONNEL', family:'COUNTER', scheme:'gap',
     note: 'Cincy Con rules out of 10 personnel — FST/FSG now work to the play side linebacker (no extra TE/H to double down on), and C blocks back on the backside A gap instead of working WK A. BSG/BST pulls and B steps stay the same as base Cincy Con.',
     sets: ['FST – work to PSLB','FSG – work to PSLB','C – Block back, BS A gap','BSG – Pull to EMOL','BST – Pull 4 PSLB','B – Steps (Lat step, Cross over, Pivot), aiming is Play side A (same as Cincy)'],
     alerts: ['Star Press – Throwing default','Will creep –','Mike Creep –','Mike walked outside –','Creep BS –'],
@@ -733,7 +807,7 @@ const runGame = [
       {pos:'BST', x:248, type:'pull-lead', path:'M248,162 Q248,202 163,202 Q108,202 118,130'},
       {pos:'B', sx:210, sy:220, path:'M210,220 L224,207 L170,148'},
     ]} },
-  { name:'CHARGERS (36)', concept:'Wide Zone Pro', playCall:'36 vs Over front', formation:'10/11/12/20/21 PERSONNEL', family:'WIDE ZONE',
+  { name:'CHARGERS (36)', concept:'Wide Zone Pro', playCall:'36 vs Over front', formation:'10/11/12/20/21 PERSONNEL', family:'WIDE ZONE', scheme:'zone',
     note: 'Wide Zone Pro – zone play with the frontside of the play trying to reach the outside shoulder of the man over there.',
     sets: ['FST – Reach the C gap','FSG – Reach the B gap','C – Reach the playside A gap','BSG – Cut off A gap','BST – Cut off B gap','B – Pistol, same side and side car, toes at 7.5 yds, aiming point 1 yd outside the tackle. 1st read is the EMOLS'],
     alerts: ['Star Press –','Will creep –','Mike Creep –','Mike walked outside –','Creep BS –'],
@@ -756,10 +830,27 @@ function pressureTable(prog) {
     <tr>${PRESSURE_KEYS.map(k=>`<td style="font-size:11px;color:#ccc">${k}</td>`).join('')}</tr>
     <tr>${prog.map(p=>`<td style="font-size:11px;color:var(--gold)">${p}</td>`).join('')}</tr></table>`;
 }
+const runFrontState = {};
+const FRONT_LABELS = { over:'OVER', under:'UNDER', odd:'ODD (3-4)', bear:'BEAR' };
+function setRunFront(i, front) {
+  runFrontState[i] = front;
+  const r = runGame[i];
+  const diagEl = document.getElementById('runs-card-'+i+'-diag');
+  if (diagEl) diagEl.innerHTML = drawRunSVG(r, front);
+  document.querySelectorAll(`[data-frontbtn="${i}"]`).forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.front === front);
+  });
+}
 function renderRunGame() {
   document.getElementById('runs-list').innerHTML = runGame.map((r, i) => {
     const id = 'runs-card-'+i;
     const searchText = [r.name, r.concept, r.playCall, r.family, r.formation, ...(r.alerts||[]), ...(r.sets||[]), ...r.players.map(p=>p.pos+' '+p.eyes+' '+p.assign), r.qb, ...(r.qbNotes||[])].join(' ');
+    const nativeFront = (r.diag && r.diag.front) || 'over';
+    const curFront = runFrontState[i] || nativeFront;
+    const frontPicker = r.diag ? `
+      <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        ${RUN_FRONTS.map(f => `<button data-frontbtn="${i}" data-front="${f}" class="front-btn${f===curFront?' active':''}" onclick="event.stopPropagation();setRunFront(${i},'${f}')">${FRONT_LABELS[f]}</button>`).join('')}
+      </div>` : '';
     return `
     <div class="card" id="${id}" data-search="${searchText.replace(/"/g,'&quot;')}">
       <div class="card-header" onclick="toggleCard('${id}')">
@@ -771,7 +862,8 @@ function renderRunGame() {
         <div class="card-chevron">›</div>
       </div>
       <div class="card-body">
-        ${r.diag ? `<div style="margin-bottom:12px;border-radius:6px;overflow:hidden">${drawRunSVG(r)}</div>` : ''}
+        ${frontPicker}
+        ${r.diag ? `<div id="${id}-diag" style="margin-bottom:12px;border-radius:6px;overflow:hidden">${drawRunSVG(r, curFront)}</div>` : ''}
         ${r.note ? `<div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">CONCEPT</div><div style="font-size:13px;color:#ccc">${r.note}</div></div>` : ''}
         ${r.sets ? `<div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">SETS</div><ul>${r.sets.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : ''}
         <div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">ALERTS</div><ul>${(r.alerts||[]).map(a=>`<li>${a}</li>`).join('')}</ul></div>
