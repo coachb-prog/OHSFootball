@@ -1789,6 +1789,70 @@ function ssRenderBarSection(rows) {
   return dbSectionWrap('TENDENCY OVERVIEW', `<div class="db-bar-grid">${groups.join('')}</div>`);
 }
 
+// Games array is push-ordered by upload, but a merged import can append out of order —
+// sort by savedAt so trend series always read oldest-to-newest regardless of import order.
+function ssGamesChronological() {
+  return getSSData().games.slice().sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0));
+}
+// Per-game success series for a concept, so a decline shows up even when the pooled
+// season-to-date average still looks fine (an early hot streak can mask a recent slide).
+function ssBuildConceptTrend(games, filterFn, bucketFn) {
+  const series = {};
+  games.forEach(g => {
+    const groups = dbGroupBy(g.rows.filter(filterFn), bucketFn);
+    Object.entries(groups).forEach(([concept, rs]) => {
+      const stats = dbSuccessStats(rs);
+      if (!stats) return;
+      (series[concept] || (series[concept] = [])).push({ label: g.label, n: stats.n, successPct: stats.successPct });
+    });
+  });
+  return series;
+}
+const SS_TREND_MIN_TOTAL_N = 8;
+const SS_TREND_MIN_GAMES = 2;
+const SS_TREND_SHIFT_PCT = 15;
+function ssTrendDirection(points) {
+  if (points.length < SS_TREND_MIN_GAMES) return null;
+  const totalN = points.reduce((s, p) => s + p.n, 0);
+  if (totalN < SS_TREND_MIN_TOTAL_N) return null;
+  const half = Math.ceil(points.length / 2);
+  const wavg = ps => { const n = ps.reduce((s, p) => s + p.n, 0); return n ? ps.reduce((s, p) => s + p.successPct * p.n, 0) / n : null; };
+  const earlyAvg = wavg(points.slice(0, half)), recentAvg = wavg(points.slice(half));
+  if (earlyAvg == null || recentAvg == null) return null;
+  const diff = recentAvg - earlyAvg;
+  if (diff <= -SS_TREND_SHIFT_PCT) return 'DOWN';
+  if (diff >= SS_TREND_SHIFT_PCT) return 'UP';
+  return 'FLAT';
+}
+function ssRenderConceptTrendTable(games, filterFn, bucketFn, title) {
+  const series = ssBuildConceptTrend(games, filterFn, bucketFn);
+  const entries = Object.entries(series)
+    .map(([concept, points]) => ({ concept, points, totalN: points.reduce((s, p) => s + p.n, 0), dir: ssTrendDirection(points) }))
+    .filter(e => e.totalN >= 3)
+    .sort((a, b) => b.totalN - a.totalN);
+  if (!entries.length) return '';
+  const dirHTML = { DOWN: '<span style="color:var(--red)">▼ TRENDING DOWN</span>', UP: '<span style="color:var(--gold)">▲ TRENDING UP</span>', FLAT: '<span style="color:var(--gray)">— STABLE</span>' };
+  const trs = entries.map(e => {
+    const seq = e.points.map(p => `${dbEscapeHTML(p.label)}: ${p.successPct}%<span style="color:var(--gray);font-size:10px">(${p.n})</span>`).join(' <span style="color:var(--gray)">→</span> ');
+    return `<tr${e.totalN < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+      <td><strong>${dbEscapeHTML(e.concept)}</strong><br><span style="color:var(--gray);font-size:11px">${e.totalN} plays across ${e.points.length} game(s)${dbLowSampleTag(e.totalN)}</span></td>
+      <td style="font-size:12px">${seq}</td>
+      <td>${dirHTML[e.dir] || '<span style="color:var(--gray)">— not enough games yet</span>'}</td>
+    </tr>`;
+  }).join('');
+  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT</th><th>SUCCESS% BY GAME</th><th>TREND</th></tr>${trs}</table></div>`);
+}
+function ssRenderTrendsTab() {
+  const games = ssGamesChronological();
+  if (games.length < 2) return '<div class="db-empty">Load at least 2 games to see week-over-week trends. Trends always cover every game loaded this season, regardless of the game filter above.</div>';
+  const body = [
+    ssRenderConceptTrendTable(games, r => ssIsPass(r) && !ssIsRPORow(r), ssPassConceptBucket, 'PASS CONCEPT TREND (WEEK BY WEEK)'),
+    ssRenderConceptTrendTable(games, r => ssIsRun(r) && !ssIsRPORow(r), ssRunConceptBucket, 'RUN CONCEPT TREND (WEEK BY WEEK)'),
+    ssRenderConceptTrendTable(games, ssIsRPORow, ssRPOComboBucket, 'RPO TREND (WEEK BY WEEK)'),
+  ].filter(Boolean).join('');
+  return body || '<div class="db-empty">Not enough concept volume yet to show trends.</div>';
+}
+
 function ssGenerateInsights(rows) {
   const items = [];
   // Best/worst categories and concepts — what's working, what needs emphasis.
@@ -1848,6 +1912,20 @@ function ssGenerateInsights(rows) {
       items.push({ weight: rs.length * 2, text: `<strong>${dbEscapeHTML(concept)}</strong> run concept has fumbled on ${toPct}% of its snaps (${toCount}/${rs.length}) — point of emphasis.` });
     }
   });
+  // Trending down — flag even if the pooled season average still looks fine, since an early
+  // hot streak can hide a concept that's been getting worse the last few games.
+  const trendGames = ssGamesChronological();
+  if (trendGames.length >= SS_TREND_MIN_GAMES) {
+    [[r => ssIsPass(r) && !ssIsRPORow(r), ssPassConceptBucket, 'passing concept'], [r => ssIsRun(r) && !ssIsRPORow(r), ssRunConceptBucket, 'run concept']].forEach(([filterFn, bucketFn, label]) => {
+      const series = ssBuildConceptTrend(trendGames, filterFn, bucketFn);
+      Object.entries(series).forEach(([concept, points]) => {
+        if (ssTrendDirection(points) !== 'DOWN') return;
+        const totalN = points.reduce((s, p) => s + p.n, 0);
+        const last = points[points.length - 1];
+        items.push({ weight: totalN * 2, text: `<strong>${dbEscapeHTML(concept)}</strong> ${label} is trending down — down to ${last.successPct}% success in ${dbEscapeHTML(last.label)} after a stronger start to the season. See the TRENDS tab for the week-by-week breakdown.` });
+      });
+    });
+  }
   items.sort((a, b) => b.weight - a.weight);
   return items.slice(0, 30).map(i => i.text);
 }
@@ -1857,6 +1935,7 @@ const SS_TABS = [
   { id: 'passconcept', label: 'PASS CONCEPTS', render: rows => ssRenderPassConceptTable(rows) },
   { id: 'runconcept', label: 'RUN CONCEPTS', render: rows => ssRenderRunDirectionTable(rows) + ssRenderRunConceptTable(rows) },
   { id: 'rpo', label: 'RPO', render: rows => ssRenderRPOTable(rows) },
+  { id: 'trends', label: 'TRENDS', render: () => ssRenderTrendsTab() },
   { id: 'formation', label: 'FORMATION', render: rows => ssRenderGroupTable(rows, dbFormPersonnelBucket, 'BY FORMATION & PERSONNEL', 'FORMATION') },
   { id: 'downdist', label: 'DOWN & DISTANCE', render: rows => ssRenderGroupTable(rows, dbDownDistBucket, 'BY DOWN & DISTANCE', 'SITUATION') },
   { id: 'zone', label: 'FIELD ZONE', render: rows => ssRenderGroupTable(rows, dbZoneBucket, 'BY FIELD ZONE', 'ZONE', DB_ZONE_ORDER) },
