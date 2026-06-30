@@ -563,11 +563,39 @@ const playbookData = {
 };
 
 // ==================== RUN PLAY DIAGRAM ====================
+// Simplified 4-down front overlay (2 DTs, 2 DEs, 2 LBs) drawn above the LOS so
+// the printed blocking arrows can be read against what they're actually blocking.
+function frontMarkers(dir, frontType) {
+  const DC = '#2C4A7C', y1 = 144, y2 = 104;
+  const gaps = { lc:105, lb:153, la:180, ra:207, rb:234, rc:271 };
+  let dl;
+  if (frontType === 'under') {
+    dl = dir === 'left'
+      ? [ {x:gaps.la,l:'1'}, {x:gaps.rb,l:'3'}, {x:gaps.lc,l:'5'}, {x:gaps.rc,l:'5'} ]
+      : [ {x:gaps.ra,l:'1'}, {x:gaps.lb,l:'3'}, {x:gaps.rc,l:'5'}, {x:gaps.lc,l:'5'} ];
+  } else {
+    dl = dir === 'left'
+      ? [ {x:gaps.lb,l:'3'}, {x:gaps.ra,l:'1'}, {x:gaps.lc,l:'5'}, {x:gaps.rc,l:'5'} ]
+      : [ {x:gaps.rb,l:'3'}, {x:gaps.la,l:'1'}, {x:gaps.rc,l:'5'}, {x:gaps.lc,l:'5'} ];
+  }
+  const lbs = [ {x:180,l:'M'}, {x:207,l:'W'} ];
+  let s = '';
+  dl.forEach(d => {
+    s += `<rect x="${d.x-8}" y="${y1-8}" width="16" height="16" rx="3" fill="#fff" stroke="${DC}" stroke-width="1.6"/>
+      <text x="${d.x}" y="${y1+1}" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="900" fill="${DC}" font-family="sans-serif">${d.l}</text>`;
+  });
+  lbs.forEach(l => {
+    s += `<circle cx="${l.x}" cy="${y2}" r="9" fill="#fff" stroke="${DC}" stroke-width="1.6"/>
+      <text x="${l.x}" y="${y2+1}" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="900" fill="${DC}" font-family="sans-serif">${l.l}</text>`;
+  });
+  return s;
+}
 function drawRunSVG(play) {
   if (!play.diag) return '';
-  const {dir, blocks} = play.diag;
+  const {dir, blocks, front} = play.diag;
   const L = LOS, G = '#E8C96A', PL = '#FFE040', RC = '#eeeeee';
   const pr = 13;
+  const frontSvg = frontMarkers(dir, front || 'over');
   const defs = `<defs>
     <marker id="rma" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L1.5,4 Z" fill="${G}"/></marker>
     <marker id="rmp" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L1.5,4 Z" fill="${PL}"/></marker>
@@ -600,7 +628,7 @@ function drawRunSVG(play) {
     playerSvg += `<circle cx="${x}" cy="${y}" r="${pr}" fill="#1a1a1a" stroke="${col}" stroke-width="1.5"/>
       <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="7" font-weight="900" fill="${col}" font-family="sans-serif">${b.pos}</text>`;
   });
-  return fieldSVG(defs + `<text x="${dirX}" y="26" text-anchor="middle" font-size="10" font-weight="800" fill="${G}" font-family="sans-serif">${dirLabel}</text>` + arrowSvg + playerSvg, play.name);
+  return fieldSVG(defs + frontSvg + `<text x="${dirX}" y="26" text-anchor="middle" font-size="10" font-weight="800" fill="${G}" font-family="sans-serif">${dirLabel}</text>` + arrowSvg + playerSvg, play.name);
 }
 
 // ==================== RUN GAME ====================
@@ -646,7 +674,7 @@ const runGame = [
     qb: 'You have the star from depth',
     qbNotes: ['Hand off or RPO – Cincy Pro/Con is Sidecar and RPO is on reading the BS','D gap pressure – if there is a free man off the backside edge then read option him','—','—','Cowboy (Corner Blitz) treat as D gap back side pressure'],
     pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'],
-    diag: { dir:'left', blocks:[
+    diag: { dir:'left', front:'under', blocks:[
       {pos:'FST', x:140, tx:118, ty:145, blk:true},
       {pos:'FSG', x:167, tx:118, ty:145, blk:true},
       {pos:'C',   x:194, tx:212, ty:148, blk:true},
@@ -663,7 +691,7 @@ const runGame = [
     qb: 'You have the star from depth',
     qbNotes: ['Hand off or RPO – Cincy Pro/Con is Sidecar and RPO is on reading the BS','D gap pressure – if there is a free man off the backside edge then read option him','—','—','Cowboy (Corner Blitz) treat as D gap back side pressure'],
     pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'],
-    diag: { dir:'left', blocks:[
+    diag: { dir:'left', front:'under', blocks:[
       {pos:'FST', x:140, tx:118, ty:145, blk:true},
       {pos:'FSG', x:167, tx:118, ty:145, blk:true},
       {pos:'C',   x:194, tx:212, ty:148, blk:true},
@@ -697,7 +725,7 @@ const runGame = [
     qb: 'You have the star from depth',
     qbNotes: ['Hand off or RPO – Cincy Pro/Con is Sidecar and RPO is on reading the BS','D gap pressure – if there is a free man off the backside edge then read option him','—','—','Cowboy (Corner Blitz) treat as D gap back side pressure'],
     pressureProgression: ['Money','Kick out by Y','Kick out by Y','Squeeze back side','Money','Money','Kick out by Y','Kick & Squeeze'],
-    diag: { dir:'left', blocks:[
+    diag: { dir:'left', front:'under', blocks:[
       {pos:'FST', x:140, tx:118, ty:128},
       {pos:'FSG', x:167, tx:118, ty:128},
       {pos:'C',   x:194, tx:212, ty:148, blk:true},
