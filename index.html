@@ -108,6 +108,16 @@ body {
   border-radius: 6px; padding: 5px 10px; cursor: pointer;
 }
 .front-btn.active { color: #1a1a1a; background: var(--gold); border-color: var(--gold); }
+.edit-btn {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.5px; color: var(--gray);
+  background: var(--black3); border: 1px solid rgba(232,201,106,0.25);
+  border-radius: 6px; padding: 7px 11px; cursor: pointer;
+}
+.edit-btn.active { color: #1a1a1a; background: var(--gold); border-color: var(--gold); }
+.diagram-wrap svg, [id$="-diag"] svg { touch-action: none; }
+.mover.draggable, .route-handle, .defender.draggable { cursor: grab; }
+.mover.draggable circle, .route-handle, .defender.draggable circle { touch-action: none; }
+.defender-del { cursor: pointer; }
 
 /* ===== FORMATION DIAGRAM ===== */
 .diagram-wrap {
@@ -137,9 +147,9 @@ body {
 .route-table tr { cursor: pointer; }
 .pos-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 
-.play-controls { display: flex; gap: 8px; margin-bottom: 12px; }
+.play-controls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .play-controls button {
-  flex: 1; padding: 11px; border-radius: 8px; font-size: 13px; font-weight: 800;
+  flex: 1; min-width: 90px; padding: 11px; border-radius: 8px; font-size: 13px; font-weight: 800;
   cursor: pointer; letter-spacing: 0.5px; border: none;
 }
 .play-btn { background: var(--red); color: white; }
@@ -451,35 +461,163 @@ function getPlayerPositions(formation) {
   return pos[formation] || pos['BASE'];
 }
 
-function drawPlaySVG(formation, routes, selectedPos, cardId) {
+// ==================== PLAY EDITOR (drag routes / blocks, add defenders, save to localStorage) ====================
+function editKey(cardId) { return 'play-edit:' + cardId; }
+function loadEdit(cardId) {
+  try { return JSON.parse(localStorage.getItem(editKey(cardId))) || { players:{}, ends:{}, defenders:[] }; }
+  catch(e) { return { players:{}, ends:{}, defenders:[] }; }
+}
+function saveEdit(cardId, data) {
+  try { localStorage.setItem(editKey(cardId), JSON.stringify(data)); } catch(e) {}
+}
+function clearEdit(cardId) {
+  try { localStorage.removeItem(editKey(cardId)); } catch(e) {}
+}
+const editModeState = {};
+function isEditing(cardId) { return !!editModeState[cardId]; }
+let defenderSeq = 0;
+function defenderSvg(d, editMode) {
+  return `<g class="defender${editMode?' draggable':''}" data-id="${d.id}" data-label="${d.label}" transform="translate(${d.x},${d.y})">
+    <circle r="10" fill="#1a2f5c" stroke="#fff" stroke-width="2"/>
+    <text text-anchor="middle" dominant-baseline="middle" y="1" font-size="8" font-weight="900" fill="#fff" font-family="sans-serif">${d.label}</text>
+    ${editMode ? `<g class="defender-del" data-id="${d.id}"><circle r="6" cx="9" cy="-9" fill="#CC0000" stroke="#fff" stroke-width="1"/><text x="9" y="-8" text-anchor="middle" dominant-baseline="middle" font-size="8" fill="#fff" font-weight="900">×</text></g>` : ''}
+  </g>`;
+}
+function defendersLayer(edits, editMode) {
+  return (edits.defenders || []).map(d => defenderSvg(d, editMode)).join('');
+}
+function addDefender(cardId, redraw) {
+  const edits = loadEdit(cardId);
+  edits.defenders = edits.defenders || [];
+  edits.defenders.push({ id: 'd' + (++defenderSeq) + '-' + Date.now(), x: 200, y: 90, label: 'X' });
+  saveEdit(cardId, edits);
+  redraw();
+}
+function removeDefender(cardId, id, redraw) {
+  const edits = loadEdit(cardId);
+  edits.defenders = (edits.defenders || []).filter(d => d.id !== id);
+  saveEdit(cardId, edits);
+  redraw();
+}
+function resetEdit(cardId, redraw) {
+  clearEdit(cardId);
+  redraw();
+}
+function toggleEditMode(cardId, redraw) {
+  editModeState[cardId] = !editModeState[cardId];
+  redraw();
+}
+// Generic SVG drag wiring: player movers (alignment), route/block end handles
+// (redraws the connecting line as a straight line live), and defenders.
+function attachDragHandlers(svg, cardId, redraw) {
+  function toSvgPt(evt) {
+    const p = svg.createSVGPoint();
+    p.x = evt.clientX; p.y = evt.clientY;
+    return p.matrixTransform(svg.getScreenCTM().inverse());
+  }
+  function redrawConnectedPath(pos) {
+    const path = svg.querySelector(`#${cardId}-path-${pos}`);
+    const moverG = svg.querySelector(`.mover[data-pos="${pos}"]`);
+    const handle = svg.querySelector(`.route-handle[data-pos="${pos}"]`);
+    if (!path || !moverG || !handle) return;
+    const tm = /translate\(([\-\d.]+),([\-\d.]+)\)/.exec(moverG.getAttribute('transform')||'') || [0,0,0];
+    const sx = parseFloat(moverG.dataset.ox) + parseFloat(tm[1]||0);
+    const sy = parseFloat(moverG.dataset.oy) + parseFloat(tm[2]||0);
+    const ex = parseFloat(handle.getAttribute('cx')), ey = parseFloat(handle.getAttribute('cy'));
+    path.setAttribute('d', `M${sx},${sy} L${ex},${ey}`);
+    const dot = svg.querySelector(`.block-dot[data-pos="${pos}"]`);
+    if (dot) { dot.setAttribute('cx', ex); dot.setAttribute('cy', ey); }
+  }
+  let active = null;
+  svg.querySelectorAll('.mover.draggable, .route-handle, .defender.draggable').forEach(el => {
+    el.addEventListener('pointerdown', evt => {
+      if (evt.target.closest('.defender-del')) return;
+      evt.preventDefault();
+      el.setPointerCapture(evt.pointerId);
+      active = el;
+    });
+  });
+  svg.addEventListener('pointermove', evt => {
+    if (!active) return;
+    const pt = toSvgPt(evt);
+    if (active.classList.contains('mover')) {
+      const ox = parseFloat(active.dataset.ox), oy = parseFloat(active.dataset.oy);
+      active.setAttribute('transform', `translate(${pt.x-ox},${pt.y-oy})`);
+      redrawConnectedPath(active.dataset.pos);
+    } else if (active.classList.contains('route-handle')) {
+      active.setAttribute('cx', pt.x); active.setAttribute('cy', pt.y);
+      redrawConnectedPath(active.dataset.pos);
+    } else if (active.classList.contains('defender')) {
+      active.setAttribute('transform', `translate(${pt.x},${pt.y})`);
+    }
+  });
+  function commitAndMaybeRedraw() {
+    if (!active) return;
+    active = null;
+    const edits = loadEdit(cardId);
+    edits.players = edits.players || {}; edits.ends = edits.ends || {}; edits.defenders = edits.defenders || [];
+    svg.querySelectorAll('.mover[data-pos]').forEach(g => {
+      const tm = /translate\(([\-\d.]+),([\-\d.]+)\)/.exec(g.getAttribute('transform')||'') || [0,0,0];
+      const ox = parseFloat(g.dataset.ox), oy = parseFloat(g.dataset.oy);
+      const dx = parseFloat(tm[1]||0), dy = parseFloat(tm[2]||0);
+      if (dx || dy) edits.players[g.dataset.pos] = { x: ox+dx, y: oy+dy };
+    });
+    svg.querySelectorAll('.route-handle[data-pos]').forEach(h => {
+      edits.ends[h.dataset.pos] = { x: parseFloat(h.getAttribute('cx')), y: parseFloat(h.getAttribute('cy')) };
+    });
+    edits.defenders = [...svg.querySelectorAll('.defender')].map(g => {
+      const tm = /translate\(([\-\d.]+),([\-\d.]+)\)/.exec(g.getAttribute('transform')||'') || [0,0,0];
+      return { id: g.dataset.id, x: parseFloat(tm[1]||0), y: parseFloat(tm[2]||0), label: g.dataset.label };
+    });
+    saveEdit(cardId, edits);
+  }
+  svg.addEventListener('pointerup', commitAndMaybeRedraw);
+  svg.addEventListener('pointercancel', commitAndMaybeRedraw);
+  svg.querySelectorAll('.defender-del').forEach(el => {
+    el.addEventListener('pointerdown', evt => {
+      evt.preventDefault(); evt.stopPropagation();
+      removeDefender(cardId, el.dataset.id, redraw);
+    });
+  });
+}
+
+function drawPlaySVG(formation, routes, selectedPos, cardId, editMode) {
   const base = formations[formation]();
   const inner = base.replace(/<svg[^>]*>/, '').replace(/<\/svg>$/, '');
   const playerPositions = getPlayerPositions(formation);
-  let arrows = '', defs = '', movers = '';
+  const edits = loadEdit(cardId);
+  let arrows = '', defs = '', movers = '', handles = '';
   Object.entries(routes).forEach(([pos, info]) => {
-    const pp = playerPositions[pos];
+    let pp = playerPositions[pos];
     if (!pp || !info.route || info.route === '-') return;
+    if (edits.players && edits.players[pos]) pp = edits.players[pos];
     const col = ROUTE_COLORS[pos] || '#fff';
     const r = pos === 'B' ? RB_R : (pos === 'Y' || pos === 'T') ? TE_R : WR_R;
-    const d = routePath(pp.x, pp.y, info.route, r);
     const isBlock = /^(BLOCK|CRACK|RUN OFF STALK|STALK)/.test(info.route.toUpperCase());
+    const override = edits.ends && edits.ends[pos];
+    const d = override ? `M${pp.x},${pp.y} L${override.x},${override.y}` : routePath(pp.x, pp.y, info.route, r);
     const opacity = selectedPos === null ? 1 : (selectedPos === pos ? 1 : 0.15);
     const pathId = `${cardId}-path-${pos}`;
     // Real install sheets draw blocking assignments as a solid line ending in a
     // filled dot (no arrowhead, no dash); pass routes get a clean arrowhead.
     const marker = isBlock ? '' : ` marker-end="url(#arrowR${pos})"`;
     arrows += `<path id="${pathId}" d="${d}" stroke="${col}" stroke-width="${selectedPos===pos?2.75:2.25}" fill="none" stroke-linecap="butt" stroke-linejoin="miter" opacity="${opacity}"${marker}/>`;
+    const m = d.match(/L([\d.\-]+),([\d.\-]+)\s*$/);
+    const endX = m ? parseFloat(m[1]) : pp.x, endY = m ? parseFloat(m[2]) : pp.y;
     if (isBlock) {
-      const m = d.match(/L([\d.\-]+),([\d.\-]+)\s*$/);
-      if (m) arrows += `<circle cx="${m[1]}" cy="${m[2]}" r="2.5" fill="${col}" opacity="${opacity}"/>`;
+      arrows += `<circle class="block-dot" data-pos="${pos}" cx="${endX}" cy="${endY}" r="2.5" fill="${col}" opacity="${opacity}"/>`;
     }
     defs += `<defs><marker id="arrowR${pos}" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 L2,4 Z" fill="${col}"/></marker></defs>`;
-    movers += `<g class="mover" data-pos="${pos}" data-ox="${pp.x}" data-oy="${pp.y}" transform="translate(0,0)" opacity="${opacity}">
+    movers += `<g class="mover${editMode?' draggable':''}" data-pos="${pos}" data-ox="${pp.x}" data-oy="${pp.y}" transform="translate(0,0)" opacity="${opacity}">
       <circle cx="${pp.x}" cy="${pp.y}" r="${r}" fill="white" stroke="${col}" stroke-width="2"/>
       <text x="${pp.x}" y="${pp.y+1}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="900" fill="${col}" font-family="sans-serif">${pos}</text>
     </g>`;
+    if (editMode) {
+      handles += `<circle class="route-handle" data-pos="${pos}" cx="${endX}" cy="${endY}" r="7" fill="${col}" stroke="#fff" stroke-width="1.5" opacity="${opacity}"/>`;
+    }
   });
-  return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg" style="display:block" id="${cardId}-svg">${inner}${defs}${arrows}${movers}</svg>`;
+  const defendersSvg = defendersLayer(edits, editMode);
+  return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg" style="display:block" id="${cardId}-svg">${inner}${defs}${arrows}${movers}${handles}${defendersSvg}</svg>`;
 }
 
 // ==================== PLAY DATA ====================
@@ -656,13 +794,14 @@ function generalGapBlocks(dir, front, rb) {
   blocks.push(rb);
   return blocks;
 }
-function drawRunSVG(play, frontOverride) {
+function drawRunSVG(play, frontOverride, cardId, editMode) {
   if (!play.diag) return '';
   const {dir, blocks: nativeBlocks, front: nativeFront} = play.diag;
   const front = frontOverride || nativeFront || 'over';
   const isGeneral = play.scheme === 'gap' && front !== (nativeFront || 'over');
   const rb = nativeBlocks.find(b => b.pos === 'B');
   const blocks = isGeneral ? generalGapBlocks(dir, front, rb) : nativeBlocks;
+  const edits = cardId ? loadEdit(cardId) : { players:{}, ends:{}, defenders:[] };
   const L = LOS, G = '#E8C96A', PL = '#FFE040', RC = '#eeeeee';
   const pr = 13;
   const frontSvg = frontMarkers(dir, front);
@@ -673,36 +812,64 @@ function drawRunSVG(play, frontOverride) {
   </defs>`;
   const dirLabel = dir==='left' ? '← PS' : 'PS →';
   const dirX = dir==='left' ? 34 : 366;
-  let arrowSvg = '', playerSvg = '';
+  let arrowSvg = '', playerSvg = '', handles = '';
   blocks.forEach(b => {
     if (b.pos === 'B') {
-      arrowSvg += `<path d="${b.path}" stroke="${RC}" stroke-width="2.2" fill="none" stroke-dasharray="5,2.5" marker-end="url(#rmr)"/>`;
-      playerSvg += `<circle cx="${b.sx}" cy="${b.sy}" r="12" fill="#1a1a1a" stroke="${RC}" stroke-width="1.5"/>
-        <text x="${b.sx}" y="${b.sy+1}" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="900" fill="${RC}" font-family="sans-serif">B</text>`;
+      let sx = b.sx, sy = b.sy;
+      if (edits.players && edits.players['B']) { sx = edits.players['B'].x; sy = edits.players['B'].y; }
+      const override = edits.ends && edits.ends['B'];
+      const path = override ? `M${sx},${sy} L${override.x},${override.y}` : b.path;
+      const m = path.match(/L([\d.\-]+),([\d.\-]+)\s*$/);
+      const endX = m ? parseFloat(m[1]) : sx, endY = m ? parseFloat(m[2]) : sy;
+      arrowSvg += `<path id="${cardId}-path-B" d="${path}" stroke="${RC}" stroke-width="2.2" fill="none" stroke-dasharray="5,2.5" marker-end="url(#rmr)"/>`;
+      playerSvg += `<g class="mover${editMode?' draggable':''}" data-pos="B" data-ox="${sx}" data-oy="${sy}" transform="translate(0,0)">
+        <circle cx="${sx}" cy="${sy}" r="12" fill="#1a1a1a" stroke="${RC}" stroke-width="1.5"/>
+        <text x="${sx}" y="${sy+1}" text-anchor="middle" dominant-baseline="middle" font-size="7.5" font-weight="900" fill="${RC}" font-family="sans-serif">B</text>
+      </g>`;
+      if (editMode) handles += `<circle class="route-handle" data-pos="B" cx="${endX}" cy="${endY}" r="7" fill="${RC}" stroke="#1a1a1a" stroke-width="1.5"/>`;
       return;
     }
-    const x = b.x, y = L;
+    let x = b.x, y = L;
+    if (edits.players && edits.players[b.pos]) { x = edits.players[b.pos].x; y = edits.players[b.pos].y; }
     const isPull = b.type === 'pull-kick' || b.type === 'pull-lead';
     const col = isPull ? PL : G;
     const markId = isPull ? 'rmp' : 'rma';
-    if (b.path) {
-      arrowSvg += `<path d="${b.path}" stroke="${col}" stroke-width="2.2" fill="none" marker-end="url(#${markId})"/>`;
+    const override = edits.ends && edits.ends[b.pos];
+    let endX, endY, d;
+    if (override) {
+      d = `M${x},${y} L${override.x},${override.y}`;
+      endX = override.x; endY = override.y;
+    } else if (b.path) {
+      d = b.path;
+      const m = d.match(/L([\d.\-]+),([\d.\-]+)\s*$/);
+      endX = m ? parseFloat(m[1]) : x; endY = m ? parseFloat(m[2]) : y-pr;
     } else if (b.tx !== undefined) {
-      if (b.blk) {
-        arrowSvg += `<line x1="${x}" y1="${y-pr}" x2="${b.tx}" y2="${b.ty}" stroke="${col}" stroke-width="2.2"/>
-          <circle cx="${b.tx}" cy="${b.ty}" r="3.5" fill="${col}"/>`;
-      } else {
-        arrowSvg += `<line x1="${x}" y1="${y-pr}" x2="${b.tx}" y2="${b.ty}" stroke="${col}" stroke-width="2.2" marker-end="url(#${markId})"/>`;
-      }
+      endX = b.tx; endY = b.ty;
+    } else {
+      endX = x; endY = y-pr;
     }
-    playerSvg += `<circle cx="${x}" cy="${y}" r="${pr}" fill="#1a1a1a" stroke="${col}" stroke-width="1.5"/>
-      <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="7" font-weight="900" fill="${col}" font-family="sans-serif">${b.pos}</text>`;
+    if (override || b.path) {
+      arrowSvg += `<path id="${cardId}-path-${b.pos}" d="${d}" stroke="${col}" stroke-width="2.2" fill="none"${b.blk?'':` marker-end="url(#${markId})"`}/>`;
+      if (b.blk) arrowSvg += `<circle class="block-dot" data-pos="${b.pos}" cx="${endX}" cy="${endY}" r="3.5" fill="${col}"/>`;
+    } else if (b.tx !== undefined) {
+      const lineD = `M${x},${y-pr} L${endX},${endY}`;
+      arrowSvg += `<path id="${cardId}-path-${b.pos}" d="${lineD}" stroke="${col}" stroke-width="2.2" fill="none"${b.blk?'':` marker-end="url(#${markId})"`}/>`;
+      if (b.blk) arrowSvg += `<circle class="block-dot" data-pos="${b.pos}" cx="${endX}" cy="${endY}" r="3.5" fill="${col}"/>`;
+    }
+    playerSvg += `<g class="mover${editMode?' draggable':''}" data-pos="${b.pos}" data-ox="${x}" data-oy="${y}" transform="translate(0,0)">
+      <circle cx="${x}" cy="${y}" r="${pr}" fill="#1a1a1a" stroke="${col}" stroke-width="1.5"/>
+      <text x="${x}" y="${y+1}" text-anchor="middle" dominant-baseline="middle" font-size="7" font-weight="900" fill="${col}" font-family="sans-serif">${b.pos}</text>
+    </g>`;
+    if (editMode) handles += `<circle class="route-handle" data-pos="${b.pos}" cx="${endX}" cy="${endY}" r="7" fill="${col}" stroke="#fff" stroke-width="1.5"/>`;
   });
   const banner = isGeneral
     ? `<rect x="0" y="0" width="${VW}" height="14" fill="#5a3d00" opacity="0.9"/>
        <text x="${VW/2}" y="10" text-anchor="middle" font-size="7.5" font-weight="800" fill="#FFD27A" font-family="sans-serif">GENERAL RULE — NOT FROM INSTALL SHEET, CONFIRM WITH STAFF</text>`
     : '';
-  return fieldSVG(defs + frontSvg + `<text x="${dirX}" y="26" text-anchor="middle" font-size="10" font-weight="800" fill="${G}" font-family="sans-serif">${dirLabel}</text>` + arrowSvg + playerSvg + banner, play.name);
+  const defendersSvg = defendersLayer(edits, editMode);
+  let svg = fieldSVG(defs + frontSvg + `<text x="${dirX}" y="26" text-anchor="middle" font-size="10" font-weight="800" fill="${G}" font-family="sans-serif">${dirLabel}</text>` + arrowSvg + playerSvg + handles + defendersSvg + banner, play.name);
+  if (cardId) svg = svg.replace('<svg ', `<svg id="${cardId}-svg" `);
+  return svg;
 }
 
 // ==================== RUN GAME ====================
@@ -834,12 +1001,32 @@ const runFrontState = {};
 const FRONT_LABELS = { over:'OVER', under:'UNDER', odd:'ODD (3-4)', bear:'BEAR' };
 function setRunFront(i, front) {
   runFrontState[i] = front;
-  const r = runGame[i];
-  const diagEl = document.getElementById('runs-card-'+i+'-diag');
-  if (diagEl) diagEl.innerHTML = drawRunSVG(r, front);
+  refreshRunDiagram(i);
   document.querySelectorAll(`[data-frontbtn="${i}"]`).forEach(btn => {
     btn.classList.toggle('active', btn.dataset.front === front);
   });
+}
+function runEditButtonsHTML(i, id, editing) {
+  return `
+    <button class="edit-btn${editing?' active':''}" onclick="event.stopPropagation();toggleEditMode('${id}',()=>refreshRunDiagram(${i}))">✎ ${editing?'DONE EDITING':'EDIT'}</button>
+    ${editing ? `<button class="edit-btn" onclick="event.stopPropagation();addDefender('${id}',()=>refreshRunDiagram(${i}))">+ DEFENDER</button>
+    <button class="edit-btn" onclick="event.stopPropagation();resetEdit('${id}',()=>refreshRunDiagram(${i}))">↺ RESET EDITS</button>` : ''}`;
+}
+// Re-renders just the diagram + edit controls for one run-game card, then re-wires drag handlers.
+function refreshRunDiagram(i) {
+  const r = runGame[i];
+  const id = 'runs-card-'+i;
+  const nativeFront = (r.diag && r.diag.front) || 'over';
+  const curFront = runFrontState[i] || nativeFront;
+  const editing = isEditing(id);
+  const diagEl = document.getElementById(id+'-diag');
+  if (diagEl) diagEl.innerHTML = drawRunSVG(r, curFront, id, editing);
+  const editControls = document.getElementById(id+'-editctl');
+  if (editControls) editControls.innerHTML = runEditButtonsHTML(i, id, editing);
+  if (editing) {
+    const svg = document.getElementById(id+'-svg');
+    if (svg) attachDragHandlers(svg, id, () => refreshRunDiagram(i));
+  }
 }
 function renderRunGame() {
   document.getElementById('runs-list').innerHTML = runGame.map((r, i) => {
@@ -847,6 +1034,7 @@ function renderRunGame() {
     const searchText = [r.name, r.concept, r.playCall, r.family, r.formation, ...(r.alerts||[]), ...(r.sets||[]), ...r.players.map(p=>p.pos+' '+p.eyes+' '+p.assign), r.qb, ...(r.qbNotes||[])].join(' ');
     const nativeFront = (r.diag && r.diag.front) || 'over';
     const curFront = runFrontState[i] || nativeFront;
+    const editing = isEditing(id);
     const frontPicker = r.diag ? `
       <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
         ${RUN_FRONTS.map(f => `<button data-frontbtn="${i}" data-front="${f}" class="front-btn${f===curFront?' active':''}" onclick="event.stopPropagation();setRunFront(${i},'${f}')">${FRONT_LABELS[f]}</button>`).join('')}
@@ -863,7 +1051,8 @@ function renderRunGame() {
       </div>
       <div class="card-body">
         ${frontPicker}
-        ${r.diag ? `<div id="${id}-diag" style="margin-bottom:12px;border-radius:6px;overflow:hidden">${drawRunSVG(r, curFront)}</div>` : ''}
+        ${r.diag ? `<div id="${id}-diag" style="margin-bottom:12px;border-radius:6px;overflow:hidden">${drawRunSVG(r, curFront, id, editing)}</div>
+        <div id="${id}-editctl" class="play-controls">${runEditButtonsHTML(i, id, editing)}</div>` : ''}
         ${r.note ? `<div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">CONCEPT</div><div style="font-size:13px;color:#ccc">${r.note}</div></div>` : ''}
         ${r.sets ? `<div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">SETS</div><ul>${r.sets.map(s=>`<li>${s}</li>`).join('')}</ul></div>` : ''}
         <div class="qb-notes" style="margin-bottom:10px"><div class="qb-notes-title">ALERTS</div><ul>${(r.alerts||[]).map(a=>`<li>${a}</li>`).join('')}</ul></div>
@@ -1047,10 +1236,13 @@ function renderPlayCategory(cat) {
         <div class="card-chevron">›</div>
       </div>
       <div class="card-body">
-        <div class="diagram-wrap" id="${id}-diagram">${drawPlaySVG(p.formation, p.routes, null, id)}</div>
+        <div class="diagram-wrap" id="${id}-diagram">${drawPlaySVG(p.formation, p.routes, null, id, isEditing(id))}</div>
         <div class="play-controls">
           <button class="play-btn" onclick="runPlay('${id}')">▶ RUN PLAY</button>
           <button class="reset-btn" onclick="resetPlay('${id}')">↺ RESET</button>
+          <button class="edit-btn${isEditing(id)?' active':''}" onclick="event.stopPropagation();toggleEditMode('${id}',()=>refreshPlayDiagram('${cat}',${i},'${id}'))">✎ ${isEditing(id)?'DONE EDITING':'EDIT'}</button>
+          ${isEditing(id) ? `<button class="edit-btn" onclick="event.stopPropagation();addDefender('${id}',()=>refreshPlayDiagram('${cat}',${i},'${id}'))">+ DEFENDER</button>
+          <button class="edit-btn" onclick="event.stopPropagation();resetEdit('${id}',()=>refreshPlayDiagram('${cat}',${i},'${id}'))">↺ RESET EDITS</button>` : ''}
         </div>
         <div class="legend">${Object.entries(p.routes).filter(([pos,info])=>info.route&&info.route!=='-').map(([pos,info])=>
           `<div class="legend-item"><div class="legend-dot" style="background:${ROUTE_COLORS[pos]||'#fff'}"></div><span>${pos}</span></div>`).join('')}</div>
@@ -1070,15 +1262,35 @@ function renderPlayCategory(cat) {
 }
 let selectedPlayPos = {};
 function selectPlayPos(cat, idx, cardId, pos) {
+  if (isEditing(cardId)) return;
   const key = cardId;
   selectedPlayPos[key] = (selectedPlayPos[key] === pos) ? null : pos;
   const p = playbookData[cat][idx];
   const sel = selectedPlayPos[key];
-  document.getElementById(cardId+'-diagram').innerHTML = drawPlaySVG(p.formation, p.routes, sel, cardId);
+  document.getElementById(cardId+'-diagram').innerHTML = drawPlaySVG(p.formation, p.routes, sel, cardId, isEditing(cardId));
   Object.keys(p.routes).forEach(rp => {
     const row = document.getElementById(cardId+'-row-'+rp);
     if (row) row.classList.toggle('dimmed', sel !== null && sel !== rp);
   });
+}
+// Re-renders just the diagram + its edit controls for one card, then re-wires drag handlers.
+function refreshPlayDiagram(cat, idx, cardId) {
+  const p = playbookData[cat][idx];
+  const editing = isEditing(cardId);
+  document.getElementById(cardId+'-diagram').innerHTML = drawPlaySVG(p.formation, p.routes, selectedPlayPos[cardId]||null, cardId, editing);
+  const controlsEl = document.getElementById(cardId+'-diagram').nextElementSibling;
+  if (controlsEl && controlsEl.classList.contains('play-controls')) {
+    controlsEl.innerHTML = `
+      <button class="play-btn" onclick="runPlay('${cardId}')">▶ RUN PLAY</button>
+      <button class="reset-btn" onclick="resetPlay('${cardId}')">↺ RESET</button>
+      <button class="edit-btn${editing?' active':''}" onclick="event.stopPropagation();toggleEditMode('${cardId}',()=>refreshPlayDiagram('${cat}',${idx},'${cardId}'))">✎ ${editing?'DONE EDITING':'EDIT'}</button>
+      ${editing ? `<button class="edit-btn" onclick="event.stopPropagation();addDefender('${cardId}',()=>refreshPlayDiagram('${cat}',${idx},'${cardId}'))">+ DEFENDER</button>
+      <button class="edit-btn" onclick="event.stopPropagation();resetEdit('${cardId}',()=>refreshPlayDiagram('${cat}',${idx},'${cardId}'))">↺ RESET EDITS</button>` : ''}`;
+  }
+  if (editing) {
+    const svg = document.getElementById(cardId+'-svg');
+    if (svg) attachDragHandlers(svg, cardId, () => refreshPlayDiagram(cat, idx, cardId));
+  }
 }
 function toggleCard(id) {
   document.getElementById(id).classList.toggle('open');
