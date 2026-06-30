@@ -1718,8 +1718,9 @@ function ssRunDirectionRowsHTML(overallLabel, rs) {
   return html;
 }
 function ssRenderRunDirectionTable(rows) {
-  // RPO gives belong on the RPO tab, not here — same exclusion as the run concept table.
-  const runRows = rows.filter(r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r));
+  // PROTECTION='RUN' covers both plain designed runs and RPO calls, so it can't be used to
+  // exclude RPOs here — include every handoff regardless of protection/category.
+  const runRows = rows.filter(r => ssIsRun(r) && ssIsRunHandoff(r));
   if (!runRows.length) return '';
   const rightRows = runRows.filter(r => ssRunDirection(r) === 'RIGHT (PRO)');
   const leftRows = runRows.filter(r => ssRunDirection(r) === 'LEFT (CON)');
@@ -1729,8 +1730,9 @@ function ssRenderRunDirectionTable(rows) {
 }
 
 function ssRenderRunConceptTable(rows) {
-  // RPO gives have their own dedicated tab — leave them out here so they don't double count.
-  const runRows = rows.filter(r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r));
+  // PROTECTION='RUN' covers both plain designed runs and RPO calls, so it can't be used to
+  // exclude RPOs here — include every handoff regardless of protection/category.
+  const runRows = rows.filter(r => ssIsRun(r) && ssIsRunHandoff(r));
   const groups = dbGroupBy(runRows, ssRunConceptBucket);
   const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
   if (!entries.length) return '<div class="db-empty">No run plays with a CONCEPT found yet.</div>';
@@ -1780,10 +1782,12 @@ function ssRenderEffectivenessBarGroup(title, rows, groupFn, n, sortAsc) {
 function ssRenderBarSection(rows) {
   const passRows = rows.filter(ssIsPass);
   const runRows = rows.filter(ssIsRun);
-  // RPO has its own dedicated tab, so leave those reps out of the pass/run concept bars —
+  // RPO has its own dedicated tab, so leave those throws out of the pass concept bars —
   // otherwise an RPO pull shows up as a "pass concept" just because that rep was thrown.
+  // (PROTECTION='RUN' covers plain designed runs too, so it can't be used to exclude RPOs
+  // from the run side without also dropping legitimate handoffs.)
   const passConceptRows = passRows.filter(r => !ssIsRPORow(r));
-  const runConceptRows = runRows.filter(r => !ssIsRPORow(r) && ssIsRunHandoff(r));
+  const runConceptRows = runRows.filter(ssIsRunHandoff);
   const groups = [
     dbRenderBarGroup('MOST USED CATEGORIES', dbFreqByFn(passRows, ssCategoryBucket), 7),
     ssRenderEffectivenessBarGroup('MOST SUCCESSFUL CATEGORIES', passRows, ssCategoryBucket, 7, false),
@@ -1856,7 +1860,7 @@ function ssRenderTrendsTab() {
   if (games.length < 2) return '<div class="db-empty">Load at least 2 games to see week-over-week trends. Trends always cover every game loaded this season, regardless of the game filter above.</div>';
   const body = [
     ssRenderConceptTrendTable(games, r => ssIsPass(r) && !ssIsRPORow(r), ssPassConceptBucket, 'PASS CONCEPT TREND (WEEK BY WEEK)'),
-    ssRenderConceptTrendTable(games, r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r), ssRunConceptBucket, 'RUN CONCEPT TREND (WEEK BY WEEK)'),
+    ssRenderConceptTrendTable(games, r => ssIsRun(r) && ssIsRunHandoff(r), ssRunConceptBucket, 'RUN CONCEPT TREND (WEEK BY WEEK)'),
     ssRenderConceptTrendTable(games, ssIsRPORow, ssRPOComboBucket, 'RPO TREND (WEEK BY WEEK)'),
   ].filter(Boolean).join('');
   return body || '<div class="db-empty">Not enough concept volume yet to show trends.</div>';
@@ -1904,7 +1908,7 @@ function ssRenderPredictabilityTable(rows) {
 function ssGenerateInsights(rows) {
   const items = [];
   // Best/worst categories and concepts — what's working, what needs emphasis.
-  [[rows.filter(ssIsPass), ssCategoryBucket, 'pass-concept category'], [rows.filter(r => ssIsPass(r) && !ssIsRPORow(r)), ssPassConceptBucket, 'passing concept'], [rows.filter(r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r)), ssRunConceptBucket, 'run concept']].forEach(([rowSet, groupFn, label]) => {
+  [[rows.filter(ssIsPass), ssCategoryBucket, 'pass-concept category'], [rows.filter(r => ssIsPass(r) && !ssIsRPORow(r)), ssPassConceptBucket, 'passing concept'], [rows.filter(r => ssIsRun(r) && ssIsRunHandoff(r)), ssRunConceptBucket, 'run concept']].forEach(([rowSet, groupFn, label]) => {
     const groups = dbGroupBy(rowSet, groupFn);
     const entries = Object.entries(groups)
       .map(([key, rs]) => ({ key, rs, stats: dbSuccessStats(rs) }))
@@ -1951,7 +1955,7 @@ function ssGenerateInsights(rows) {
       items.push({ weight: rs.length * 2, text: `<strong>${dbEscapeHTML(concept)}</strong> pass concept has been intercepted on ${toPct}% of its snaps (${toCount}/${rs.length}) — point of emphasis.` });
     }
   });
-  const runConceptGroups = dbGroupBy(rows.filter(r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r)), ssRunConceptBucket);
+  const runConceptGroups = dbGroupBy(rows.filter(r => ssIsRun(r) && ssIsRunHandoff(r)), ssRunConceptBucket);
   Object.entries(runConceptGroups).forEach(([concept, rs]) => {
     if (rs.length < 5) return;
     const toCount = rs.filter(ssIsFumble).length;
@@ -1970,7 +1974,7 @@ function ssGenerateInsights(rows) {
   // hot streak can hide a concept that's been getting worse the last few games.
   const trendGames = ssGamesChronological();
   if (trendGames.length >= SS_TREND_MIN_GAMES) {
-    [[r => ssIsPass(r) && !ssIsRPORow(r), ssPassConceptBucket, 'passing concept'], [r => ssIsRun(r) && !ssIsRPORow(r) && ssIsRunHandoff(r), ssRunConceptBucket, 'run concept']].forEach(([filterFn, bucketFn, label]) => {
+    [[r => ssIsPass(r) && !ssIsRPORow(r), ssPassConceptBucket, 'passing concept'], [r => ssIsRun(r) && ssIsRunHandoff(r), ssRunConceptBucket, 'run concept']].forEach(([filterFn, bucketFn, label]) => {
       const series = ssBuildConceptTrend(trendGames, filterFn, bucketFn);
       Object.entries(series).forEach(([concept, points]) => {
         if (ssTrendDirection(points) !== 'DOWN') return;
