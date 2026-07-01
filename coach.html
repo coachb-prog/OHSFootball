@@ -396,6 +396,9 @@ body {
 .ss-slides-btn { display: block; width: 100%; margin-top: 10px; padding: 11px 0; background: var(--red); border: none; border-radius: 8px; color: var(--white); font-size: 13px; font-weight: 900; letter-spacing: 2px; cursor: pointer; }
 .ss-slides-btn:hover { background: #aa0000; }
 .ss-slides-btn:disabled { background: #555; cursor: default; }
+.ss-logo-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.ss-logo-preview { width: 32px; height: 32px; border-radius: 4px; object-fit: contain; background: #222; display: none; }
+.ss-logo-label { font-size: 11px; color: var(--gray); cursor: pointer; text-decoration: underline; }
 .db-game-del { color: var(--gray); font-weight: 900; cursor: pointer; padding: 0 4px; }
 .db-print-btn { background: var(--black3); border: 1px solid var(--gold); color: var(--gold); border-radius: 10px; padding: 12px; font-size: 13px; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; }
 .db-print-btn:hover, .db-print-btn:active { background: var(--gold); color: var(--black); }
@@ -553,6 +556,11 @@ body {
       </label>
       <div class="db-upload-status" id="ss-upload-status"></div>
       <button class="ss-slides-btn" id="ss-slides-btn" onclick="ssExportSlides()">📊 EXPORT PRESENTATION</button>
+      <div class="ss-logo-row">
+        <img id="ss-logo-preview" class="ss-logo-preview" alt="logo">
+        <input type="file" id="ss-logo-input" accept="image/*" onchange="ssSetLogo(this)" style="display:none">
+        <label for="ss-logo-input" class="ss-logo-label" id="ss-logo-label">+ set school logo for slides</label>
+      </div>
       <div class="db-backup-row">
         <button class="db-backup-btn" onclick="ssExportData()">⬇️ EXPORT ALL DATA</button>
         <label for="ss-import-input">
@@ -2554,6 +2562,37 @@ function ssLoadPptxGen() {
 }
 
 
+function ssGetStoredLogo() {
+  return localStorage.getItem('ss_logo_b64') || null;
+}
+
+function ssSetLogo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    localStorage.setItem('ss_logo_b64', e.target.result);
+    ssUpdateLogoPreview();
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function ssUpdateLogoPreview() {
+  const b64 = ssGetStoredLogo();
+  const img = document.getElementById('ss-logo-preview');
+  const lbl = document.getElementById('ss-logo-label');
+  if (!img || !lbl) return;
+  if (b64) {
+    img.src = b64;
+    img.style.display = 'block';
+    lbl.textContent = 'change logo';
+  } else {
+    img.style.display = 'none';
+    lbl.textContent = '+ set school logo for slides';
+  }
+}
+
 function ssStripHTML(html) {
   return String(html || '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim();
 }
@@ -2588,6 +2627,7 @@ async function ssExportSlides() {
     const selGames = ssSelectedGameIds.size ? allGames.filter(g => ssSelectedGameIds.has(g.id)) : allGames;
     const gamesLabel = selGames.map(g => g.label).join('  ·  ') || 'FULL SEASON';
     const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase();
+    const logoB64 = ssGetStoredLogo();
     // Shared helpers
     const hdrBar = (sl, h) => sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: h || 1.05, fill: { color: C.RED }, line: { color: C.RED } });
     const hdrText = (sl, txt, y) => sl.addText(txt, { x: 0.35, y: y != null ? y : 0.18, w: W - 0.7, h: 0.75, fontSize: 26, bold: true, color: C.WHITE, fontFace: 'Arial' });
@@ -2605,6 +2645,7 @@ async function ssExportSlides() {
       sl.addText('OWENSBORO\nHIGH SCHOOL', { x: 0.2, y: 1.4, w: 4.2, h: 2.0, fontSize: 30, bold: true, color: C.WHITE, fontFace: 'Arial', align: 'center', valign: 'middle', charSpacing: 2 });
       sl.addShape(pptx.ShapeType.rect, { x: 0.6, y: 3.6, w: 3.4, h: 0.07, fill: { color: C.BLACK }, line: { color: C.BLACK } });
       sl.addText('RED DEVILS', { x: 0.2, y: 3.7, w: 4.2, h: 0.7, fontSize: 20, bold: true, color: C.BLACK, fontFace: 'Arial', align: 'center', charSpacing: 6 });
+      if (logoB64) sl.addImage({ data: logoB64, x: 1.2, y: 4.55, w: 2.2, h: 2.2 });
       // Right panel content
       sl.addText('SELF SCOUT\nREPORT', { x: 5.1, y: 1.2, w: 8.0, h: 3.2, fontSize: 58, bold: true, color: C.WHITE, fontFace: 'Arial', charSpacing: 1, valign: 'middle' });
       sl.addShape(pptx.ShapeType.rect, { x: 5.1, y: 4.6, w: 7.5, h: 0.06, fill: { color: C.RED }, line: { color: C.RED } });
@@ -2826,6 +2867,7 @@ async function ssExportSlides() {
   }
 }
 
+document.addEventListener('DOMContentLoaded', () => { ssUpdateLogoPreview(); });
 </script>
 </body>
 </html>
