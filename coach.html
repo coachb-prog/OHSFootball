@@ -386,6 +386,13 @@ body {
 .db-game-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--white); background: var(--black3); border-radius: 6px; padding: 6px 10px; margin-top: 4px; }
 .db-game-filter { cursor: pointer; border: 1px solid transparent; }
 .db-game-filter.active { border-color: var(--red); background: rgba(204,0,0,0.18); }
+.ss-game-checkbox { width: 16px; height: 16px; border: 1.5px solid #555; border-radius: 3px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: var(--gold); transition: border-color 0.1s; }
+.ss-game-checkbox.checked { border-color: var(--gold); background: rgba(204,170,0,0.15); }
+.ss-game-select-row { cursor: pointer; border: 1px solid transparent; gap: 8px; }
+.ss-game-select-row.active { border-color: var(--gold); background: rgba(204,170,0,0.10); }
+.ss-filter-banner { font-size: 11px; color: var(--gold); font-weight: 700; letter-spacing: 0.5px; padding: 6px 0 0; }
+.ss-filter-banner button { background: none; border: none; color: var(--gray); font-size: 11px; font-weight: 700; cursor: pointer; text-decoration: underline; padding: 0; letter-spacing: 0.5px; }
+.ss-filter-banner button:hover { color: var(--white); }
 .db-game-del { color: var(--gray); font-weight: 900; cursor: pointer; padding: 0 4px; }
 .db-print-btn { background: var(--black3); border: 1px solid var(--gold); color: var(--gold); border-radius: 10px; padding: 12px; font-size: 13px; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; }
 .db-print-btn:hover, .db-print-btn:active { background: var(--gold); color: var(--black); }
@@ -1382,7 +1389,7 @@ function printGameCard() {
 // ==================== SELF SCOUT ====================
 // Same Hudl-style CSV/columns as Defense Breakdown, but filtered to our own
 // offensive snaps (ODK = O) and analyzed for what's working vs. not.
-let ssActiveGameId = 'ALL';
+let ssSelectedGameIds = new Set(); // empty = ALL games
 let ssActiveTab = null;
 
 function getSSData() {
@@ -1418,15 +1425,28 @@ function ssDeleteGame(gameId) {
   const data = getSSData();
   data.games = data.games.filter(g => g.id !== gameId);
   saveSSData(data);
-  if (ssActiveGameId === gameId) ssActiveGameId = 'ALL';
+  ssSelectedGameIds.delete(gameId);
   renderSSGamesList();
   renderSSDashboardFromState();
 }
 function ssGetActiveRows() {
   const data = getSSData();
-  if (ssActiveGameId === 'ALL') return data.games.reduce((acc, g) => acc.concat(g.rows), []);
-  const g = data.games.find(g => g.id === ssActiveGameId);
-  return g ? g.rows : [];
+  if (!ssSelectedGameIds.size) return data.games.reduce((acc, g) => acc.concat(g.rows), []);
+  return data.games.filter(g => ssSelectedGameIds.has(g.id)).reduce((acc, g) => acc.concat(g.rows), []);
+}
+function ssToggleGameSelection(gameId) {
+  if (ssSelectedGameIds.has(gameId)) {
+    ssSelectedGameIds.delete(gameId);
+  } else {
+    ssSelectedGameIds.add(gameId);
+  }
+  renderSSGamesList();
+  renderSSDashboardFromState();
+}
+function ssClearGameSelection() {
+  ssSelectedGameIds = new Set();
+  renderSSGamesList();
+  renderSSDashboardFromState();
 }
 function renderSSDashboardFromState() {
   const rows = ssGetActiveRows();
@@ -1468,7 +1488,7 @@ async function handleSSFile(input) {
     document.getElementById('ss-game-result').value = '';
     statusEl.textContent = '✅ Loaded ' + rows.length + ' plays';
     statusEl.className = 'db-upload-status ok';
-    ssActiveGameId = 'ALL';
+    ssSelectedGameIds = new Set();
     renderSSGamesList();
     renderSSDashboardFromState();
     ssStartCoverageMode(newGameId);
@@ -1546,18 +1566,26 @@ function renderSSGamesList() {
   const listEl = document.getElementById('ss-games-list');
   if (!data.games.length) { listEl.innerHTML = ''; return; }
   const totalPlays = data.games.reduce((s, g) => s + g.rows.length, 0);
+  const isFiltered = ssSelectedGameIds.size > 0;
+  const selCount = ssSelectedGameIds.size;
   let html = `<div class="db-games-title">GAMES LOADED THIS SEASON</div>`;
   if (data.games.length > 1) {
-    html += `<div class="db-game-row db-game-filter${ssActiveGameId === 'ALL' ? ' active' : ''}" data-game-filter="ALL"><span>ALL GAMES — ${totalPlays} plays</span></div>`;
+    const allLabel = isFiltered
+      ? `${selCount} of ${data.games.length} selected — SHOW ALL`
+      : `ALL GAMES — ${totalPlays} plays`;
+    html += `<div class="db-game-row db-game-filter${!isFiltered ? ' active' : ''}" id="ss-all-games-btn">
+      <span>${allLabel}</span>
+    </div>`;
   }
   html += data.games.map(g => {
-    const metaParts = [];
-    if (g.gameDate) metaParts.push(g.gameDate);
+    const selected = ssSelectedGameIds.has(g.id);
     const untagged = ssUntaggedCoverageCount(g);
     const covNote = untagged ? `<span style="color:var(--gold)">${untagged} plays need coverage</span>` : '<span style="color:var(--gray)">coverage tagged</span>';
     const resultSpan = g.result ? `<span class="db-game-row-result">${dbEscapeHTML(g.result)}</span>` : '';
     const tagBtn = `<button class="ss-tag-cov-btn" data-cov-game="${dbEscapeHTML(g.id)}">TAG COV</button>`;
-    return `<div class="db-game-row db-game-filter${ssActiveGameId === g.id ? ' active' : ''}" data-game-filter="${dbEscapeHTML(g.id)}">
+    const chk = `<span class="ss-game-checkbox${selected ? ' checked' : ''}">${selected ? '✓' : ''}</span>`;
+    return `<div class="db-game-row ss-game-select-row${selected ? ' active' : ''}" data-game-toggle="${dbEscapeHTML(g.id)}">
+      ${chk}
       <span style="flex:1;min-width:0">
         <span style="font-weight:700">${dbEscapeHTML(g.label)}</span>${resultSpan} — ${g.rows.length} plays
         <span class="db-game-row-meta">${covNote}</span>
@@ -1567,18 +1595,16 @@ function renderSSGamesList() {
     </div>`;
   }).join('');
   listEl.innerHTML = html;
+  const allBtn = listEl.querySelector('#ss-all-games-btn');
+  if (allBtn) allBtn.addEventListener('click', ssClearGameSelection);
   listEl.querySelectorAll('.db-game-del').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); ssDeleteGame(el.dataset.gameDel); });
   });
   listEl.querySelectorAll('.ss-tag-cov-btn').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); ssStartCoverageMode(el.dataset.covGame); });
   });
-  listEl.querySelectorAll('.db-game-filter').forEach(el => {
-    el.addEventListener('click', () => {
-      ssActiveGameId = el.dataset.gameFilter;
-      renderSSGamesList();
-      renderSSDashboardFromState();
-    });
+  listEl.querySelectorAll('.ss-game-select-row').forEach(el => {
+    el.addEventListener('click', () => ssToggleGameSelection(el.dataset.gameToggle));
   });
 }
 
@@ -2477,10 +2503,14 @@ function renderSSDashboard(rows) {
   let usedAll = false;
   if (!offRows.length) { offRows = rows; usedAll = true; }
   const data = getSSData();
-  const numGames = ssActiveGameId === 'ALL' ? Math.max(data.games.length, 1) : 1;
+  const numGames = !ssSelectedGameIds.size ? Math.max(data.games.length, 1) : Math.max(ssSelectedGameIds.size, 1);
   const overall = ssComputeOverall(offRows, numGames);
   const insights = ssGenerateInsights(offRows);
+  const filterBanner = ssSelectedGameIds.size
+    ? `<div class="ss-filter-banner">Showing ${ssSelectedGameIds.size} of ${data.games.length} games &nbsp;·&nbsp; <button onclick="ssClearGameSelection()">show all games</button></div>`
+    : '';
   dash.innerHTML = `
+    ${filterBanner}
     ${usedAll ? '<div class="db-note">No ODK column marking offensive snaps was found — showing tendencies across all charted plays.</div>' : ''}
     ${ssRenderStats(overall)}
     ${ssRenderPassRushSummary(overall)}
