@@ -248,6 +248,7 @@ body {
   width: calc(100% - 28px); text-align: center;
 }
 .ss-cov-skip:hover { border-color: #666; color: var(--white); }
+.ss-cov-chip { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; vertical-align: middle; }
 
 /* PLAY BUILDER */
 .builder-wrap { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
@@ -2276,8 +2277,179 @@ function ssGenerateInsights(rows) {
       });
     });
   }
+  // Auto-flag: last-3-game average vs full season average — catches concepts fading
+  // recently despite a decent season-long number; also flags concepts surging late.
+  // Needs ≥ 4 games so the "last 3" bucket has meaningful contrast vs the full set.
+  if (trendGames.length >= 4) {
+    const wavgFn = ps => { const n = ps.reduce((s,p)=>s+p.n,0); return n ? ps.reduce((s,p)=>s+p.successPct*p.n,0)/n : null; };
+    [[r => ssIsPass(r) && !ssIsRPORow(r), ssPassConceptBucket, 'passing concept'], [r => ssIsRun(r) && ssIsRunHandoff(r), ssRunConceptBucket, 'run concept']].forEach(([filterFn, bucketFn, label]) => {
+      const series = ssBuildConceptTrend(trendGames, filterFn, bucketFn);
+      Object.entries(series).forEach(([concept, points]) => {
+        const totalN = points.reduce((s,p)=>s+p.n,0);
+        if (totalN < SS_TREND_MIN_TOTAL_N) return;
+        const allAvg = wavgFn(points);
+        const last3Avg = wavgFn(points.slice(-3));
+        if (allAvg == null || last3Avg == null) return;
+        const diff = last3Avg - allAvg;
+        if (diff <= -SS_TREND_SHIFT_PCT) {
+          items.push({ weight: totalN * 2, text: `<strong>${dbEscapeHTML(concept)}</strong> ${label}: season average is ${Math.round(allAvg)}% but last 3 games average only ${Math.round(last3Avg)}% — fading recently. Check the TRENDS tab.` });
+        } else if (diff >= SS_TREND_SHIFT_PCT) {
+          items.push({ weight: totalN, text: `<strong>${dbEscapeHTML(concept)}</strong> ${label}: recently averaging ${Math.round(last3Avg)}% vs ${Math.round(allAvg)}% season average — heating up. Consider more usage.` });
+        }
+      });
+    });
+  }
   items.sort((a, b) => b.weight - a.weight);
   return items.slice(0, 30).map(i => i.text);
+}
+
+const SS_COV_MIN_N = 3;
+
+function ssGetCoverageShell(r) {
+  const v = String(r.coverage == null ? '' : r.coverage).trim();
+  if (!v || v.toUpperCase() === 'UNKNOWN') return null;
+  return SS_COVERAGE_SHELLS.find(s => s.label === v) ? v : null;
+}
+
+function ssCovShellChip(label) {
+  const sh = SS_COVERAGE_SHELLS.find(s => s.label === label);
+  if (!sh) return dbEscapeHTML(label);
+  return `<span class="ss-cov-chip" style="background:${sh.bg};color:${sh.fg}">${dbEscapeHTML(label)}</span>`;
+}
+
+function ssRenderCoverageFreqPanel(offRows) {
+  const tagged = offRows.filter(r => ssGetCoverageShell(r));
+  if (!tagged.length) return '';
+  const groups = dbGroupBy(tagged, ssGetCoverageShell);
+  const entries = Object.entries(groups)
+    .map(([shell, rs]) => ({ shell, rs, stats: dbSuccessStats(rs), sh: SS_COVERAGE_SHELLS.find(s => s.label === shell) }))
+    .sort((a, b) => b.rs.length - a.rs.length);
+  const trs = entries.map(({ shell, rs, stats, sh }) => {
+    const pct = Math.round(rs.length / tagged.length * 100);
+    const passN = rs.filter(ssIsPass).length;
+    const runN = rs.filter(ssIsRun).length;
+    const descSpan = sh ? `<span style="color:var(--gray);font-size:11px">${dbEscapeHTML(sh.desc)}</span>` : '';
+    const succStyle = stats && stats.successPct >= 50 ? 'color:var(--gold)' : 'color:var(--red)';
+    return `<tr>
+      <td>${ssCovShellChip(shell)} ${descSpan}</td>
+      <td>${rs.length} <span style="color:var(--gray);font-size:11px">(${pct}%)</span></td>
+      <td style="${succStyle}"><strong>${stats ? stats.successPct + '%' : '—'}</strong></td>
+      <td>${stats ? stats.avgYards : '—'}</td>
+      <td><span style="color:var(--gray);font-size:11px">${passN}P / ${runN}R</span></td>
+    </tr>`;
+  }).join('');
+  return dbPanelWrap('COVERAGE — FREQUENCY &amp; RESULTS', `<div class="db-table-wrap"><table class="db-table"><tr><th>SHELL</th><th># PLAYS</th><th>SUCCESS%</th><th>AVG YDS</th><th>PASS/RUN</th></tr>${trs}</table></div>`);
+}
+
+function ssRenderBeatSheetPanel(offRows) {
+  const tagged = offRows.filter(r => ssGetCoverageShell(r));
+  if (!tagged.length) return '';
+  const passRows = tagged.filter(r => ssIsPass(r) && !ssIsRPORow(r));
+  const runRows = tagged.filter(r => ssIsRun(r) && ssIsRunHandoff(r));
+  const usedShells = SS_COVERAGE_SHELLS.filter(sh => tagged.filter(r => ssGetCoverageShell(r) === sh.label).length >= SS_COV_MIN_N);
+  if (!usedShells.length) return '';
+  const trs = usedShells.map(sh => {
+    const shellTagged = tagged.filter(r => ssGetCoverageShell(r) === sh.label);
+    const bestPass = Object.entries(dbGroupBy(passRows.filter(r => ssGetCoverageShell(r) === sh.label), ssPassConceptBucket))
+      .map(([k, rs]) => ({ k, stats: dbSuccessStats(rs) }))
+      .filter(e => e.stats && e.stats.n >= SS_COV_MIN_N)
+      .sort((a, b) => b.stats.successPct - a.stats.successPct)
+      .slice(0, 3);
+    const bestRun = Object.entries(dbGroupBy(runRows.filter(r => ssGetCoverageShell(r) === sh.label), ssRunConceptBucket))
+      .map(([k, rs]) => ({ k, stats: dbSuccessStats(rs) }))
+      .filter(e => e.stats && e.stats.n >= SS_COV_MIN_N)
+      .sort((a, b) => b.stats.successPct - a.stats.successPct)
+      .slice(0, 3);
+    const passStr = bestPass.length
+      ? bestPass.map(e => `${dbEscapeHTML(e.k)} <span style="color:var(--gray);font-size:10px">${e.stats.successPct}%/${e.stats.avgYards}yds(${e.stats.n})</span>`).join(', ')
+      : '<span style="color:var(--gray)">not enough data</span>';
+    const runStr = bestRun.length
+      ? bestRun.map(e => `${dbEscapeHTML(e.k)} <span style="color:var(--gray);font-size:10px">${e.stats.successPct}%/${e.stats.avgYards}yds(${e.stats.n})</span>`).join(', ')
+      : '<span style="color:var(--gray)">not enough data</span>';
+    return `<tr>
+      <td>${ssCovShellChip(sh.label)} <span style="color:var(--gray);font-size:11px">${dbEscapeHTML(sh.desc)}</span><br><span style="color:var(--gray);font-size:10px">${shellTagged.length} plays</span></td>
+      <td style="font-size:12px">${passStr}</td>
+      <td style="font-size:12px">${runStr}</td>
+    </tr>`;
+  }).join('');
+  return dbPanelWrap('COVERAGE BEAT SHEET — BEST CALLS vs EACH SHELL', `<div class="db-table-wrap"><table class="db-table"><tr><th>SHELL</th><th>BEST PASS CONCEPTS</th><th>BEST RUN CONCEPTS</th></tr>${trs}</table></div>`);
+}
+
+function ssRenderConceptByCoveragePanel(offRows, type) {
+  const isPass = type === 'pass';
+  const conceptRows = isPass
+    ? offRows.filter(r => ssIsPass(r) && !ssIsRPORow(r))
+    : offRows.filter(r => ssIsRun(r) && ssIsRunHandoff(r));
+  const bucketFn = isPass ? ssPassConceptBucket : ssRunConceptBucket;
+  const tagged = conceptRows.filter(r => ssGetCoverageShell(r));
+  if (!tagged.length) return '';
+  const presentShells = SS_COVERAGE_SHELLS.filter(sh => tagged.filter(r => ssGetCoverageShell(r) === sh.label).length >= SS_COV_MIN_N);
+  if (!presentShells.length) return '';
+  const conceptGroups = dbGroupBy(conceptRows, bucketFn);
+  const entries = Object.entries(conceptGroups)
+    .map(([concept, allRs]) => ({ concept, allRs, overall: dbSuccessStats(allRs) }))
+    .filter(e => e.overall && e.overall.n >= SS_COV_MIN_N)
+    .sort((a, b) => b.allRs.length - a.allRs.length);
+  if (!entries.length) return '';
+  const shellHeaders = presentShells.map(sh => `<th>${ssCovShellChip(sh.label)}</th>`).join('');
+  const trs = entries.map(({ concept, allRs, overall }) => {
+    const taggedRs = allRs.filter(r => ssGetCoverageShell(r));
+    const cells = presentShells.map(sh => {
+      const shRs = taggedRs.filter(r => ssGetCoverageShell(r) === sh.label);
+      if (shRs.length < SS_COV_MIN_N) return `<td style="color:var(--gray);font-size:11px" title="${shRs.length} plays">—</td>`;
+      const st = dbSuccessStats(shRs);
+      const col = st.successPct >= 60 ? 'var(--gold)' : st.successPct <= 35 ? 'var(--red)' : 'inherit';
+      return `<td style="color:${col};font-size:12px"><strong>${st.successPct}%</strong><br><span style="font-size:10px;color:var(--gray)">${st.avgYards}yds(${shRs.length})</span></td>`;
+    }).join('');
+    return `<tr>
+      <td><strong>${dbEscapeHTML(concept)}</strong><br><span style="color:var(--gray);font-size:11px">${overall.n} plays · ${overall.successPct}% overall</span></td>
+      ${cells}
+    </tr>`;
+  }).join('');
+  const title = isPass ? 'PASS CONCEPT vs COVERAGE SHELL' : 'RUN CONCEPT vs COVERAGE SHELL';
+  return dbPanelWrap(title, `<div class="db-table-wrap" style="overflow-x:auto"><table class="db-table"><tr><th>${isPass ? 'PASS CONCEPT' : 'RUN CONCEPT'}</th>${shellHeaders}</tr>${trs}</table></div>`);
+}
+
+function ssRenderCoverageUsageFlagPanel(offRows) {
+  const flags = [];
+  [[offRows.filter(r => ssIsPass(r) && !ssIsRPORow(r)), ssPassConceptBucket, 'pass'], [offRows.filter(r => ssIsRun(r) && ssIsRunHandoff(r)), ssRunConceptBucket, 'run']].forEach(([conceptRows, bucketFn, typeLbl]) => {
+    const groups = dbGroupBy(conceptRows, bucketFn);
+    Object.entries(groups).forEach(([concept, allRs]) => {
+      if (allRs.length < 5) return;
+      const overall = dbSuccessStats(allRs);
+      if (!overall) return;
+      const taggedRs = allRs.filter(r => ssGetCoverageShell(r));
+      SS_COVERAGE_SHELLS.forEach(sh => {
+        const shRs = taggedRs.filter(r => ssGetCoverageShell(r) === sh.label);
+        if (shRs.length < SS_COV_MIN_N) return;
+        const shStats = dbSuccessStats(shRs);
+        if (!shStats) return;
+        const shUsagePct = Math.round(shRs.length / allRs.length * 100);
+        if (overall.successPct <= 45 && shStats.successPct >= 60) {
+          flags.push({ weight: allRs.length * 3, html: `<strong>${dbEscapeHTML(concept)}</strong> ${typeLbl} concept: only ${overall.successPct}% overall but ${shStats.successPct}% vs ${ssCovShellChip(sh.label)} — look for situations where you know they'll play this shell.` });
+        } else if (shUsagePct >= 20 && shStats.successPct <= 35) {
+          flags.push({ weight: allRs.length * 2, html: `<strong>${dbEscapeHTML(concept)}</strong> ${typeLbl} concept: ${shUsagePct}% of calls come against ${ssCovShellChip(sh.label)} but only ${shStats.successPct}% success — cut usage vs this shell or find a better answer.` });
+        }
+      });
+    });
+  });
+  if (!flags.length) return '';
+  flags.sort((a, b) => b.weight - a.weight);
+  return dbPanelWrap('COVERAGE vs CONCEPT FLAGS', `<ul style="margin:0;padding:0 0 0 18px;line-height:1.8">${flags.map(f => `<li>${f.html}</li>`).join('')}</ul>`);
+}
+
+function ssRenderCoverageTab(offRows) {
+  const tagged = offRows.filter(r => ssGetCoverageShell(r));
+  if (!tagged.length) {
+    return '<div class="db-empty">No coverage data tagged yet. After loading a game, use <strong>TAG COV</strong> to tag coverages play by play. Once tagged, this tab will show shell frequency, a beat sheet, and concept-vs-shell breakdowns.</div>';
+  }
+  return [
+    ssRenderCoverageFreqPanel(offRows),
+    ssRenderBeatSheetPanel(offRows),
+    ssRenderConceptByCoveragePanel(offRows, 'pass'),
+    ssRenderConceptByCoveragePanel(offRows, 'run'),
+    ssRenderCoverageUsageFlagPanel(offRows),
+  ].filter(Boolean).join('');
 }
 
 const SS_TABS = [
@@ -2285,6 +2457,7 @@ const SS_TABS = [
   { id: 'passconcept', label: 'PASS CONCEPTS', render: rows => ssRenderPassConceptTable(rows) },
   { id: 'runconcept', label: 'RUN CONCEPTS', render: rows => ssRenderRunDirectionTable(rows) + ssRenderRunConceptTable(rows) },
   { id: 'rpo', label: 'RPO', render: rows => ssRenderRPOTable(rows) },
+  { id: 'coverage', label: 'COVERAGE', render: rows => ssRenderCoverageTab(rows) },
   { id: 'trends', label: 'TRENDS', render: () => ssRenderTrendsTab() },
   { id: 'predictability', label: 'PREDICTABILITY', render: rows => ssRenderPredictabilityTable(rows) },
   { id: 'formation', label: 'FORMATION', render: rows => ssRenderGroupTable(rows, dbFormPersonnelBucket, 'BY FORMATION & PERSONNEL', 'FORMATION') },
