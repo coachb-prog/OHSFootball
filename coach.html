@@ -516,6 +516,7 @@ body {
       </label>
       <div class="db-upload-status" id="db-upload-status"></div>
       <button class="db-print-btn" onclick="printGameCard()">🖨️ PRINT GAME CARD</button>
+      <button class="ss-slides-btn" id="db-slides-btn" onclick="dbExportSlides()">📊 EXPORT PRESENTATION</button>
       <div class="db-backup-row">
         <button class="db-backup-btn" onclick="dbExportData()">⬇️ EXPORT ALL DATA</button>
         <label for="db-import-input">
@@ -2868,6 +2869,414 @@ async function ssExportSlides() {
 }
 
 document.addEventListener('DOMContentLoaded', () => { ssUpdateLogoPreview(); });
+
+async function dbExportSlides() {
+  if (!currentDefOpponent) { alert('Select an opponent with loaded data first.'); return; }
+  const entry = getDefOpponents()[currentDefOpponent];
+  const rows = dbGetActiveRows(currentDefOpponent);
+  if (!rows.length) { alert('No data loaded for this opponent yet.'); return; }
+  const btn = document.getElementById('db-slides-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+  try {
+    await ssLoadPptxGen();
+  } catch (e) {
+    alert(e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '📊 EXPORT PRESENTATION'; }
+    return;
+  }
+
+  let defRows = rows.filter(r => String(r.odk == null ? '' : r.odk).trim().toUpperCase().charAt(0) === 'D');
+  if (!defRows.length) defRows = rows;
+  const total = defRows.length;
+  const overall = dbComputeOverall(defRows);
+  const gamesLabel = dbActiveGameId === 'ALL'
+    ? entry.games.map(g => g.label).join('  ·  ')
+    : (entry.games.find(g => g.id === dbActiveGameId) || {}).label || '';
+  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase();
+  const logoB64 = ssGetStoredLogo();
+
+  const C = { RED: 'CC0000', DARKRED: '8B0000', BLACK: '111111', WHITE: 'FFFFFF', GRAY: '888888', LIGHT: 'CCCCCC', NAVY: '13233A', PURPLE: '6A3DAA', GREEN: '2A7A2A', BLUE: '1A4A8A' };
+  const W = 13.33, H = 7.5;
+  const pptx = new PptxGenJS();
+  pptx.layout = 'LAYOUT_WIDE';
+
+  const hdr = (txt, align) => ({ text: String(txt), options: { bold: true, color: C.WHITE, fill: { color: C.NAVY }, fontSize: 11, align: align === 'l' ? 'left' : 'center', fontFace: 'Arial' } });
+  const cell = (txt, i, extra) => ({ text: String(txt == null ? '—' : txt), options: { color: '111111', fill: { color: i % 2 === 0 ? 'F2F4F7' : 'FFFFFF' }, fontSize: 11, fontFace: 'Arial', align: 'left', ...(extra || {}) } });
+  const lightSlide = () => { const sl = pptx.addSlide(); sl.background = { color: 'F5F6FA' }; return sl; };
+  const darkSlide = () => { const sl = pptx.addSlide(); sl.background = { color: C.BLACK }; return sl; };
+  const hdrBar = (sl, title) => {
+    sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.85, fill: { color: C.NAVY }, line: { color: C.NAVY } });
+    sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0.85, w: W, h: 0.06, fill: { color: C.RED }, line: { color: C.RED } });
+    sl.addText(title, { x: 0.3, y: 0.13, w: 10, h: 0.6, fontSize: 22, bold: true, color: C.WHITE, fontFace: 'Arial' });
+    sl.addText('N=' + total + ' tagged defensive snaps', { x: 10, y: 0.22, w: 3.1, h: 0.4, fontSize: 10, color: C.LIGHT, fontFace: 'Arial', align: 'right' });
+  };
+  const modal = (rs, field) => { const fc = dbFreq(rs, field); return dbTop(fc, 1)[0]?.label || '—'; };
+  const modalBN = rs => {
+    const fc = dbFreqByFn(rs, r => { const n = parseInt(String(r.blitzNum || '').trim()); return !isNaN(n) && n > 0 ? String(n) + '-man' : null; });
+    return dbTop(fc, 1)[0]?.label || '—';
+  };
+  const conf = n => n >= 20 ? 'High' : n >= 8 ? 'Medium' : 'Low';
+  const addBars = (sl, items, x, startY, maxPct, maxW) => {
+    const mw = maxW || 4.8;
+    items.forEach(({ label, count, pct }, i) => {
+      const y = startY + i * 0.42;
+      const bw = maxPct > 0 ? Math.max(0.04, (pct / maxPct) * mw) : 0.04;
+      sl.addText(String(label), { x, y: y + 0.02, w: 1.5, h: 0.3, fontSize: 10, bold: true, color: '333333', fontFace: 'Arial', align: 'right', valign: 'middle' });
+      sl.addShape(pptx.ShapeType.rect, { x: x + 1.6, y: y + 0.02, w: bw, h: 0.28, fill: { color: C.RED }, line: { color: C.RED } });
+      sl.addText(count + ' | ' + pct + '%', { x: x + 1.6 + bw + 0.08, y: y + 0.02, w: 1.6, h: 0.28, fontSize: 10, color: '555555', fontFace: 'Arial', valign: 'middle' });
+    });
+  };
+  const callout = (sl, title, text, x, y, w, h, color) => {
+    sl.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: 'FFFFFF' }, line: { color: color || C.RED, pt: 2 } });
+    sl.addText(title, { x: x + 0.15, y: y + 0.1, w: w - 0.3, h: 0.3, fontSize: 10, bold: true, color: color || C.RED, fontFace: 'Arial' });
+    sl.addText(text, { x: x + 0.15, y: y + 0.42, w: w - 0.3, h: h - 0.55, fontSize: 11, color: '222222', fontFace: 'Arial', valign: 'top', wrap: true });
+  };
+
+  // Precompute
+  const topFronts = dbTop(overall.frontFreq, 9);
+  const topCovs = dbTop(overall.covFreq, 9);
+  const topStunts = dbTop(overall.stuntFreq, 9);
+  const blitzRows = defRows.filter(dbIsBlitz);
+  const blitzNumFreq = dbFreqByFn(defRows, r => { const n = parseInt(String(r.blitzNum || '').trim()); return !isNaN(n) && n > 0 ? n + '-man' : null; });
+  const topBlitzNums = dbTop(blitzNumFreq, 6);
+  const blitzPct = total ? Math.round(blitzRows.length / total * 100) : 0;
+  const fiveOrMore = topBlitzNums.filter(t => parseInt(t.label) >= 5).reduce((s, t) => s + t.count, 0);
+  const fiveOrMorePct = total ? Math.round(fiveOrMore / total * 100) : 0;
+  const topFront = topFronts[0]?.label || '—';
+  const topCov = topCovs[0]?.label || '—';
+  const topStunt = topStunts[0]?.label || '—';
+  const topBlitzNum = topBlitzNums[0]?.label || '—';
+  const ddGroups = dbGroupBy(defRows, dbDownDistBucket);
+  const third = { short: ddGroups['3RD & SHORT'] || [], medium: ddGroups['3RD & MEDIUM'] || [], long: ddGroups['3RD & LONG'] || [] };
+  const rzHigh = defRows.filter(r => { const y = parseFloat(r.yardLn); return !isNaN(y) && y >= 11 && y <= 20; });
+  const rzLow  = defRows.filter(r => { const y = parseFloat(r.yardLn); return !isNaN(y) && y >= 5  && y <= 10; });
+  const gl      = defRows.filter(r => { const y = parseFloat(r.yardLn); return !isNaN(y) && y >= 1  && y <= 4;  });
+
+  // ---- SLIDE 1: Cover ----
+  {
+    const sl = darkSlide();
+    sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 4.6, h: H, fill: { color: C.RED }, line: { color: C.RED } });
+    sl.addText('OWENSBORO\nHIGH SCHOOL', { x: 0.2, y: 1.4, w: 4.2, h: 2.0, fontSize: 28, bold: true, color: C.WHITE, fontFace: 'Arial', align: 'center', valign: 'middle', charSpacing: 2 });
+    sl.addShape(pptx.ShapeType.rect, { x: 0.6, y: 3.6, w: 3.4, h: 0.07, fill: { color: C.BLACK }, line: { color: C.BLACK } });
+    sl.addText('RED DEVILS', { x: 0.2, y: 3.7, w: 4.2, h: 0.6, fontSize: 18, bold: true, color: C.BLACK, fontFace: 'Arial', align: 'center', charSpacing: 5 });
+    if (logoB64) sl.addImage({ data: logoB64, x: 1.2, y: 4.4, w: 2.2, h: 2.2 });
+    sl.addText('OPPONENT\nDEFENSIVE\nREPORT', { x: 5.1, y: 0.8, w: 8.0, h: 3.5, fontSize: 48, bold: true, color: C.WHITE, fontFace: 'Arial', charSpacing: 1, valign: 'middle' });
+    sl.addShape(pptx.ShapeType.rect, { x: 5.1, y: 4.5, w: 7.5, h: 0.06, fill: { color: C.RED }, line: { color: C.RED } });
+    sl.addText(currentDefOpponent, { x: 5.1, y: 4.65, w: 8.0, h: 0.5, fontSize: 18, bold: true, color: C.WHITE, fontFace: 'Arial' });
+    sl.addText(gamesLabel || 'ALL GAMES', { x: 5.1, y: 5.2, w: 8.0, h: 0.4, fontSize: 13, color: C.LIGHT, fontFace: 'Arial' });
+    sl.addText('PREPARED  ' + today, { x: 5.1, y: 5.7, w: 8.0, h: 0.35, fontSize: 11, color: C.GRAY, fontFace: 'Arial' });
+    sl.addText('Prepared for: Coaches / Staff', { x: 5.1, y: 6.15, w: 8.0, h: 0.28, fontSize: 10, color: C.GRAY, fontFace: 'Arial' });
+    sl.addText('Big Picture → Situational Football → Game Plan Answers', { x: 5.1, y: 6.6, w: 8.0, h: 0.5, fontSize: 12, bold: true, color: C.RED, fontFace: 'Arial' });
+  }
+
+  // ---- SLIDE 2: Defensive Identity ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Defensive Identity');
+    const boxes = [
+      { label: 'Base front', value: topFront, sub: topFronts[0] ? topFronts[0].count + ' snaps | ' + topFronts[0].pct + '%' : '—', color: C.BLUE },
+      { label: 'Most common stunt / blitz', value: topStunt, sub: topStunts[0] ? topStunts[0].count + ' tags | ' + topStunts[0].pct + '% of tagged' : '—', color: C.RED },
+      { label: 'Most common rush', value: topBlitzNum, sub: topBlitzNums[0] ? topBlitzNums[0].count + ' snaps | ' + topBlitzNums[0].pct + '%' : '—', color: C.RED },
+      { label: 'Most common coverage', value: topCov, sub: topCovs[0] ? topCovs[0].count + ' snaps | ' + topCovs[0].pct + '%' : '—', color: C.PURPLE },
+    ];
+    boxes.forEach(({ label, value, sub, color }, i) => {
+      const x = 0.3 + i * 3.15;
+      sl.addShape(pptx.ShapeType.rect, { x, y: 1.05, w: 3.0, h: 1.6, fill: { color: 'FFFFFF' }, line: { color, pt: 2 } });
+      sl.addText(label, { x: x + 0.12, y: 1.12, w: 2.76, h: 0.3, fontSize: 10, bold: true, color, fontFace: 'Arial' });
+      sl.addText(value, { x: x + 0.12, y: 1.45, w: 2.76, h: 0.55, fontSize: 20, bold: true, color: '111111', fontFace: 'Arial' });
+      sl.addText(sub, { x: x + 0.12, y: 2.02, w: 2.76, h: 0.3, fontSize: 10, color: '555555', fontFace: 'Arial' });
+    });
+    callout(sl, 'Pressure personality', blitzPct + '% blitz rate on charted snaps; primarily ' + topBlitzNum + ' rush.', 0.3, 2.85, 5.9, 1.35, C.RED);
+    const insights = dbGenerateInsights(defRows);
+    const takeaway = ssStripHTML(insights[0] || (topFront + ' front, ' + topCov + ' shell — base tendency on ' + (topFronts[0]?.pct || 0) + '% of snaps.'));
+    callout(sl, 'Main takeaway', takeaway, 6.4, 2.85, 6.6, 1.35, '444444');
+    const sumRows = [
+      [hdr('Category', 'l'), hdr('Most Common', 'l'), hdr('Count', 'c'), hdr('%', 'c')],
+      [cell('Front', 0, { align: 'left' }), cell(topFront, 0, { align: 'left' }), cell(topFronts[0]?.count || '—', 0, { align: 'center' }), cell((topFronts[0]?.pct || '—') + '%', 0, { align: 'center' })],
+      [cell('Stunt / Blitz Tag', 1, { align: 'left' }), cell(topStunt, 1, { align: 'left' }), cell(topStunts[0]?.count || '—', 1, { align: 'center' }), cell((topStunts[0]?.pct || '—') + '%', 1, { align: 'center' })],
+      [cell('# of Blitzers', 0, { align: 'left' }), cell(topBlitzNum, 0, { align: 'left' }), cell(topBlitzNums[0]?.count || '—', 0, { align: 'center' }), cell((topBlitzNums[0]?.pct || '—') + '%', 0, { align: 'center' })],
+      [cell('Coverage', 1, { align: 'left' }), cell(topCov, 1, { align: 'left' }), cell(topCovs[0]?.count || '—', 1, { align: 'center' }), cell((topCovs[0]?.pct || '—') + '%', 1, { align: 'center' })],
+    ];
+    sl.addTable(sumRows, { x: 0.3, y: 4.35, w: 9.0, colW: [2.8, 2.8, 1.7, 1.7], rowH: 0.4, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    const mainTakeaway = topFront + ' front, ' + topCov + ' shell, but heats up with pressure on ' + blitzPct + '% of snaps.';
+    sl.addText('Coach takeaway', { x: 9.5, y: 4.35, w: 3.5, h: 0.3, fontSize: 10, bold: true, color: C.RED, fontFace: 'Arial' });
+    sl.addText(mainTakeaway, { x: 9.5, y: 4.7, w: 3.5, h: 1.5, fontSize: 12, bold: true, color: '222222', fontFace: 'Arial', wrap: true });
+  }
+
+  // ---- SLIDE 3: Overall Defensive Tendencies ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Overall Defensive Tendencies');
+    const sumRows = [
+      [hdr('Category', 'l'), hdr('Most Common', 'l'), hdr('Count', 'c'), hdr('%', 'c')],
+      [cell('Front', 0, { align: 'left' }), cell(topFront, 0, { align: 'left' }), cell(topFronts[0]?.count || '—', 0, { align: 'center' }), cell((topFronts[0]?.pct || '—') + '%', 0, { align: 'center' })],
+      [cell('Stunt / Blitz Tag', 1, { align: 'left' }), cell(topStunt, 1, { align: 'left' }), cell(topStunts[0]?.count || '—', 1, { align: 'center' }), cell((topStunts[0]?.pct || '—') + '%', 1, { align: 'center' })],
+      [cell('# of Blitzers', 0, { align: 'left' }), cell(topBlitzNum, 0, { align: 'left' }), cell(topBlitzNums[0]?.count || '—', 0, { align: 'center' }), cell((topBlitzNums[0]?.pct || '—') + '%', 0, { align: 'center' })],
+      [cell('Coverage', 1, { align: 'left' }), cell(topCov, 1, { align: 'left' }), cell(topCovs[0]?.count || '—', 1, { align: 'center' }), cell((topCovs[0]?.pct || '—') + '%', 1, { align: 'center' })],
+    ];
+    sl.addTable(sumRows, { x: 0.3, y: 1.1, w: 6.2, colW: [2.0, 2.0, 1.1, 1.1], rowH: 0.42, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    const coachNote = 'They live in ' + topFront + ' / ' + topCov + ', but the pressure volume is real. Have answers ready for ' + (fiveOrMorePct >= 30 ? fiveOrMorePct + '% 5+ pressure.' : topBlitzNum + ' pressure.');
+    callout(sl, 'Coach takeaway', coachNote, 6.8, 1.1, 6.2, 1.8, C.RED);
+    sl.addText('Front snapshot', { x: 0.3, y: 3.15, w: 6.0, h: 0.35, fontSize: 12, bold: true, color: C.BLUE, fontFace: 'Arial' });
+    addBars(sl, topFronts.slice(0, 6), 0.3, 3.55, topFronts[0]?.pct || 100);
+    sl.addText('Coverage snapshot', { x: 6.8, y: 3.15, w: 6.0, h: 0.35, fontSize: 12, bold: true, color: C.PURPLE, fontFace: 'Arial' });
+    addBars(sl, topCovs.slice(0, 6), 6.8, 3.55, topCovs[0]?.pct || 100);
+  }
+
+  // ---- SLIDE 4: Front Distribution ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Front Distribution');
+    const tblRows = [
+      [hdr('Front', 'l'), hdr('Count', 'c'), hdr('Percentage', 'c')],
+      ...topFronts.slice(0, 8).map((t, i) => [cell(t.label, i, { align: 'left' }), cell(t.count, i, { align: 'center' }), cell(t.pct + '%', i, { align: 'center' })]),
+    ];
+    sl.addTable(tblRows, { x: 0.3, y: 1.1, w: 5.5, colW: [2.5, 1.5, 1.5], rowH: 0.44, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    addBars(sl, topFronts.slice(0, 7), 6.2, 1.2, topFronts[0]?.pct || 100);
+    const runNote = 'Base your first-down run answers around ' + (topFronts[0]?.label || '—') + (topFronts[1] ? ' / ' + topFronts[1].label : '') + '. ' + (topFronts[2] ? topFronts[2].label + ' is the third change-up.' : '');
+    callout(sl, 'Run game note', runNote, 6.2, 5.5, 6.8, 1.65, C.GREEN);
+  }
+
+  // ---- SLIDE 5: Stunt / Blitz Distribution ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Stunt / Blitz Tag Distribution');
+    const tblRows = [
+      [hdr('Stunt / Blitz Tag', 'l'), hdr('Count', 'c'), hdr('Percentage', 'c')],
+      ...topStunts.slice(0, 9).map((t, i) => [cell(t.label, i, { align: 'left' }), cell(t.count, i, { align: 'center' }), cell(t.pct + '%', i, { align: 'center' })]),
+    ];
+    sl.addTable(tblRows, { x: 0.3, y: 1.1, w: 5.5, colW: [2.5, 1.5, 1.5], rowH: 0.44, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    addBars(sl, topStunts.slice(0, 7), 6.2, 1.2, topStunts[0]?.pct || 100);
+    const alert2 = (topStunts[0]?.label || '—') + ' and ' + (topStunts[1]?.label || '—') + ' are the top tagged pressure/stunt calls. Blitz tag data exists on only tagged snaps.';
+    callout(sl, 'Pressure alert', alert2, 6.2, 5.5, 6.8, 1.65, C.RED);
+  }
+
+  // ---- SLIDE 6: Number of Blitzers ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Number of Blitzers');
+    const tblRows = [
+      [hdr('Rush / Pressure', 'l'), hdr('Count', 'c'), hdr('Percentage', 'c')],
+      ...topBlitzNums.slice(0, 6).map((t, i) => [cell(t.label, i, { align: 'left' }), cell(t.count, i, { align: 'center' }), cell(t.pct + '%', i, { align: 'center' })]),
+    ];
+    sl.addTable(tblRows, { x: 0.3, y: 1.1, w: 5.5, colW: [2.5, 1.5, 1.5], rowH: 0.44, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    addBars(sl, topBlitzNums.slice(0, 5), 6.2, 1.2, topBlitzNums[0]?.pct || 100);
+    const pressNote = fiveOrMorePct + '% of snaps feature 5+ rushers. ' + (fiveOrMorePct >= 35 ? 'They heat up often enough to build screen and protection answers.' : 'Have check answers ready.');
+    callout(sl, 'Pressure personality', pressNote, 6.2, 5.5, 6.8, 1.65, C.RED);
+  }
+
+  // ---- SLIDE 7: Coverage Distribution ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Coverage Distribution');
+    const tblRows = [
+      [hdr('Coverage', 'l'), hdr('Count', 'c'), hdr('Percentage', 'c')],
+      ...topCovs.slice(0, 8).map((t, i) => [cell(t.label, i, { align: 'left' }), cell(t.count, i, { align: 'center' }), cell(t.pct + '%', i, { align: 'center' })]),
+    ];
+    sl.addTable(tblRows, { x: 0.3, y: 1.1, w: 5.5, colW: [2.5, 1.5, 1.5], rowH: 0.44, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    addBars(sl, topCovs.slice(0, 7), 6.2, 1.2, topCovs[0]?.pct || 100);
+    callout(sl, 'Coverage family note', 'Cover 0 and Cover 1 are man coverage. Cover 2, 3, 4, 5, 6, and 7 are zone or zone-family unless the staff tags otherwise.', 6.2, 5.5, 6.8, 1.65, C.PURPLE);
+  }
+
+  // ---- SLIDE 8: Pressure + Coverage Relationship ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Pressure + Coverage Relationship');
+    const bnGroups = dbGroupBy(defRows, r => { const n = parseInt(String(r.blitzNum || '').trim()); return !isNaN(n) && n > 0 ? String(n) : null; });
+    const pcTblRows = [
+      [hdr('# of Blitzers', 'c'), hdr('Top Coverage', 'l'), hdr('Count', 'c'), hdr('%', 'c')],
+      ...[3, 4, 5, 6, 7].map((n, i) => {
+        const rs = bnGroups[String(n)] || []; if (!rs.length) return null;
+        const top = dbTop(dbFreq(rs, 'coverage'), 1)[0];
+        return [cell(n, i, { align: 'center' }), cell(top?.label || '—', i, { align: 'left' }), cell(top?.count || '—', i, { align: 'center' }), cell(top ? Math.round(top.count / rs.length * 100) + '%' : '—', i, { align: 'center' })];
+      }).filter(Boolean),
+    ];
+    sl.addTable(pcTblRows, { x: 0.3, y: 1.1, w: 6.2, colW: [1.5, 2.5, 1.1, 1.1], rowH: 0.48, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    callout(sl, 'What coverage do they play when they pressure?', 'When 5+ comes, check the coverage alert before assuming man. The top call by rush number is listed here.', 6.8, 1.1, 6.2, 1.8, C.PURPLE);
+    const ruleRows = [
+      [hdr('Coach rule', 'l'), hdr('Answer', 'l')],
+      [cell('4-man rush', 0, { align: 'left', bold: true }), cell('Run it / dropback answers by coverage', 0, { align: 'left' })],
+      [cell('5-man pressure', 1, { align: 'left', bold: true }), cell('Protection check + built-in hot/screen', 1, { align: 'left' })],
+      [cell('6-man pressure', 0, { align: 'left', bold: true }), cell('Fast answer; do not hold the ball', 0, { align: 'left' })],
+    ];
+    sl.addTable(ruleRows, { x: 6.8, y: 3.1, w: 6.2, colW: [2.5, 3.7], rowH: 0.48, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+  }
+
+  // ---- SLIDE 9: Down & Distance Tendencies ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Down & Distance Tendencies');
+    const ddBuckets = ['1ST DOWN', '2ND & SHORT', '2ND & MEDIUM', '2ND & LONG', '3RD & SHORT', '3RD & MEDIUM', '3RD & LONG', '4TH & SHORT', '4TH & MEDIUM', '4TH & LONG'];
+    const ddTblRows = [
+      [hdr('Bucket', 'l'), hdr('N', 'c'), hdr('Front', 'l'), hdr('Stunt', 'l'), hdr('Blitzers', 'c'), hdr('Coverage', 'l')],
+      ...ddBuckets.map((bucket, i) => {
+        const rs = ddGroups[bucket] || []; if (!rs.length) return null;
+        return [cell(bucket, i, { align: 'left' }), cell(rs.length, i, { align: 'center' }), cell(modal(rs, 'defFront'), i, { align: 'left' }), cell(modal(rs, 'stunt'), i, { align: 'left' }), cell(modalBN(rs), i, { align: 'center' }), cell(modal(rs, 'coverage'), i, { align: 'left' })];
+      }).filter(Boolean),
+    ];
+    sl.addTable(ddTblRows, { x: 0.3, y: 1.0, w: 12.7, colW: [2.6, 0.6, 2.0, 2.0, 1.3, 4.2], rowH: 0.4, fontSize: 10, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    sl.addText('Required buckets shown. — = no tagged data in that bucket.', { x: 0.3, y: 7.05, w: 12.0, h: 0.28, fontSize: 9, color: C.GRAY, fontFace: 'Arial', italic: true });
+  }
+
+  // ---- SLIDE 10: 3rd Down Plan ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, '3rd Down Plan');
+    const situations3rd = [['3rd & Short, 1–3', third.short], ['3rd & Medium, 4–7', third.medium], ['3rd & Long, 8+', third.long]];
+    const thirdTblRows = [
+      [hdr('Situation', 'l'), hdr('N', 'c'), hdr('Defensive Alert', 'l'), hdr('Best Answers', 'l')],
+      ...situations3rd.map(([label, rs], i) => [
+        cell(label, i, { align: 'left' }), cell(rs.length || '—', i, { align: 'center' }),
+        cell(rs.length ? 'Expect ' + modal(rs, 'defFront') + ' / ' + modalBN(rs) + ' / ' + modal(rs, 'coverage') : 'No data', i, { align: 'left' }),
+        cell('Use answers to top coverage; protect pressure first.', i, { align: 'left' }),
+      ]),
+    ];
+    sl.addTable(thirdTblRows, { x: 0.3, y: 1.1, w: 12.7, colW: [2.1, 0.6, 4.5, 5.5], rowH: 0.5, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    const detailRows = [
+      [hdr('Detail', 'l'), hdr('Short', 'c'), hdr('Medium', 'c'), hdr('Long', 'c')],
+      [cell('Expected front', 0, { align: 'left' }), cell(modal(third.short, 'defFront'), 0, { align: 'center' }), cell(modal(third.medium, 'defFront'), 0, { align: 'center' }), cell(modal(third.long, 'defFront'), 0, { align: 'center' })],
+      [cell('Expected pressure', 1, { align: 'left' }), cell(modalBN(third.short), 1, { align: 'center' }), cell(modalBN(third.medium), 1, { align: 'center' }), cell(modalBN(third.long), 1, { align: 'center' })],
+      [cell('Expected coverage', 0, { align: 'left' }), cell(modal(third.short, 'coverage'), 0, { align: 'center' }), cell(modal(third.medium, 'coverage'), 0, { align: 'center' }), cell(modal(third.long, 'coverage'), 0, { align: 'center' })],
+      [cell('Confidence', 1, { align: 'left' }), cell(conf(third.short.length), 1, { align: 'center' }), cell(conf(third.medium.length), 1, { align: 'center' }), cell(conf(third.long.length), 1, { align: 'center' })],
+    ];
+    sl.addTable(detailRows, { x: 0.3, y: 4.1, w: 9.0, colW: [2.5, 2.1, 2.1, 2.3], rowH: 0.42, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    callout(sl, 'Best call types', '3rd & short: quick answers + protection.\n3rd & medium/long: expect heat; have hot, screen, and shot alerts ready.', 9.5, 4.1, 3.5, 2.5, C.RED);
+  }
+
+  // ---- SLIDE 11: Red Zone / Goal Line Plan ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Red Zone / Goal Line Plan');
+    const rzSituations = [['High Red Zone, 20–11', rzHigh], ['Low Red Zone, 10–5', rzLow], ['Goal Line, 5–1', gl]];
+    const rzRows = [
+      [hdr('Field Area', 'l'), hdr('N', 'c'), hdr('Defensive Alert', 'l'), hdr('Best Answers', 'l'), hdr('Confidence', 'c')],
+      ...rzSituations.map(([label, rs], i) => [
+        cell(label, i, { align: 'left' }), cell(rs.length || '—', i, { align: 'center' }),
+        cell(rs.length ? modal(rs, 'coverage') + ' / ' + modalBN(rs) : 'No data', i, { align: 'left' }),
+        cell('Man/zone answers based on tag; carry RZ staples.', i, { align: 'left' }),
+        cell(conf(rs.length), i, { align: 'center' }),
+      ]),
+    ];
+    sl.addTable(rzRows, { x: 0.3, y: 1.1, w: 12.7, colW: [2.5, 0.6, 3.0, 5.0, 1.6], rowH: 0.5, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    const bucketRows = [
+      [hdr('Call bucket', 'l'), hdr('High RZ', 'c'), hdr('Low RZ', 'c'), hdr('Goal Line', 'c')],
+      [cell('Expected coverage', 0, { align: 'left' }), cell(modal(rzHigh, 'coverage'), 0, { align: 'center' }), cell(modal(rzLow, 'coverage'), 0, { align: 'center' }), cell(modal(gl, 'coverage'), 0, { align: 'center' })],
+      [cell('Expected pressure', 1, { align: 'left' }), cell(modalBN(rzHigh), 1, { align: 'center' }), cell(modalBN(rzLow), 1, { align: 'center' }), cell(modalBN(gl), 1, { align: 'center' })],
+      [cell('Must-have calls', 0, { align: 'left' }), cell('RZ man/zone beaters', 0, { align: 'center' }), cell('Low RZ staples', 0, { align: 'center' }), cell('GL answers', 0, { align: 'center' })],
+    ];
+    sl.addTable(bucketRows, { x: 0.3, y: 4.05, w: 12.7, colW: [3.0, 3.2, 3.2, 3.3], rowH: 0.47, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    if (gl.length < 5) sl.addText('Small Sample Warning: Goal Line has only ' + gl.length + ' snaps.', { x: 0.3, y: 7.05, w: 12.0, h: 0.28, fontSize: 9, color: C.GRAY, fontFace: 'Arial', italic: true });
+  }
+
+  // ---- SLIDE 12: Top Defensive Combos ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Top Defensive Combos');
+    const comboGroups = dbGroupBy(defRows, dbComboKey);
+    const combos = Object.entries(comboGroups).sort((a, b) => b[1].length - a[1].length).slice(0, 12).map(([key, rs]) => {
+      const parts = key.split(' / '); return { front: parts[0], cov: parts.slice(1).join(' / '), count: rs.length, pct: Math.round(rs.length / total * 100) };
+    });
+    const comboTblRows = [
+      [hdr('Front', 'l'), hdr('Coverage', 'l'), hdr('Count', 'c'), hdr('%', 'c')],
+      ...combos.map((c, i) => [cell(c.front, i, { align: 'left' }), cell(c.cov, i, { align: 'left' }), cell(c.count, i, { align: 'center' }), cell(c.pct + '%', i, { align: 'center' })]),
+    ];
+    sl.addTable(comboTblRows, { x: 0.3, y: 1.1, w: 12.7, colW: [3.5, 3.5, 2.85, 2.85], rowH: 0.44, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+  }
+
+  // ---- SLIDE 13: Formation Tendencies (conditional) ----
+  const formGroups = dbGroupBy(defRows, dbFormBucket);
+  const formKeys = Object.keys(formGroups).sort((a, b) => formGroups[b].length - formGroups[a].length);
+  if (formKeys.length >= 2) {
+    const sl = lightSlide();
+    hdrBar(sl, 'Formation Tendencies');
+    const fmRows = [
+      [hdr('Offensive Formation', 'l'), hdr('N', 'c'), hdr('Front', 'l'), hdr('Stunt', 'l'), hdr('# Blitzers', 'c'), hdr('Coverage', 'l'), hdr('Alert', 'l')],
+      ...formKeys.slice(0, 11).map((key, i) => {
+        const rs = formGroups[key];
+        return [cell(key, i, { align: 'left' }), cell(rs.length, i, { align: 'center' }), cell(modal(rs, 'defFront'), i, { align: 'left' }), cell(modal(rs, 'stunt'), i, { align: 'left' }), cell(modalBN(rs), i, { align: 'center' }), cell(modal(rs, 'coverage'), i, { align: 'left' }), cell(rs.length >= 10 ? 'Primary formation alert' : 'Small sample', i, { align: 'left' })];
+      }),
+    ];
+    sl.addTable(fmRows, { x: 0.3, y: 1.1, w: 12.7, colW: [2.8, 0.6, 1.6, 1.6, 1.2, 2.8, 2.1], rowH: 0.42, fontSize: 10, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    sl.addText('Missing OFF FORM data will reduce formation alerts. Tag more snaps for better coverage.', { x: 0.3, y: 7.05, w: 12.0, h: 0.28, fontSize: 9, color: C.GRAY, fontFace: 'Arial', italic: true });
+  }
+
+  // ---- SLIDE 14: Personnel Tendencies (conditional) ----
+  const personnelGroups = dbGroupBy(defRows, dbPersonnelBucket);
+  const personnelKeys = Object.keys(personnelGroups).sort((a, b) => personnelGroups[b].length - personnelGroups[a].length);
+  if (personnelKeys.length >= 2) {
+    const sl = lightSlide();
+    hdrBar(sl, 'Personnel Tendencies');
+    const persRows = [
+      [hdr('Personnel', 'l'), hdr('N', 'c'), hdr('Front', 'l'), hdr('Pressure', 'l'), hdr('Coverage', 'l'), hdr('Confidence', 'c')],
+      ...personnelKeys.slice(0, 9).map((key, i) => {
+        const rs = personnelGroups[key];
+        return [cell(key, i, { align: 'left' }), cell(rs.length, i, { align: 'center' }), cell(modal(rs, 'defFront'), i, { align: 'left' }), cell(modalBN(rs), i, { align: 'left' }), cell(modal(rs, 'coverage'), i, { align: 'left' }), cell(conf(rs.length), i, { align: 'center' })];
+      }),
+    ];
+    sl.addTable(persRows, { x: 0.3, y: 1.1, w: 12.7, colW: [1.8, 0.6, 2.1, 2.1, 4.6, 1.5], rowH: 0.46, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    const top2 = personnelKeys.slice(0, 2).join(' and ');
+    callout(sl, 'Coach takeaway', top2 + ' personnel carry the largest samples. Build answers there first; carry compact checks for others.', 0.3, 6.1, 12.7, 1.1, C.GREEN);
+  }
+
+  // ---- SLIDE 15: Next-Call Estimator ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Next-Call Estimator');
+    const situations = [
+      { label: 'Overall', rs: defRows },
+      { label: '1st & 10', rs: ddGroups['1ST DOWN'] || [] },
+      { label: '3rd & Short', rs: third.short },
+      { label: '3rd & Medium', rs: third.medium },
+      { label: '3rd & Long', rs: third.long },
+      { label: 'High RZ', rs: rzHigh },
+      { label: 'Low RZ', rs: rzLow },
+      { label: 'Goal Line', rs: gl },
+    ];
+    const estRows = [
+      [hdr('Situation', 'l'), hdr('N', 'c'), hdr('Front', 'l'), hdr('Stunt', 'l'), hdr('# Blitzers', 'c'), hdr('Coverage', 'l'), hdr('Confidence', 'c')],
+      ...situations.map(({ label, rs }, i) => [
+        cell(label, i, { align: 'left' }), cell(rs.length, i, { align: 'center' }),
+        cell(modal(rs, 'defFront'), i, { align: 'left' }), cell(modal(rs, 'stunt'), i, { align: 'left' }),
+        cell(modalBN(rs), i, { align: 'center' }), cell(modal(rs, 'coverage'), i, { align: 'left' }),
+        cell(conf(rs.length), i, { align: 'center' }),
+      ]),
+    ];
+    sl.addTable(estRows, { x: 0.3, y: 1.1, w: 12.7, colW: [1.8, 0.6, 1.8, 1.8, 1.4, 3.7, 1.6], rowH: 0.44, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    callout(sl, 'Estimator rule', 'Confidence is based on historical frequency and sample size. Small samples are alerts, not guarantees.', 0.3, 6.1, 12.7, 1.05, '444444');
+  }
+
+  // ---- SLIDE 16: Staff Action Items ----
+  {
+    const sl = lightSlide();
+    hdrBar(sl, 'Staff Action Items');
+    const insights = dbGenerateInsights(defRows);
+    const actions = [];
+    if (blitzPct >= 40) actions.push({ item: 'Build protection package for blitz situations', why: blitzPct + '% blitz rate — design hot routes and screens.' });
+    if (third.medium.length >= 5) actions.push({ item: 'Build 3rd & medium answer package', why: 'They heat up with ' + modalBN(third.medium) + ' in 3rd & medium.' });
+    const manRows = (dbGroupBy(defRows, dbCoverageBucket)['COVER 0'] || []).concat(dbGroupBy(defRows, dbCoverageBucket)['COVER 1'] || []);
+    if (manRows.length >= 3) actions.push({ item: 'Carry two answers versus man coverage', why: 'Man coverage shows up on ' + Math.round(manRows.length / total * 100) + '% of snaps.' });
+    if (fiveOrMore >= 5) actions.push({ item: 'Use screens versus 5+ pressure', why: fiveOrMorePct + '% of snaps feature 5+ rushers.' });
+    if (rzHigh.length >= 5) actions.push({ item: 'Have red-zone man/zone beaters ready', why: 'High RZ and goal line trend to ' + modal(rzHigh, 'coverage') + '.' });
+    for (let idx = 0; idx < insights.length && actions.length < 6; idx++) {
+      const txt = ssStripHTML(insights[idx]);
+      if (!actions.some(a => a.why === txt)) actions.push({ item: 'Review key tendency', why: txt });
+    }
+    const actRows = [
+      [hdr('Priority', 'c'), hdr('Action Item', 'l'), hdr('Why', 'l')],
+      ...actions.slice(0, 7).map(({ item, why }, i) => [
+        cell(String(i + 1), i, { align: 'center', bold: true }), cell(item, i, { align: 'left' }), cell(why, i, { align: 'left' }),
+      ]),
+    ];
+    sl.addTable(actRows, { x: 0.3, y: 1.1, w: 12.7, colW: [0.8, 5.5, 6.4], rowH: 0.47, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    callout(sl, 'Final reminder', 'Start with ' + topFront + ' / ' + topCov + '. Expect heat. Have answers ready.', 0.3, 6.1, 12.7, 1.05, '444444');
+  }
+
+  // ---- Save ----
+  const safeOpp = currentDefOpponent.replace(/[^a-zA-Z0-9]/g, '_');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  await pptx.writeFile({ fileName: safeOpp + '_Defensive_Report_' + dateStr + '.pptx' });
+  if (btn) { btn.disabled = false; btn.textContent = '📊 EXPORT PRESENTATION'; }
+}
 </script>
 </body>
 </html>
