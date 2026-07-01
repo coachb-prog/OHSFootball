@@ -1783,7 +1783,7 @@ function ssPassConceptBucket(r) {
   const playWord = ssOffPlayBase(r);
   const cat = ssCategoryBucket(r);
   const family = ssConceptFamilyLookup(cat, playWord);
-  if (family) return family + ' (' + playWord + ')';
+  if (family) return playWord;
   const c = String(r.concept == null ? '' : r.concept).trim().toUpperCase();
   if (c) return c;
   const t = String(r.passTag == null ? '' : r.passTag).trim().toUpperCase();
@@ -1800,8 +1800,7 @@ function ssRunConceptBucket(r) {
   const c = String(r.concept == null ? '' : r.concept).trim().toUpperCase();
   const callWord = (c && c !== 'NONE') ? c : playWord;
   if (!callWord) return null;
-  const family = ssConceptFamilyLookup('RUN', callWord);
-  return family ? family + ' (' + callWord + ')' : callWord;
+  return callWord;
 }
 // SCRAMBLE means the QB never handed the ball off — the called run concept didn't actually execute,
 // so that snap shouldn't count toward the concept's numbers. PENALTY/TIMEOUT are dead plays (no snap).
@@ -1815,12 +1814,9 @@ function ssRPOComboBucket(r) {
   const concept = String(r.concept == null ? '' : r.concept).trim().toUpperCase() || ssOffPlayBase(r);
   const passTag = String(r.passTag == null ? '' : r.passTag).trim().toUpperCase();
   const cleanPassTag = (passTag && passTag !== 'DEFAULT') ? passTag : '';
-  const conceptFamily = ssConceptFamilyLookup('RUN', concept);
-  const conceptLabel = conceptFamily ? conceptFamily + ' (' + concept + ')' : concept;
-  if (!cleanPassTag) return conceptLabel || '—';
-  const passFamily = ssConceptFamilyLookup('RPO', cleanPassTag);
-  const passLabel = passFamily ? passFamily + ' (' + cleanPassTag + ')' : cleanPassTag;
-  return conceptLabel ? conceptLabel + ' + ' + passLabel : passLabel;
+  const conceptLabel = concept || '—';
+  if (!cleanPassTag) return conceptLabel;
+  return conceptLabel !== '—' ? conceptLabel + ' + ' + cleanPassTag : cleanPassTag;
 }
 function ssRPORowHTML(labelHTML, rs) {
   const runRs  = rs.filter(ssIsRun);
