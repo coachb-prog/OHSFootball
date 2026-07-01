@@ -393,6 +393,12 @@ body {
 .ss-filter-banner { font-size: 11px; color: var(--gold); font-weight: 700; letter-spacing: 0.5px; padding: 6px 0 0; }
 .ss-filter-banner button { background: none; border: none; color: var(--gray); font-size: 11px; font-weight: 700; cursor: pointer; text-decoration: underline; padding: 0; letter-spacing: 0.5px; }
 .ss-filter-banner button:hover { color: var(--white); }
+.ss-slides-btn { display: block; width: 100%; margin-top: 10px; padding: 11px 0; background: var(--red); border: none; border-radius: 8px; color: var(--white); font-size: 13px; font-weight: 900; letter-spacing: 2px; cursor: pointer; }
+.ss-slides-btn:hover { background: #aa0000; }
+.ss-slides-btn:disabled { background: #555; cursor: default; }
+.ss-logo-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.ss-logo-preview { width: 32px; height: 32px; border-radius: 4px; object-fit: contain; background: #222; display: none; }
+.ss-logo-label { font-size: 11px; color: var(--gray); cursor: pointer; text-decoration: underline; }
 .db-game-del { color: var(--gray); font-weight: 900; cursor: pointer; padding: 0 4px; }
 .db-print-btn { background: var(--black3); border: 1px solid var(--gold); color: var(--gold); border-radius: 10px; padding: 12px; font-size: 13px; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; }
 .db-print-btn:hover, .db-print-btn:active { background: var(--gold); color: var(--black); }
@@ -549,6 +555,12 @@ body {
         <span class="db-upload-btn">📁 UPLOAD OFFENSE BREAKDOWN FILE (.csv / .xlsx)</span>
       </label>
       <div class="db-upload-status" id="ss-upload-status"></div>
+      <button class="ss-slides-btn" id="ss-slides-btn" onclick="ssExportSlides()">📊 EXPORT PRESENTATION</button>
+      <div class="ss-logo-row">
+        <img id="ss-logo-preview" class="ss-logo-preview" alt="logo">
+        <input type="file" id="ss-logo-input" accept="image/*" onchange="ssSetLogo(this)" style="display:none">
+        <label for="ss-logo-input" class="ss-logo-label" id="ss-logo-label">+ set school logo for slides</label>
+      </div>
       <div class="db-backup-row">
         <button class="db-backup-btn" onclick="ssExportData()">⬇️ EXPORT ALL DATA</button>
         <label for="ss-import-input">
@@ -2533,6 +2545,335 @@ function renderSSDashboard(rows) {
     });
   });
 }
+
+// ==================== SLIDE EXPORT ====================
+let dbPptxLoading = null;
+function ssLoadPptxGen() {
+  if (typeof PptxGenJS !== 'undefined') return Promise.resolve();
+  if (dbPptxLoading) return dbPptxLoading;
+  dbPptxLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Could not load PptxGenJS — check your internet connection'));
+    document.head.appendChild(s);
+  });
+  return dbPptxLoading;
+}
+
+function ssGetStoredLogo() {
+  return localStorage.getItem('ss_logo_b64') || null;
+}
+
+function ssSetLogo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    localStorage.setItem('ss_logo_b64', e.target.result);
+    ssUpdateLogoPreview();
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function ssUpdateLogoPreview() {
+  const b64 = ssGetStoredLogo();
+  const img = document.getElementById('ss-logo-preview');
+  const lbl = document.getElementById('ss-logo-label');
+  if (!img || !lbl) return;
+  if (b64) {
+    img.src = b64;
+    img.style.display = 'block';
+    lbl.textContent = 'change logo';
+  } else {
+    img.style.display = 'none';
+    lbl.textContent = '+ set school logo for slides';
+  }
+}
+
+function ssStripHTML(html) {
+  return String(html || '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim();
+}
+
+async function ssExportSlides() {
+  const rows = ssGetActiveRows();
+  if (!rows.length) { alert('No data loaded. Upload offense breakdown files first.'); return; }
+  const btn = document.getElementById('ss-slides-btn');
+  if (btn) { btn.textContent = 'GENERATING…'; btn.disabled = true; }
+  try {
+    await ssLoadPptxGen();
+    const pptx = new PptxGenJS();
+    pptx.layout = 'LAYOUT_WIDE';
+    pptx.author = 'OHS Red Devils Self Scout';
+    pptx.title = 'OHS Self Scout Report';
+
+    const C = {
+      RED: 'CC0000', DARKRED: '8B0000', BLACK: '111111',
+      WHITE: 'FFFFFF', GRAY: '888888', LIGHT: 'CCCCCC',
+      PANEL: '1C1C1C', ALT: '242424', GOLD: 'FFCC00',
+    };
+    const W = 13.33, H = 7.5;
+
+    // Gather data
+    const data = getSSData();
+    let offRows = rows.filter(r => String(r.odk || '').trim().toUpperCase().charAt(0) === 'O');
+    if (!offRows.length) offRows = rows;
+    const numGames = !ssSelectedGameIds.size ? Math.max(data.games.length, 1) : Math.max(ssSelectedGameIds.size, 1);
+    const overall = ssComputeOverall(offRows, numGames);
+    const insights = ssGenerateInsights(offRows);
+    const allGames = ssGamesChronological();
+    const selGames = ssSelectedGameIds.size ? allGames.filter(g => ssSelectedGameIds.has(g.id)) : allGames;
+    const gamesLabel = selGames.map(g => g.label).join('  ·  ') || 'FULL SEASON';
+    const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase();
+    const logoB64 = ssGetStoredLogo();
+
+    // Shared helpers
+    const hdrBar = (sl, h) => sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: h || 1.05, fill: { color: C.RED }, line: { color: C.RED } });
+    const hdrText = (sl, txt, y) => sl.addText(txt, { x: 0.35, y: y != null ? y : 0.18, w: W - 0.7, h: 0.75, fontSize: 26, bold: true, color: C.WHITE, fontFace: 'Arial' });
+    const darkSlide = () => { const sl = pptx.addSlide(); sl.background = { color: C.BLACK }; return sl; };
+    const tblHdr = (col, w) => ({ text: col, options: { bold: true, color: C.WHITE, fill: { color: C.DARKRED }, fontSize: 12, align: w === 'l' ? 'left' : 'center' } });
+    const tblCell = (txt, i, color, center) => ({ text: String(txt == null ? '—' : txt), options: { color: color || C.LIGHT, fill: { color: i % 2 === 0 ? C.PANEL : C.ALT }, align: center ? 'center' : 'left', fontSize: 12 } });
+    const succColor = pct => pct >= 50 ? C.GOLD : 'FF6666';
+
+    // ---- SLIDE 1: Cover ----
+    {
+      const sl = darkSlide();
+      // Red left stripe
+      sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 4.6, h: H, fill: { color: C.RED }, line: { color: C.RED } });
+      // School identity in red panel
+      sl.addText('OWENSBORO\nHIGH SCHOOL', { x: 0.2, y: 1.4, w: 4.2, h: 2.0, fontSize: 30, bold: true, color: C.WHITE, fontFace: 'Arial', align: 'center', valign: 'middle', charSpacing: 2 });
+      sl.addShape(pptx.ShapeType.rect, { x: 0.6, y: 3.6, w: 3.4, h: 0.07, fill: { color: C.BLACK }, line: { color: C.BLACK } });
+      sl.addText('RED DEVILS', { x: 0.2, y: 3.7, w: 4.2, h: 0.7, fontSize: 20, bold: true, color: C.BLACK, fontFace: 'Arial', align: 'center', charSpacing: 6 });
+      if (logoB64) {
+        sl.addImage({ data: logoB64, x: 1.2, y: 4.55, w: 2.2, h: 2.2 });
+      } else {
+        sl.addText('⚔', { x: 1.2, y: 4.7, w: 2.2, h: 1.8, fontSize: 72, align: 'center', color: C.BLACK });
+      }
+      // Right panel content
+      sl.addText('SELF SCOUT\nREPORT', { x: 5.1, y: 1.2, w: 8.0, h: 3.2, fontSize: 58, bold: true, color: C.WHITE, fontFace: 'Arial', charSpacing: 1, valign: 'middle' });
+      sl.addShape(pptx.ShapeType.rect, { x: 5.1, y: 4.6, w: 7.5, h: 0.06, fill: { color: C.RED }, line: { color: C.RED } });
+      sl.addText(gamesLabel, { x: 5.1, y: 4.75, w: 8.0, h: 0.55, fontSize: 14, color: C.LIGHT, fontFace: 'Arial', bold: true });
+      sl.addText('PREPARED  ' + today, { x: 5.1, y: 5.4, w: 8.0, h: 0.4, fontSize: 11, color: C.GRAY, fontFace: 'Arial' });
+    }
+
+    // ---- SLIDE 2: Season Overview ----
+    {
+      const sl = darkSlide();
+      hdrBar(sl);
+      hdrText(sl, 'SEASON OVERVIEW');
+      const stats = [
+        { v: overall.total, l: 'PLAYS CHARTED' },
+        { v: overall.totalYards, l: 'TOTAL YARDS' },
+        { v: overall.yardsPerPlay, l: 'YARDS / PLAY' },
+        { v: overall.successStats ? overall.successStats.successPct + '%' : '—', l: 'SUCCESS RATE' },
+        { v: overall.runCount + 'R / ' + overall.passCount + 'P', l: 'RUN / PASS' },
+        { v: overall.totalTD, l: 'TOTAL TDs' },
+        { v: overall.thirdDown.pct != null ? overall.thirdDown.pct + '%' : '—', l: '3RD DOWN  (' + overall.thirdDown.conv + '/' + overall.thirdDown.att + ')' },
+        { v: overall.rushing.ypc, l: 'RUSH YPC  (' + overall.rushing.yards + ' yds)' },
+      ];
+      const bW = 3.1, bH = 2.5, gp = 0.1, startY = [1.15, 3.8];
+      stats.forEach((s, i) => {
+        const col = i % 4, row = Math.floor(i / 4);
+        const x = 0.2 + col * (bW + gp);
+        const y = startY[row];
+        sl.addShape(pptx.ShapeType.rect, { x, y, w: bW, h: bH, fill: { color: C.PANEL }, line: { color: '2A2A2A', pt: 1 } });
+        sl.addText(String(s.v), { x, y: y + 0.35, w: bW, h: 1.3, fontSize: 38, bold: true, color: C.RED, fontFace: 'Arial', align: 'center', valign: 'middle' });
+        sl.addText(s.l, { x, y: y + 1.75, w: bW, h: 0.65, fontSize: 10, color: C.GRAY, fontFace: 'Arial', align: 'center', valign: 'top', charSpacing: 1 });
+      });
+    }
+
+    // ---- SLIDE 3: Passing Attack ----
+    {
+      const sl = darkSlide();
+      hdrBar(sl);
+      hdrText(sl, 'PASSING ATTACK');
+      const p = overall.passing;
+      sl.addText(p.comp + '/' + p.att + ' COMP (' + p.compPct + '%)   ·   ' + p.yards + ' YDS   ·   ' + p.ypa + ' YPA   ·   ' + p.td + ' TD   ·   ' + p.int + ' INT', {
+        x: 0.35, y: 1.1, w: W - 0.7, h: 0.42, fontSize: 15, color: C.LIGHT, fontFace: 'Arial',
+      });
+      const passAll = offRows.filter(ssIsPass);
+      const catEntries = Object.entries(dbGroupBy(passAll, ssCategoryBucket))
+        .map(([k, rs]) => ({ k, rs, st: dbSuccessStats(rs) }))
+        .sort((a, b) => b.rs.length - a.rs.length).slice(0, 8);
+      const conEntries = Object.entries(dbGroupBy(passAll.filter(r => !ssIsRPORow(r)), ssPassConceptBucket))
+        .map(([k, rs]) => ({ k, rs, st: dbSuccessStats(rs) })).filter(e => e.st)
+        .sort((a, b) => b.rs.length - a.rs.length).slice(0, 8);
+      const catTbl = [
+        [tblHdr('PASS CATEGORY', 'l'), tblHdr('PLAYS'), tblHdr('USAGE%'), tblHdr('SUCCESS%')],
+        ...catEntries.map((e, i) => {
+          const u = passAll.length ? Math.round(e.rs.length / passAll.length * 100) : 0;
+          return [tblCell(e.k, i, C.WHITE), tblCell(e.rs.length, i, C.LIGHT, true), tblCell(u + '%', i, C.LIGHT, true),
+            { text: e.st ? e.st.successPct + '%' : '—', options: { color: e.st ? succColor(e.st.successPct) : C.GRAY, fill: { color: i % 2 === 0 ? C.PANEL : C.ALT }, align: 'center', bold: true, fontSize: 12 } }];
+        })
+      ];
+      sl.addTable(catTbl, { x: 0.35, y: 1.6, w: 6.3, fontFace: 'Arial', border: { pt: 1, color: '2A2A2A' } });
+      const conTbl = [
+        [tblHdr('PASS CONCEPT', 'l'), tblHdr('PLAYS'), tblHdr('SUCCESS%'), tblHdr('AVG YDS')],
+        ...conEntries.map((e, i) => [tblCell(e.k, i, C.WHITE),
+          tblCell(e.rs.length, i, C.LIGHT, true),
+          { text: e.st ? e.st.successPct + '%' : '—', options: { color: e.st ? succColor(e.st.successPct) : C.GRAY, fill: { color: i % 2 === 0 ? C.PANEL : C.ALT }, align: 'center', bold: true, fontSize: 12 } },
+          tblCell(e.st ? e.st.avgYards : '—', i, C.LIGHT, true)])
+      ];
+      sl.addTable(conTbl, { x: 6.95, y: 1.6, w: 6.0, fontFace: 'Arial', border: { pt: 1, color: '2A2A2A' } });
+    }
+
+    // ---- SLIDE 4: Run Game ----
+    {
+      const sl = darkSlide();
+      hdrBar(sl);
+      hdrText(sl, 'RUN GAME');
+      const r = overall.rushing;
+      sl.addText(r.carries + ' CARRIES   ·   ' + r.yards + ' YDS   ·   ' + r.ypc + ' YPC   ·   ' + r.td + ' TD   ·   ' + r.fumbles + ' FUM', {
+        x: 0.35, y: 1.1, w: W - 0.7, h: 0.42, fontSize: 15, color: C.LIGHT, fontFace: 'Arial',
+      });
+      const handoffs = offRows.filter(r2 => ssIsRun(r2) && ssIsRunHandoff(r2));
+      const proRs = handoffs.filter(r2 => ssRunDirection(r2) === 'RIGHT (PRO)');
+      const conRs = handoffs.filter(r2 => ssRunDirection(r2) === 'LEFT (CON)');
+      [{ lbl: 'RIGHT (PRO)', rs: proRs, x: 0.35 }, { lbl: 'LEFT (CON)', rs: conRs, x: 3.7 }].forEach(d => {
+        const st = dbSuccessStats(d.rs);
+        sl.addShape(pptx.ShapeType.rect, { x: d.x, y: 1.65, w: 3.0, h: 2.2, fill: { color: C.PANEL }, line: { color: '2A2A2A', pt: 1 } });
+        sl.addText(d.lbl, { x: d.x, y: 1.72, w: 3.0, h: 0.38, fontSize: 11, bold: true, color: C.GRAY, fontFace: 'Arial', align: 'center', charSpacing: 1 });
+        sl.addText(String(d.rs.length), { x: d.x, y: 2.1, w: 3.0, h: 1.0, fontSize: 50, bold: true, color: C.RED, fontFace: 'Arial', align: 'center' });
+        sl.addText('carries' + (st ? '  ·  ' + st.successPct + '% success  ·  ' + st.avgYards + ' ypc' : ''), { x: d.x, y: 3.1, w: 3.0, h: 0.4, fontSize: 10, color: C.GRAY, fontFace: 'Arial', align: 'center' });
+      });
+      const runConEntries = Object.entries(dbGroupBy(handoffs, ssRunConceptBucket))
+        .map(([k, rs]) => ({ k, rs, st: dbSuccessStats(rs) })).filter(e => e.st)
+        .sort((a, b) => b.rs.length - a.rs.length).slice(0, 8);
+      const runTbl = [
+        [tblHdr('RUN CONCEPT', 'l'), tblHdr('CARRIES'), tblHdr('SUCCESS%'), tblHdr('AVG YDS')],
+        ...runConEntries.map((e, i) => [tblCell(e.k, i, C.WHITE),
+          tblCell(e.rs.length, i, C.LIGHT, true),
+          { text: e.st ? e.st.successPct + '%' : '—', options: { color: e.st ? succColor(e.st.successPct) : C.GRAY, fill: { color: i % 2 === 0 ? C.PANEL : C.ALT }, align: 'center', bold: true, fontSize: 12 } },
+          tblCell(e.st ? e.st.avgYards : '—', i, C.LIGHT, true)])
+      ];
+      sl.addTable(runTbl, { x: 7.1, y: 1.55, w: 5.9, fontFace: 'Arial', border: { pt: 1, color: '2A2A2A' } });
+    }
+
+    // ---- SLIDE 5: Points of Emphasis ----
+    {
+      const sl = darkSlide();
+      hdrBar(sl);
+      hdrText(sl, 'POINTS OF EMPHASIS');
+      const pts = insights.slice(0, 7).map(ssStripHTML);
+      if (pts.length) {
+        const rows2 = pts.map((txt, i) => [
+          { text: String(i + 1), options: { color: C.RED, bold: true, fill: { color: C.PANEL }, fontSize: 16, align: 'center', valign: 'middle' } },
+          { text: txt, options: { color: C.WHITE, fill: { color: i % 2 === 0 ? C.PANEL : C.ALT }, fontSize: 13, fontFace: 'Arial' } },
+        ]);
+        sl.addTable(rows2, { x: 0.35, y: 1.2, w: W - 0.7, colW: [0.55, W - 1.25], fontFace: 'Arial', border: { pt: 1, color: '1A1A1A' } });
+      } else {
+        sl.addText('Upload more plays to generate coaching insights.', { x: 0.35, y: 3.0, w: W - 0.7, h: 1, fontSize: 18, color: C.GRAY, fontFace: 'Arial', align: 'center' });
+      }
+    }
+
+    // ---- SLIDE 6: Formations & Situational ----
+    {
+      const sl = darkSlide();
+      hdrBar(sl);
+      hdrText(sl, 'FORMATION & SITUATIONAL TENDENCIES');
+      const formEntries = Object.entries(dbGroupBy(offRows, dbFormPersonnelBucket))
+        .map(([k, rs]) => ({ k, rs, st: dbSuccessStats(rs) }))
+        .sort((a, b) => b.rs.length - a.rs.length).slice(0, 8);
+      const formTbl = [
+        [tblHdr('FORMATION / PERSONNEL', 'l'), tblHdr('PLAYS'), tblHdr('USAGE%'), tblHdr('SUCCESS%')],
+        ...formEntries.map((e, i) => {
+          const u = offRows.length ? Math.round(e.rs.length / offRows.length * 100) : 0;
+          return [tblCell(e.k, i, C.WHITE), tblCell(e.rs.length, i, C.LIGHT, true), tblCell(u + '%', i, C.LIGHT, true),
+            { text: e.st ? e.st.successPct + '%' : '—', options: { color: e.st ? succColor(e.st.successPct) : C.GRAY, fill: { color: i % 2 === 0 ? C.PANEL : C.ALT }, align: 'center', bold: true, fontSize: 12 } }];
+        })
+      ];
+      sl.addTable(formTbl, { x: 0.35, y: 1.15, w: 6.3, fontFace: 'Arial', border: { pt: 1, color: '2A2A2A' } });
+      const ddEntries = Object.entries(dbGroupBy(offRows, dbDownDistBucket))
+        .map(([k, rs]) => ({ k, rs, st: dbSuccessStats(rs) }))
+        .sort((a, b) => b.rs.length - a.rs.length).slice(0, 8);
+      const ddTbl = [
+        [tblHdr('SITUATION', 'l'), tblHdr('PLAYS'), tblHdr('SUCCESS%'), tblHdr('AVG YDS')],
+        ...ddEntries.map((e, i) => [tblCell(e.k, i, C.WHITE), tblCell(e.rs.length, i, C.LIGHT, true),
+          { text: e.st ? e.st.successPct + '%' : '—', options: { color: e.st ? succColor(e.st.successPct) : C.GRAY, fill: { color: i % 2 === 0 ? C.PANEL : C.ALT }, align: 'center', bold: true, fontSize: 12 } },
+          tblCell(e.st ? e.st.avgYards : '—', i, C.LIGHT, true)])
+      ];
+      sl.addTable(ddTbl, { x: 6.95, y: 1.15, w: 6.0, fontFace: 'Arial', border: { pt: 1, color: '2A2A2A' } });
+    }
+
+    // ---- SLIDE 7: RPO Package (if enough data) ----
+    const rpoRows = offRows.filter(r => ssCategoryBucket(r) === 'RPO');
+    if (rpoRows.length >= 5) {
+      const sl = darkSlide();
+      hdrBar(sl);
+      hdrText(sl, 'RPO PACKAGE');
+      const rpoEntries = Object.entries(dbGroupBy(rpoRows, ssRPOComboBucket))
+        .sort((a, b) => b[1].length - a[1].length).slice(0, 9);
+      const rpoTbl = [
+        [tblHdr('CONCEPT + PASS TAG', 'l'), tblHdr('REPS'), tblHdr('GIVES (RUN)'), tblHdr('PULLS (PASS)'), tblHdr('RUN YPC'), tblHdr('PASS C/A')],
+        ...rpoEntries.map(([combo, rs], i) => {
+          const runRs = rs.filter(ssIsRun), passRs = rs.filter(ssIsPass);
+          const runYds = runRs.reduce((s, r2) => s + dbYards(r2), 0);
+          const ypc = runRs.length ? Math.round(runYds / runRs.length * 10) / 10 : 0;
+          const comp = passRs.filter(ssIsComplete).length;
+          return [tblCell(combo, i, C.WHITE), tblCell(rs.length, i, C.LIGHT, true),
+            tblCell(runRs.length, i, C.LIGHT, true), tblCell(passRs.length, i, C.LIGHT, true),
+            { text: runRs.length ? String(ypc) : '—', options: { color: C.GOLD, fill: { color: i % 2 === 0 ? C.PANEL : C.ALT }, align: 'center', bold: true, fontSize: 12 } },
+            tblCell(passRs.length ? comp + '/' + passRs.length : '—', i, C.LIGHT, true)];
+        })
+      ];
+      sl.addTable(rpoTbl, { x: 0.35, y: 1.2, w: W - 0.7, fontFace: 'Arial', border: { pt: 1, color: '2A2A2A' } });
+    }
+
+    // ---- SLIDE 8: Week-by-Week Trends (if 2+ games) ----
+    if (allGames.length >= 2) {
+      const sl = darkSlide();
+      hdrBar(sl);
+      hdrText(sl, 'CONCEPT TRENDS — WEEK BY WEEK');
+      const passSer = ssBuildConceptTrend(allGames, r => ssIsPass(r) && !ssIsRPORow(r), ssPassConceptBucket);
+      const runSer = ssBuildConceptTrend(allGames, r => ssIsRun(r) && ssIsRunHandoff(r), ssRunConceptBucket);
+      const allSer = [
+        ...Object.entries(passSer).map(([k, pts]) => ({ k, pts, type: 'PASS', tot: pts.reduce((s, p) => s + p.n, 0) })),
+        ...Object.entries(runSer).map(([k, pts]) => ({ k, pts, type: 'RUN', tot: pts.reduce((s, p) => s + p.n, 0) })),
+      ].filter(e => e.tot >= 5 && e.pts.length >= 2).sort((a, b) => b.tot - a.tot).slice(0, 9);
+      const gameLbls = allGames.map(g => g.label);
+      const trendHdr = [
+        tblHdr('CONCEPT', 'l'), tblHdr('TYPE'),
+        ...gameLbls.map(l => tblHdr(l)),
+        tblHdr('TREND'),
+      ];
+      const trendRows = allSer.map((e, i) => {
+        const dir = ssTrendDirection(e.pts);
+        const tStr = dir === 'DOWN' ? '▼ DOWN' : dir === 'UP' ? '▲ UP' : '— FLAT';
+        const tColor = dir === 'DOWN' ? 'FF4444' : dir === 'UP' ? C.GOLD : C.GRAY;
+        return [
+          tblCell(e.k, i, C.WHITE),
+          { text: e.type, options: { color: C.GRAY, fill: { color: i % 2 === 0 ? C.PANEL : C.ALT }, align: 'center', fontSize: 10 } },
+          ...gameLbls.map(l => {
+            const pt = e.pts.find(p => p.label === l);
+            return { text: pt ? pt.successPct + '%' : '—', options: { color: pt ? C.LIGHT : C.GRAY, fill: { color: i % 2 === 0 ? C.PANEL : C.ALT }, align: 'center', fontSize: 12 } };
+          }),
+          { text: tStr, options: { color: tColor, fill: { color: i % 2 === 0 ? C.PANEL : C.ALT }, align: 'center', bold: true, fontSize: 12 } },
+        ];
+      });
+      if (trendRows.length) {
+        sl.addTable([trendHdr, ...trendRows], { x: 0.35, y: 1.2, w: W - 0.7, fontFace: 'Arial', border: { pt: 1, color: '2A2A2A' } });
+      } else {
+        sl.addText('Not enough cross-game data for trend analysis yet.', { x: 0.35, y: 3.2, w: W - 0.7, h: 0.8, fontSize: 16, color: C.GRAY, fontFace: 'Arial', align: 'center' });
+      }
+    }
+
+    // Download
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const fileLabel = selGames.length === 1 ? selGames[0].label.replace(/[^a-z0-9]/gi, '_') : 'season';
+    await pptx.writeFile({ fileName: 'OHS_SelfScout_' + fileLabel + '_' + dateStr + '.pptx' });
+
+  } catch (err) {
+    alert('Slide export failed: ' + err.message);
+    console.error(err);
+  } finally {
+    if (btn) { btn.textContent = '📊 EXPORT PRESENTATION'; btn.disabled = false; }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  ssUpdateLogoPreview();
+});
 </script>
 </body>
 </html>
