@@ -1548,13 +1548,6 @@ function ssRPOComboBucket(r) {
   const passLabel = passFamily ? passFamily + ' (' + cleanPassTag + ')' : cleanPassTag;
   return conceptLabel ? conceptLabel + ' + ' + passLabel : passLabel;
 }
-// Returns "GIANTS PRO [LOCK]"-style label for a set of directional rows.
-function ssRPODirectionLabel(rs) {
-  const offPlays = [...new Set(rs.map(r => String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase()).filter(Boolean))];
-  const runTags  = [...new Set(rs.map(r => String(r.runTag  == null ? '' : r.runTag ).trim().toUpperCase()).filter(t => t && t !== 'DEFAULT' && t !== 'NONE'))];
-  const playPart = offPlays.slice(0, 2).join(' / ') || 'PRO/CON';
-  return runTags.length ? playPart + ' [' + runTags.join(', ') + ']' : playPart;
-}
 function ssRPORowHTML(labelHTML, rs) {
   const runRs  = rs.filter(ssIsRun);
   const passRs = rs.filter(ssIsPass);
@@ -1775,16 +1768,14 @@ function ssRenderRPOTable(rows) {
   const trs = entries.map(([combo, rs]) => {
     const rightRs = rs.filter(r => ssRunDirection(r) === 'RIGHT (PRO)');
     const leftRs  = rs.filter(r => ssRunDirection(r) === 'LEFT (CON)');
-    const runTags = [...new Set(rs.map(r => String(r.runTag == null ? '' : r.runTag).trim().toUpperCase()).filter(t => t && t !== 'DEFAULT' && t !== 'NONE'))];
-    const tagDetail = runTags.length ? ' · RUN TAG: ' + runTags.join(', ') : '';
-    const overallLabel = `<strong>${dbEscapeHTML(combo)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} reps${dbLowSampleTag(rs.length)}${dbEscapeHTML(tagDetail)}</span>`;
+    const overallLabel = `<strong>${dbEscapeHTML(combo)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} reps${dbLowSampleTag(rs.length)}</span>`;
     let html = ssRPORowHTML(overallLabel, rs);
     if (rightRs.length) {
-      const subLabel = `<span style="padding-left:14px;color:var(--gray)">↳ ${dbEscapeHTML(ssRPODirectionLabel(rightRs))}</span><br><span style="padding-left:14px;color:var(--gray);font-size:11px">${rightRs.length} reps</span>`;
+      const subLabel = `<span style="padding-left:14px;color:var(--gray)">↳ RIGHT (PRO)</span><br><span style="padding-left:14px;color:var(--gray);font-size:11px">${rightRs.length} reps</span>`;
       html += ssRPORowHTML(subLabel, rightRs);
     }
     if (leftRs.length) {
-      const subLabel = `<span style="padding-left:14px;color:var(--gray)">↳ ${dbEscapeHTML(ssRPODirectionLabel(leftRs))}</span><br><span style="padding-left:14px;color:var(--gray);font-size:11px">${leftRs.length} reps</span>`;
+      const subLabel = `<span style="padding-left:14px;color:var(--gray)">↳ LEFT (CON)</span><br><span style="padding-left:14px;color:var(--gray);font-size:11px">${leftRs.length} reps</span>`;
       html += ssRPORowHTML(subLabel, leftRs);
     }
     return html;
