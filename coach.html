@@ -183,6 +183,72 @@ body {
   text-shadow: 0 0 20px rgba(204,0,0,0.4);
 }
 
+/* SELF SCOUT — GAME META INPUT */
+.ss-game-meta { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.ss-meta-row { display: flex; gap: 8px; }
+.ss-meta-short { width: 72px; min-width: 72px; flex: none; }
+.ss-meta-grow { flex: 1; min-width: 0; }
+
+/* SELF SCOUT — GAMES LIST METADATA */
+.db-game-row-meta { font-size: 11px; color: var(--gray); margin-top: 2px; }
+.db-game-row-result { font-weight: 700; color: var(--gold); margin-left: 6px; }
+.ss-tag-cov-btn {
+  font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  background: transparent; border: 1px solid #444; color: var(--gray);
+  border-radius: 6px; padding: 3px 8px; cursor: pointer; white-space: nowrap;
+  margin-left: auto; flex-shrink: 0;
+}
+.ss-tag-cov-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+/* SELF SCOUT — COVERAGE ENTRY OVERLAY */
+.ss-cov-overlay {
+  position: fixed; inset: 0; background: var(--black); z-index: 900;
+  display: flex; flex-direction: column; overflow-y: auto;
+}
+.ss-cov-header {
+  padding: 14px 16px 12px; background: var(--black2);
+  border-bottom: 1px solid #333; display: flex; flex-direction: column; gap: 8px;
+  position: sticky; top: 0; z-index: 10;
+}
+.ss-cov-title { font-size: 11px; letter-spacing: 2px; color: var(--gold); font-weight: 700; }
+.ss-cov-progress-row { display: flex; align-items: center; gap: 10px; }
+.ss-cov-progress-text { font-size: 13px; font-weight: 700; color: var(--white); min-width: 110px; }
+.ss-cov-bar { flex: 1; height: 5px; background: #333; border-radius: 99px; overflow: hidden; }
+.ss-cov-bar-fill { height: 100%; background: var(--gold); border-radius: 99px; transition: width 0.2s; }
+.ss-cov-done-btn {
+  background: transparent; border: 1px solid #555; color: var(--gray);
+  padding: 6px 14px; border-radius: 8px; font-size: 11px; font-weight: 700;
+  cursor: pointer; letter-spacing: 1px; white-space: nowrap; align-self: flex-end;
+}
+.ss-cov-done-btn:hover { border-color: var(--gold); color: var(--gold); }
+.ss-cov-tier { font-size: 10px; letter-spacing: 2px; color: var(--gold); font-weight: 700; }
+.ss-cov-card {
+  margin: 14px 14px 0; padding: 14px; background: var(--black2);
+  border: 1px solid #333; border-radius: 12px;
+}
+.ss-cov-play-line { font-size: 12px; color: var(--gray); font-weight: 700; letter-spacing: 1px; margin-bottom: 6px; }
+.ss-cov-concept { font-size: 22px; font-weight: 900; color: var(--white); margin-bottom: 3px; }
+.ss-cov-formation { font-size: 13px; color: var(--gold); font-weight: 700; margin-bottom: 4px; }
+.ss-cov-result-line { font-size: 13px; color: var(--gray); }
+.ss-cov-buttons {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px;
+}
+.ss-cov-btn {
+  padding: 13px 8px; border: none; border-radius: 10px;
+  font-size: 15px; font-weight: 900; letter-spacing: 1px;
+  cursor: pointer; text-align: center; line-height: 1.2;
+  transition: opacity 0.1s, transform 0.1s;
+}
+.ss-cov-btn:active { opacity: 0.8; transform: scale(0.96); }
+.ss-cov-btn-desc { font-size: 10px; font-weight: 600; display: block; margin-top: 2px; opacity: 0.8; }
+.ss-cov-skip {
+  margin: 0 14px 24px; padding: 12px; background: transparent;
+  border: 1px dashed #444; border-radius: 10px; color: var(--gray);
+  font-size: 13px; font-weight: 700; letter-spacing: 1px; cursor: pointer;
+  width: calc(100% - 28px); text-align: center;
+}
+.ss-cov-skip:hover { border-color: #666; color: var(--white); }
+
 /* PLAY BUILDER */
 .builder-wrap { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 .drop-zone {
@@ -460,7 +526,16 @@ body {
     <div class="db-card">
       <div class="db-card-title">GAMES</div>
       <div id="ss-games-list"></div>
-      <input class="db-input" id="ss-game-label" placeholder="GAME LABEL (optional, e.g. WK 3 @ TRINITY)" maxlength="32">
+      <div class="ss-game-meta">
+        <div class="ss-meta-row">
+          <input class="db-input ss-meta-short" id="ss-week-id" type="number" placeholder="WK #" min="1" max="20">
+          <input class="db-input ss-meta-grow" id="ss-opponent" placeholder="OPPONENT" maxlength="32">
+        </div>
+        <div class="ss-meta-row">
+          <input class="db-input ss-meta-grow" id="ss-game-date" type="date">
+          <input class="db-input ss-meta-grow" id="ss-game-result" placeholder="RESULT (e.g. W 42-14)" maxlength="20">
+        </div>
+      </div>
       <label for="ss-file-input">
         <input type="file" id="ss-file-input" accept=".csv,.xlsx,.xls" onchange="handleSSFile(this)" style="display:none">
         <span class="db-upload-btn">📁 UPLOAD OFFENSE BREAKDOWN FILE (.csv / .xlsx)</span>
@@ -476,6 +551,7 @@ body {
     </div>
     <div id="ss-dashboard"></div>
   </div>
+  <div id="ss-coverage-overlay" class="ss-cov-overlay" style="display:none"></div>
 </div>
 
 <script>
@@ -1315,10 +1391,27 @@ function getSSData() {
 function saveSSData(data) {
   localStorage.setItem('rd_selfscout', JSON.stringify(data));
 }
-function ssAddGame(label, rows) {
+function ssAddGame(meta, rows) {
   const data = getSSData();
-  data.games.push({ id: 'sg' + Date.now(), label: label || ('GAME ' + (data.games.length + 1)), rows, savedAt: Date.now() });
+  const weekId = meta.weekId || null;
+  const opponent = (meta.opponent || '').toUpperCase().trim();
+  const autoLabel = weekId && opponent ? 'WK ' + weekId + ' vs ' + opponent
+                  : weekId ? 'WK ' + weekId
+                  : opponent ? 'vs ' + opponent
+                  : 'GAME ' + (data.games.length + 1);
+  const game = {
+    id: 'sg' + Date.now(),
+    weekId,
+    opponent,
+    gameDate: meta.gameDate || null,
+    result: (meta.result || '').toUpperCase().trim() || null,
+    label: autoLabel,
+    rows,
+    savedAt: Date.now(),
+  };
+  data.games.push(game);
   saveSSData(data);
+  return game.id;
 }
 function ssDeleteGame(gameId) {
   const data = getSSData();
@@ -1361,14 +1454,23 @@ async function handleSSFile(input) {
     }
     const rows = dbRowsToObjects(aoa);
     if (!rows.length) throw new Error('No data rows found in that file');
-    const label = document.getElementById('ss-game-label').value.trim().toUpperCase();
-    ssAddGame(label, rows);
-    document.getElementById('ss-game-label').value = '';
+    const meta = {
+      weekId:   parseInt(document.getElementById('ss-week-id').value) || null,
+      opponent: document.getElementById('ss-opponent').value.trim(),
+      gameDate: document.getElementById('ss-game-date').value || null,
+      result:   document.getElementById('ss-game-result').value.trim(),
+    };
+    const newGameId = ssAddGame(meta, rows);
+    document.getElementById('ss-week-id').value = '';
+    document.getElementById('ss-opponent').value = '';
+    document.getElementById('ss-game-date').value = '';
+    document.getElementById('ss-game-result').value = '';
     statusEl.textContent = '✅ Loaded ' + rows.length + ' plays';
     statusEl.className = 'db-upload-status ok';
     ssActiveGameId = 'ALL';
     renderSSGamesList();
     renderSSDashboardFromState();
+    ssStartCoverageMode(newGameId);
   } catch (err) {
     statusEl.textContent = '❌ ' + err.message;
     statusEl.className = 'db-upload-status err';
@@ -1399,16 +1501,30 @@ function handleSSImportFile(input) {
       const imported = JSON.parse(e.target.result);
       if (!imported || !Array.isArray(imported.games)) throw new Error('Invalid file format');
       const data = getSSData();
-      const existingIds = new Set(data.games.map(g => g.id));
-      let addedGames = 0;
+      const existingIds  = new Set(data.games.map(g => g.id));
+      const existingWeeks = new Map(data.games.filter(g => g.weekId).map(g => [g.weekId, g]));
+      let addedGames = 0, skippedGames = 0;
       imported.games.forEach(g => {
-        if (!g || !g.id || !Array.isArray(g.rows) || existingIds.has(g.id)) return;
+        if (!g || !g.id || !Array.isArray(g.rows)) return;
+        if (existingIds.has(g.id)) { skippedGames++; return; }
+        if (g.weekId && existingWeeks.has(g.weekId)) {
+          const existing = existingWeeks.get(g.weekId);
+          const ok = window.confirm(
+            'Week ' + g.weekId + ' (' + (existing.label || existing.id) + ') is already loaded.\n' +
+            'Replace it with the imported version (' + (g.label || g.id) + ')?\n\n' +
+            'OK = replace   Cancel = keep existing'
+          );
+          if (!ok) { skippedGames++; return; }
+          data.games = data.games.filter(x => x.id !== existing.id);
+          existingIds.delete(existing.id);
+        }
         data.games.push(g);
         existingIds.add(g.id);
+        if (g.weekId) existingWeeks.set(g.weekId, g);
         addedGames++;
       });
       saveSSData(data);
-      statusEl.textContent = '✅ Imported ' + addedGames + ' game(s)';
+      statusEl.textContent = '✅ Imported ' + addedGames + ' game(s)' + (skippedGames ? ' (' + skippedGames + ' skipped)' : '');
       statusEl.className = 'db-upload-status ok';
       renderSSGamesList();
       renderSSDashboardFromState();
@@ -1421,6 +1537,9 @@ function handleSSImportFile(input) {
   input.value = '';
 }
 
+function ssUntaggedCoverageCount(g) {
+  return g.rows.filter(r => String(r.odk || '').toUpperCase() === 'O' && !String(r.coverage || '').trim()).length;
+}
 function renderSSGamesList() {
   const data = getSSData();
   const listEl = document.getElementById('ss-games-list');
@@ -1431,11 +1550,27 @@ function renderSSGamesList() {
     html += `<div class="db-game-row db-game-filter${ssActiveGameId === 'ALL' ? ' active' : ''}" data-game-filter="ALL"><span>ALL GAMES — ${totalPlays} plays</span></div>`;
   }
   html += data.games.map(g => {
-    return `<div class="db-game-row db-game-filter${ssActiveGameId === g.id ? ' active' : ''}" data-game-filter="${dbEscapeHTML(g.id)}"><span>${dbEscapeHTML(g.label)} — ${g.rows.length} plays</span><span class="db-game-del" data-game-del="${dbEscapeHTML(g.id)}">×</span></div>`;
+    const metaParts = [];
+    if (g.gameDate) metaParts.push(g.gameDate);
+    const untagged = ssUntaggedCoverageCount(g);
+    const covNote = untagged ? `<span style="color:var(--gold)">${untagged} plays need coverage</span>` : '<span style="color:var(--gray)">coverage tagged</span>';
+    const resultSpan = g.result ? `<span class="db-game-row-result">${dbEscapeHTML(g.result)}</span>` : '';
+    const tagBtn = `<button class="ss-tag-cov-btn" data-cov-game="${dbEscapeHTML(g.id)}">TAG COV</button>`;
+    return `<div class="db-game-row db-game-filter${ssActiveGameId === g.id ? ' active' : ''}" data-game-filter="${dbEscapeHTML(g.id)}">
+      <span style="flex:1;min-width:0">
+        <span style="font-weight:700">${dbEscapeHTML(g.label)}</span>${resultSpan} — ${g.rows.length} plays
+        <span class="db-game-row-meta">${covNote}</span>
+      </span>
+      ${tagBtn}
+      <span class="db-game-del" data-game-del="${dbEscapeHTML(g.id)}">×</span>
+    </div>`;
   }).join('');
   listEl.innerHTML = html;
   listEl.querySelectorAll('.db-game-del').forEach(el => {
     el.addEventListener('click', e => { e.stopPropagation(); ssDeleteGame(el.dataset.gameDel); });
+  });
+  listEl.querySelectorAll('.ss-tag-cov-btn').forEach(el => {
+    el.addEventListener('click', e => { e.stopPropagation(); ssStartCoverageMode(el.dataset.covGame); });
   });
   listEl.querySelectorAll('.db-game-filter').forEach(el => {
     el.addEventListener('click', () => {
@@ -1444,6 +1579,144 @@ function renderSSGamesList() {
       renderSSDashboardFromState();
     });
   });
+}
+
+// ==================== COVERAGE ENTRY MODE ====================
+const SS_COVERAGE_SHELLS = [
+  { label: 'Blue',   desc: 'Cover 2',               bg: '#1565c0', fg: '#fff' },
+  { label: 'Green',  desc: 'Strong Rot. Cover 3',   bg: '#2e7d32', fg: '#fff' },
+  { label: 'Yellow', desc: 'Weak Rot. Cover 3',     bg: '#f9a825', fg: '#111' },
+  { label: 'Black',  desc: 'Cover 1 Man',           bg: '#212121', fg: '#fff' },
+  { label: 'Red',    desc: 'Cover 0 Man',           bg: '#b71c1c', fg: '#fff' },
+  { label: 'Shark',  desc: 'Cloud 3',               bg: '#37474f', fg: '#fff' },
+  { label: 'Gold',   desc: 'Cover 4',               bg: '#e65100', fg: '#fff' },
+  { label: 'Silver', desc: '2 Man',                 bg: '#616161', fg: '#fff' },
+];
+
+let ssCovState = null; // { gameId, queue: [{rowIdx, row, tier}], pos }
+
+function ssCovTierLabel(r) {
+  if (parseInt(r.down) === 3) return '3RD DOWN';
+  const yl = parseInt(r.yardLn);
+  if (!isNaN(yl) && yl >= 1 && yl <= 20) return 'RED ZONE';
+  if (parseInt(r.qtr) === 4) return '4TH QUARTER';
+  return null;
+}
+function ssCovTierPriority(r) {
+  if (parseInt(r.down) === 3) return 0;
+  const yl = parseInt(r.yardLn);
+  if (!isNaN(yl) && yl >= 1 && yl <= 20) return 1;
+  if (parseInt(r.qtr) === 4) return 2;
+  return 3;
+}
+
+function ssStartCoverageMode(gameId) {
+  const data = getSSData();
+  const game = data.games.find(g => g.id === gameId);
+  if (!game) return;
+  const queue = [];
+  game.rows.forEach((row, idx) => {
+    if (String(row.odk || '').toUpperCase() !== 'O') return;
+    if (String(row.coverage || '').trim()) return;
+    queue.push({ rowIdx: idx, row });
+  });
+  if (!queue.length) {
+    const overlay = document.getElementById('ss-coverage-overlay');
+    if (overlay) { overlay.innerHTML = ''; overlay.style.display = 'none'; }
+    return;
+  }
+  // sort: 3rd down → red zone → Q4 → rest; within each tier by play number
+  queue.sort((a, b) => {
+    const tp = ssCovTierPriority(a.row) - ssCovTierPriority(b.row);
+    if (tp !== 0) return tp;
+    return (parseInt(a.row.playNum) || 0) - (parseInt(b.row.playNum) || 0);
+  });
+  ssCovState = { gameId, queue, pos: 0 };
+  ssRenderCoverageCard();
+}
+
+function ssRenderCoverageCard() {
+  const overlay = document.getElementById('ss-coverage-overlay');
+  if (!overlay || !ssCovState) return;
+  const { gameId, queue, pos } = ssCovState;
+  if (pos >= queue.length) { ssCoverageDone(); return; }
+  const { row } = queue[pos];
+  const total = queue.length;
+  const done = pos;
+  const pct = Math.round(done / total * 100);
+  const tier = ssCovTierLabel(row);
+  const qtr = row.qtr ? 'Q' + row.qtr : '';
+  const dn = row.down && row.dist ? row.down + (parseInt(row.down) === 1 ? 'ST' : parseInt(row.down) === 2 ? 'ND' : parseInt(row.down) === 3 ? 'RD' : 'TH') + ' & ' + row.dist : '';
+  const yl = row.yardLn ? 'YL ' + row.yardLn : '';
+  const playLine = [row.playNum ? '#' + row.playNum : '', qtr, dn, yl].filter(Boolean).join('  ·  ');
+  const concept = row.concept && row.concept.toUpperCase() !== 'NONE' ? row.concept.toUpperCase() : (row.offPlay || '—');
+  const formation = [row.offForm, row.shift].filter(s => s && String(s).trim()).join(' / ');
+  const yards = row.gainLoss != null && row.gainLoss !== '' ? (parseFloat(row.gainLoss) > 0 ? '+' + row.gainLoss : row.gainLoss) + ' yds' : '';
+  const resultLine = [String(row.result || '').toUpperCase(), yards].filter(Boolean).join(' — ');
+  const buttonsHTML = SS_COVERAGE_SHELLS.map((sh, i) =>
+    `<button class="ss-cov-btn" data-cov-label="${dbEscapeHTML(sh.label)}"
+       style="background:${sh.bg};color:${sh.fg}"
+       onclick="ssCoverageTag('${dbEscapeHTML(sh.label)}')"
+     >${dbEscapeHTML(sh.label)}<span class="ss-cov-btn-desc">${dbEscapeHTML(sh.desc)}</span></button>`
+  ).join('');
+  overlay.innerHTML = `
+    <div class="ss-cov-header">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="ss-cov-title">COVERAGE ENTRY</span>
+        <button class="ss-cov-done-btn" onclick="ssCoverageDone()">SAVE &amp; FINISH</button>
+      </div>
+      <div class="ss-cov-progress-row">
+        <span class="ss-cov-progress-text">${done} of ${total} tagged</span>
+        <div class="ss-cov-bar"><div class="ss-cov-bar-fill" style="width:${pct}%"></div></div>
+      </div>
+      ${tier ? `<div class="ss-cov-tier">${tier}</div>` : ''}
+    </div>
+    <div class="ss-cov-card">
+      <div class="ss-cov-play-line">${dbEscapeHTML(playLine)}</div>
+      <div class="ss-cov-concept">${dbEscapeHTML(concept)}</div>
+      ${formation ? `<div class="ss-cov-formation">${dbEscapeHTML(formation)}</div>` : ''}
+      <div class="ss-cov-result-line">${dbEscapeHTML(resultLine)}</div>
+    </div>
+    <div class="ss-cov-buttons">${buttonsHTML}</div>
+    <button class="ss-cov-skip" onclick="ssCoverageSkip()">UNCLEAR ON FILM — SKIP</button>
+  `;
+  overlay.style.display = 'flex';
+}
+
+function ssCoverageTag(label) {
+  if (!ssCovState) return;
+  const { gameId, queue, pos } = ssCovState;
+  const { rowIdx } = queue[pos];
+  const data = getSSData();
+  const game = data.games.find(g => g.id === gameId);
+  if (game && game.rows[rowIdx]) {
+    game.rows[rowIdx].coverage = label;
+    saveSSData(data);
+  }
+  ssCovState.pos++;
+  ssRenderCoverageCard();
+}
+
+function ssCoverageSkip() {
+  if (!ssCovState) return;
+  const { gameId, queue, pos } = ssCovState;
+  const { rowIdx } = queue[pos];
+  const data = getSSData();
+  const game = data.games.find(g => g.id === gameId);
+  if (game && game.rows[rowIdx]) {
+    game.rows[rowIdx].coverage = 'UNKNOWN';
+    saveSSData(data);
+  }
+  ssCovState.pos++;
+  ssRenderCoverageCard();
+}
+
+function ssCoverageDone() {
+  const overlay = document.getElementById('ss-coverage-overlay');
+  if (overlay) { overlay.innerHTML = ''; overlay.style.display = 'none'; }
+  ssCovState = null;
+  renderSSGamesList();
+  renderSSDashboardFromState();
 }
 
 function startSelfScout() {
@@ -1817,10 +2090,14 @@ function ssRenderBarSection(rows) {
   return dbSectionWrap('TENDENCY OVERVIEW', `<div class="db-bar-grid">${groups.join('')}</div>`);
 }
 
-// Games array is push-ordered by upload, but a merged import can append out of order —
-// sort by savedAt so trend series always read oldest-to-newest regardless of import order.
+// Sort by weekId when present (most reliable); fall back to savedAt for legacy games.
 function ssGamesChronological() {
-  return getSSData().games.slice().sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0));
+  return getSSData().games.slice().sort((a, b) => {
+    if (a.weekId && b.weekId) return a.weekId - b.weekId;
+    if (a.weekId) return -1;
+    if (b.weekId) return 1;
+    return (a.savedAt || 0) - (b.savedAt || 0);
+  });
 }
 // Per-game success series for a concept, so a decline shows up even when the pooled
 // season-to-date average still looks fine (an early hot streak can mask a recent slide).
