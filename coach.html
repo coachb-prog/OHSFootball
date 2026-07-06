@@ -557,7 +557,6 @@ body {
     </div>
     <div id="db-dashboard"></div>
   </div>
-  <div id="db-print-card"></div>
 </div>
 
 <!-- SELF SCOUT -->
@@ -634,6 +633,9 @@ body {
     <div id="pg-dashboard"><div class="db-empty">Pick an opponent (or GENERIC) and hit GENERATE. The generator reads your Defense Breakdown and Self Scout data automatically — verdicts are computed from self-scout usage windows, or upload a verdict CSV to override.</div></div>
   </div>
 </div>
+
+<!-- shared print surface: must live outside the .screen divs so printing works from any screen -->
+<div id="db-print-card"></div>
 
 <script>
 function showScreen(id) {
