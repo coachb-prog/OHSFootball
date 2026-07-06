@@ -441,6 +441,9 @@ body {
 .db-bar-pct { width: 34px; text-align: right; color: var(--gold); font-weight: 700; flex-shrink: 0; }
 #db-print-card { display: none; }
 @media (max-width: 600px) { .db-bar-grid { grid-template-columns: 1fr; } }
+.rd-nag { background: #2a2208; border: 1px solid var(--gold); border-radius: 10px; padding: 10px 14px; margin: 0 16px 14px; font-size: 12px; color: #f0dc9a; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rd-nag button { background: var(--gold); color: var(--black); border: none; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: 900; letter-spacing: 1px; cursor: pointer; }
+.rd-nag-restore { font-size: 11px; color: var(--gray); text-decoration: underline; cursor: pointer; }
 .pg-cfg-title { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: var(--gray); margin: 10px 0 6px; }
 .pg-cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
 .pg-cfg-grid label { font-size: 10px; color: var(--gray); display: flex; align-items: center; gap: 6px; }
@@ -491,6 +494,7 @@ body {
     <div class="home-team" style="color:var(--gold)">RED DEVILS</div>
     <div class="home-sub">COACH SCOUTING TOOLS</div>
   </div>
+  <div id="rd-backup-nag"></div>
   <div class="modes-section">
     <div class="modes-section-title">SCOUTING &amp; ANALYTICS<span class="ms-line"></span></div>
     <div class="modes-list">
@@ -638,6 +642,60 @@ function showScreen(id) {
 }
 function goHome() {
   showScreen('coach-home');
+  rdRenderBackupNag();
+}
+// ---- backup nag: everything lives in localStorage, so nag when data changed since last backup ----
+function rdBackupFingerprint() {
+  return (localStorage.getItem('rd_defbreak') || '').length + ':' + (localStorage.getItem('rd_selfscout') || '').length;
+}
+function rdRenderBackupNag() {
+  const el = document.getElementById('rd-backup-nag');
+  if (!el) return;
+  const hasData = (localStorage.getItem('rd_defbreak') || '').length > 2 || (localStorage.getItem('rd_selfscout') || '').length > 2;
+  const fp = rdBackupFingerprint();
+  const lastFp = localStorage.getItem('rd_backup_fp');
+  const lastAt = parseInt(localStorage.getItem('rd_backup_at'), 10);
+  if (!hasData || fp === lastFp) { el.innerHTML = ''; return; }
+  const ago = lastAt ? Math.round((Date.now() - lastAt) / 86400000) : null;
+  el.innerHTML = `<div class="rd-nag">⚠️ Scouting data has changed since your last backup${ago != null ? ' (' + ago + ' day' + (ago === 1 ? '' : 's') + ' ago)' : ' — no backup on record'}. All data lives in this browser only.
+    <button onclick="rdBackupAll()">⬇️ BACKUP NOW</button>
+    <label for="rd-restore-input" class="rd-nag-restore">restore from file<input type="file" id="rd-restore-input" accept=".json" onchange="rdHandleRestoreFile(this)" style="display:none"></label></div>`;
+}
+function rdBackupAll() {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    defbreak: JSON.parse(localStorage.getItem('rd_defbreak') || '{}'),
+    selfscout: JSON.parse(localStorage.getItem('rd_selfscout') || '{"games":[]}'),
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'ohs-scouting-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  localStorage.setItem('rd_backup_fp', rdBackupFingerprint());
+  localStorage.setItem('rd_backup_at', String(Date.now()));
+  rdRenderBackupNag();
+}
+function rdHandleRestoreFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.defbreak && !data.selfscout) { alert('Not a combined backup file — use the per-tool IMPORT DATA buttons for old exports.'); return; }
+      if (!confirm('Restore will REPLACE all current scouting data with this backup. Continue?')) return;
+      if (data.defbreak) localStorage.setItem('rd_defbreak', JSON.stringify(data.defbreak));
+      if (data.selfscout) localStorage.setItem('rd_selfscout', JSON.stringify(data.selfscout));
+      localStorage.setItem('rd_backup_fp', rdBackupFingerprint());
+      localStorage.setItem('rd_backup_at', String(Date.now()));
+      rdRenderBackupNag();
+      alert('Backup restored.');
+    } catch (err) { alert('Could not read backup: ' + err.message); }
+  };
+  reader.readAsText(file);
+  input.value = '';
 }
 // ==================== DEFENSE BREAKDOWN ====================
 // Expected columns (Hudl-style breakdown export):
@@ -2924,7 +2982,7 @@ async function ssExportSlides() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => { ssUpdateLogoPreview(); });
+document.addEventListener('DOMContentLoaded', () => { ssUpdateLogoPreview(); rdRenderBackupNag(); });
 
 // ==================== PRACTICE SCRIPT GENERATOR ====================
 // Turns Defense Breakdown tendencies + Self Scout verdicts into the weekly
@@ -3136,7 +3194,9 @@ function pgBuildScript(profile, verdicts, meta, cfg) {
   S.bpu = Array.from({ length: cfg.bpu }, (_, i) => {
     const p = prots[i % prots.length];
     const bz = oppBlitz[i % Math.max(oppBlitz.length, 1)];
+    const fr = profile?.topFronts[i % Math.max(profile.topFronts.length, 1)];
     return { hash: hash(i), call: p,
+      look: bz ? ((fr ? fr.label + ' ' : '') + bz.label) : 'ANY PRESSURE',
       why: bz ? `pickup vs ${bz.label} — ${profile.name} brings it ${bz.pct}% of blitz snaps` : 'generic pressure look' + oppTag };
   });
 
@@ -3145,11 +3205,19 @@ function pgBuildScript(profile, verdicts, meta, cfg) {
   S.inside = Array.from({ length: cfg.inside }, (_, i) => {
     const v = runPool[Math.floor(i / 2) % Math.max(runPool.length, 1)];
     if (!v) return { hash: hash(i), call: '— add self scout data —', why: '' };
+    const fr = profile?.topFronts[Math.floor(i / 4) % Math.max(profile.topFronts.length, 1)];
     return { hash: i % 2 === 0 ? 'LU' : 'RU', call: pgCall(v.concept, 'run', meta, i),
-      why: oppFront ? `${v.concept} fits vs ${oppFront.label} (their front ${oppFront.pct}%)` : `${v.concept} keep (${v.succ}%)` + oppTag };
+      look: fr ? fr.label : 'BASE FRONT',
+      why: fr ? `${v.concept} fits vs ${fr.label} (${fr.pct}% of their snaps)` : `${v.concept} keep (${v.succ}%)` + oppTag };
   });
 
   // 7ON7: bad-usage concepts get their reps ONLY in-window; keeps fill the rest.
+  const ddBucketOf = (dn, dist) => dn === 3 ? (dist <= 3 ? '3RD & SHORT' : dist <= 6 ? '3RD & MEDIUM' : '3RD & LONG') : dn === 2 ? (dist <= 3 ? '2ND & SHORT' : dist <= 6 ? '2ND & MEDIUM' : '2ND & LONG') : '1ST DOWN';
+  const ddLookStr = (dn, dist) => {
+    const lk = profile?.ddLook[ddBucketOf(dn, dist)];
+    if (!lk) return '';
+    return [lk.cov ? lk.cov.label : '', lk.blitzPct >= 40 ? 'HEAT ' + lk.blitzPct + '%' : ''].filter(Boolean).join(' · ');
+  };
   const skelly = [];
   badUsage.filter(v => v.kind === 'pass').forEach(v => {
     const dds = PG_WINDOW_DD[v.family] || [[2, 8]];
@@ -3164,11 +3232,11 @@ function pgBuildScript(profile, verdicts, meta, cfg) {
     const v = skPass[si % skPass.length];
     const dds = PG_WINDOW_DD[v.family] || [[2, 8], [3, 7]];
     const [dn, dist] = dds[si % dds.length];
-    const look = profile?.ddLook[dn === 3 ? (dist <= 3 ? '3RD & SHORT' : dist <= 6 ? '3RD & MEDIUM' : '3RD & LONG') : '1ST DOWN'];
+    const look = profile?.ddLook[ddBucketOf(dn, dist)];
     skelly.push({ v, dn, dist, why: look?.cov ? `${v.concept} vs expected ${look.cov.label} (${look.cov.pct}% there)` : `${v.concept} keep (${v.succ}%)` + oppTag });
     si++;
   }
-  S.skelly = skelly.map((x, i) => ({ hash: pgDD(x.dn, x.dist, hash(i)), call: pgCall(x.v.concept, 'pass', meta, i), why: x.why }));
+  S.skelly = skelly.map((x, i) => ({ hash: pgDD(x.dn, x.dist, hash(i)), call: pgCall(x.v.concept, 'pass', meta, i), look: ddLookStr(x.dn, x.dist), why: x.why }));
 
   // TEAM 3RD DOWN: ladder 3&2..3&10, short = run/QB, medium = usage fixes + quicks, long = dropback keeps.
   const ladder = [2, 4, 6, 8, 10];
@@ -3182,7 +3250,8 @@ function pgBuildScript(profile, verdicts, meta, cfg) {
     const bucket = dist <= 3 ? '3RD & SHORT' : dist <= 6 ? '3RD & MEDIUM' : '3RD & LONG';
     const look = profile?.ddLook[bucket];
     return { hash: pgDD(3, dist, hash(i)), call: pgCall(v.concept, v.kind, meta, i),
-      why: look ? `${bucket.toLowerCase()}: expect ${look.front ? look.front.label : '?'} / ${look.cov ? look.cov.label : '?'}${look.blitzPct >= 40 ? ' — blitz alert ' + look.blitzPct + '%' : ''}` : v.verdict === 'BAD USAGE' ? 'usage-fix rep in its window' : `${v.concept} keep` + oppTag };
+      look: look ? [look.front ? look.front.label : '', look.cov ? look.cov.label : '', look.blitzPct >= 40 ? 'HEAT' : ''].filter(Boolean).join(' / ') : '',
+      why: look ? `${bucket.toLowerCase()}: their look ${look.blitzPct >= 40 ? '— blitz alert ' + look.blitzPct + '%' : '(n=' + look.n + ')'}` : v.verdict === 'BAD USAGE' ? 'usage-fix rep in its window' : `${v.concept} keep` + oppTag };
   });
 
   // TEAM RZ/GL: yardline ladder in, run-heavy at the goal line.
@@ -3192,6 +3261,7 @@ function pgBuildScript(profile, verdicts, meta, cfg) {
     const v = y > 6 ? (keepsPass[i % Math.max(keepsPass.length, 1)] || keepsRun[0]) : (keepsRun[i % Math.max(keepsRun.length, 1)]);
     if (!v) return { hash: String(y), call: '—', why: 'no data' };
     return { hash: y + hash(i), call: pgCall(v.concept, v.kind, meta, i),
+      look: profile?.rzCov ? profile.rzCov.label : '',
       why: y > 6 ? (profile?.rzCov ? `RZ shot — they sit in ${profile.rzCov.label} (${profile.rzCov.pct}% inside the 20, n=${profile.rzN})` : 'RZ rep' + oppTag) : 'GL — hat-on-hat run, best short-yardage keep' };
   });
 
@@ -3227,14 +3297,46 @@ function pgRender(built, profile, opp) {
   if (built.cuts.length) {
     html += `<div class="pg-cut-note"><strong>CUT THIS WEEK (bad-concept verdicts — do not script):</strong> ${built.cuts.map(c => `${dbEscapeHTML(c.concept)} (${c.succ}% on ${c.n})`).join(' · ')}</div>`;
   }
+  html += pgVerdictMovement(built);
+  html += `<div class="db-note" style="margin-bottom:12px">CALL and LOOK cells are editable — click and retype before printing. Edits carry into print and JSON export.</div>`;
   PG_SECTIONS.forEach(s => {
     const rows = built.sections[s.key];
     html += `<div class="pg-section"><div class="pg-section-hdr" style="background:${s.color}"><span>${s.label}</span><span class="pg-period">${s.period}</span></div>
-      <table class="pg-table"><tr><th>#</th><th>HASH/D&amp;D</th><th>CALL</th><th>WHY</th></tr>
-      ${rows.map((r, i) => `<tr><td class="pg-num">${i + 1}</td><td class="pg-hash">${dbEscapeHTML(r.hash)}</td><td class="pg-call">${dbEscapeHTML(r.call)}</td><td class="pg-why">${dbEscapeHTML(r.why)}</td></tr>`).join('')}
+      <table class="pg-table"><tr><th>#</th><th>HASH/D&amp;D</th><th>CALL</th><th>SCOUT TEAM LOOK</th><th>WHY</th></tr>
+      ${rows.map((r, i) => `<tr><td class="pg-num">${i + 1}</td><td class="pg-hash">${dbEscapeHTML(r.hash)}</td><td class="pg-call" contenteditable="true" data-pg-edit="call" data-pg-sec="${s.key}" data-pg-i="${i}">${dbEscapeHTML(r.call)}</td><td class="pg-hash" contenteditable="true" data-pg-edit="look" data-pg-sec="${s.key}" data-pg-i="${i}">${dbEscapeHTML(r.look || '')}</td><td class="pg-why">${dbEscapeHTML(r.why)}</td></tr>`).join('')}
       </table></div>`;
   });
   dash.innerHTML = html;
+  dash.querySelectorAll('[data-pg-edit]').forEach(td => {
+    td.addEventListener('input', () => {
+      const sec = td.dataset.pgSec, i = parseInt(td.dataset.pgI, 10), field = td.dataset.pgEdit;
+      if (window.pgLast) window.pgLast.built.sections[sec][i][field] = td.textContent.trim();
+    });
+  });
+}
+
+// Did last week's fix work? Compare each flagged concept's most recent game vs its season line.
+function pgVerdictMovement(built) {
+  const flagged = [...built.badUsage, ...built.cuts];
+  const games = ssGamesChronological();
+  if (games.length < 2 || !flagged.length) return '';
+  const last = games[games.length - 1];
+  const lastRows = last.rows.filter(r => !dbIsDeadPlay(r));
+  const trs = flagged.map(v => {
+    const rs = lastRows.filter(r => v.kind === 'pass'
+      ? (ssIsPass(r) && ssPassConceptBucket(r) === v.concept)
+      : (ssIsRun(r) && ssIsRunHandoff(r) && ssRunConceptBucket(r) === v.concept));
+    if (!rs.length) return `<tr><td>${dbEscapeHTML(v.concept)}</td><td>${v.verdict}</td><td>0</td><td>—</td><td>—</td><td>${v.verdict === 'BAD CONCEPT' ? '✅ not called — matches cut' : 'not called last game'}</td></tr>`;
+    const succ = Math.round(rs.filter(dbIsOffenseSuccess).length / rs.length * 100);
+    const inN = v.kind === 'pass' ? rs.filter(r => pgInWindow(v.family, parseInt(r.down, 10), parseFloat(r.dist))).length : rs.length;
+    const inShare = Math.round(inN / rs.length * 100);
+    let note;
+    if (v.verdict === 'BAD USAGE') note = inShare >= 75 ? '✅ usage compliance ' + inShare + '%' : '⚠️ still ' + (100 - inShare) + '% out-of-window';
+    else note = '⚠️ still being called despite cut verdict';
+    return `<tr><td>${dbEscapeHTML(v.concept)}</td><td>${v.verdict}</td><td>${rs.length}</td><td>${inShare}%</td><td>${succ}% <span style="color:var(--gray)">(season ${v.succ}%)</span></td><td>${note}</td></tr>`;
+  }).join('');
+  return `<div class="db-section"><div class="db-section-title">DID THE FIX WORK? — ${dbEscapeHTML(last.label || 'LAST GAME')} VS SEASON</div>
+    <table class="pg-plan-table"><tr><th>CONCEPT</th><th>VERDICT</th><th>LAST GAME N</th><th>IN-WINDOW USAGE</th><th>SUCCESS</th><th>READ</th></tr>${trs}</table></div>`;
 }
 
 function pgPrint() {
@@ -3249,8 +3351,8 @@ function pgPrint() {
     ${PG_SECTIONS.map(s => {
       const rows = window.pgLast.built.sections[s.key];
       return `<div class="pc-section"><div class="pc-section-title">${s.label} (${s.period})</div>
-      <table><tr><th>#</th><th>HASH/D&amp;D</th><th>CALL</th></tr>
-      ${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${dbEscapeHTML(r.hash)}</td><td>${dbEscapeHTML(r.call)}</td></tr>`).join('')}</table>
+      <table><tr><th>#</th><th>HASH/D&amp;D</th><th>CALL</th><th>SCOUT TEAM LOOK</th></tr>
+      ${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${dbEscapeHTML(r.hash)}</td><td>${dbEscapeHTML(r.call)}</td><td>${dbEscapeHTML(r.look || '')}</td></tr>`).join('')}</table>
       <div style="font-size:9px;font-style:italic;color:#555;margin-top:3px">${rows.map((r, i) => r.why ? (i + 1) + '. ' + dbEscapeHTML(r.why) : '').filter(Boolean).join(' &nbsp;·&nbsp; ')}</div>
       </div>`;
     }).join('')}
