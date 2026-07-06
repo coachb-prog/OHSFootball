@@ -1,5 +1,5 @@
 node_modules/
 package.json
 package-lock.json
-sample_offense.csv
+sample_*.csv
 test_*.js

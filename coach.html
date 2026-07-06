@@ -441,6 +441,24 @@ body {
 .db-bar-pct { width: 34px; text-align: right; color: var(--gold); font-weight: 700; flex-shrink: 0; }
 #db-print-card { display: none; }
 @media (max-width: 600px) { .db-bar-grid { grid-template-columns: 1fr; } }
+.pg-cfg-title { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: var(--gray); margin: 10px 0 6px; }
+.pg-cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+.pg-cfg-grid label { font-size: 10px; color: var(--gray); display: flex; align-items: center; gap: 6px; }
+.pg-cfg-grid input { width: 44px; background: var(--black3); border: 1px solid #333; border-radius: 6px; color: var(--white); padding: 4px 6px; font-size: 12px; }
+.pg-section { background: var(--black2); border-radius: 12px; margin-bottom: 14px; overflow: hidden; }
+.pg-section-hdr { padding: 9px 14px; font-size: 13px; font-weight: 900; letter-spacing: 1.5px; color: var(--white); display: flex; justify-content: space-between; }
+.pg-section-hdr .pg-period { font-size: 11px; font-weight: 700; opacity: 0.85; }
+.pg-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pg-table th { text-align: left; padding: 5px 10px; font-size: 10px; letter-spacing: 1px; color: var(--gray); border-bottom: 1px solid #333; }
+.pg-table td { padding: 6px 10px; border-bottom: 1px solid #222; color: var(--white); }
+.pg-table td.pg-num { color: var(--gray); width: 26px; }
+.pg-table td.pg-hash { font-weight: 800; width: 52px; }
+.pg-table td.pg-call { font-weight: 700; }
+.pg-table td.pg-why { color: var(--gray); font-size: 11px; }
+.pg-cut-note { background: #2a1111; border: 1px solid var(--red); border-radius: 10px; padding: 10px 14px; font-size: 12px; color: #f0b0b0; margin-bottom: 14px; }
+.pg-plan-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 14px; }
+.pg-plan-table th, .pg-plan-table td { border: 1px solid #333; padding: 4px 8px; text-align: left; color: var(--white); }
+.pg-plan-table th { background: var(--black3); font-size: 10px; letter-spacing: 1px; color: var(--gray); }
 @media print {
   body * { visibility: hidden; }
   #db-print-card, #db-print-card * { visibility: visible; }
@@ -489,6 +507,14 @@ body {
         <div class="mode-info">
           <div class="mode-name">SELF SCOUT</div>
           <div class="mode-desc">Analyze our own offensive tendencies</div>
+        </div>
+        <div class="mode-badge">▶</div>
+      </button>
+      <button class="mode-btn mode-btn-featured" onclick="startPracticeGen()">
+        <div class="mode-icon">📋</div>
+        <div class="mode-info">
+          <div class="mode-name">PRACTICE SCRIPT GENERATOR</div>
+          <div class="mode-desc">Opponent tendencies + self scout → weekly script</div>
         </div>
         <div class="mode-badge">▶</div>
       </button>
@@ -573,6 +599,36 @@ body {
     <div id="ss-dashboard"></div>
   </div>
   <div id="ss-coverage-overlay" class="ss-cov-overlay" style="display:none"></div>
+</div>
+
+<!-- PRACTICE SCRIPT GENERATOR -->
+<div id="practice-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">PRACTICE SCRIPT</div>
+    <div class="header-xp"></div>
+  </div>
+  <div class="db-wrap">
+    <div class="db-card">
+      <div class="db-card-title">THIS WEEK</div>
+      <select class="db-input" id="pg-opponent"></select>
+      <input class="db-input" id="pg-date" type="date">
+      <input class="db-input" id="pg-def-emphasis" placeholder="DEFENSIVE EMPHASIS (e.g. ST X)" maxlength="32">
+      <div class="pg-cfg-title">REPS PER PERIOD</div>
+      <div class="pg-cfg-grid" id="pg-cfg-grid"></div>
+      <button class="ss-slides-btn" onclick="pgGenerate()">⚙️ GENERATE SCRIPT</button>
+      <button class="db-print-btn" onclick="pgPrint()" style="width:100%;margin-top:8px">🖨️ PRINT SCRIPT</button>
+      <div class="db-backup-row" style="margin-top:8px">
+        <button class="db-backup-btn" onclick="pgExportJSON()">⬇️ EXPORT WEEK (JSON)</button>
+        <label for="pg-verdict-input">
+          <input type="file" id="pg-verdict-input" accept=".csv" onchange="pgHandleVerdictCSV(this)" style="display:none">
+          <span class="db-backup-btn">⬆️ VERDICT CSV</span>
+        </label>
+      </div>
+      <div class="db-upload-status" id="pg-status"></div>
+    </div>
+    <div id="pg-dashboard"><div class="db-empty">Pick an opponent (or GENERIC) and hit GENERATE. The generator reads your Defense Breakdown and Self Scout data automatically — verdicts are computed from self-scout usage windows, or upload a verdict CSV to override.</div></div>
+  </div>
 </div>
 
 <script>
@@ -2869,6 +2925,349 @@ async function ssExportSlides() {
 }
 
 document.addEventListener('DOMContentLoaded', () => { ssUpdateLogoPreview(); });
+
+// ==================== PRACTICE SCRIPT GENERATOR ====================
+// Turns Defense Breakdown tendencies + Self Scout verdicts into the weekly
+// offensive script, matching the staff's period/section format:
+// HYPER / ROA / BPU / INSIDE RUN / 7ON7 / TEAM 3RD DOWN / TEAM RZ-GL.
+// Section rep counts default to the 8/20 example sheet and are editable.
+
+const PG_SECTIONS = [
+  { key: 'hyper', label: 'HYPER', reps: 12, color: '#2A7A2A', period: 'PRE 4:15' },
+  { key: 'roa', label: 'ROA (ROUTES ON AIR)', reps: 8, color: '#1A4A8A', period: 'PER 5-8' },
+  { key: 'bpu', label: 'BPU (BLITZ PICKUP)', reps: 10, color: '#1A4A8A', period: 'PER 9' },
+  { key: 'inside', label: 'INSIDE RUN', reps: 12, color: '#6A3DAA', period: 'PER 10-11' },
+  { key: 'skelly', label: '7ON7 — 3RD DOWN / RZ', reps: 15, color: '#2A7A2A', period: 'PER 12-14' },
+  { key: 'team3rd', label: 'TEAM — 3RD DOWN', reps: 10, color: '#CC0000', period: 'PER 15-16' },
+  { key: 'teamrz', label: 'TEAM — RZ / GL', reps: 8, color: '#CC0000', period: 'PER 17-18' },
+];
+const PG_HASH_ROT = ['L', 'LU', 'RU', 'R'];
+let pgVerdictOverride = null; // parsed from uploaded verdict CSV
+
+function startPracticeGen() {
+  showScreen('practice-screen');
+  const sel = document.getElementById('pg-opponent');
+  const opps = Object.keys(getDefOpponents());
+  sel.innerHTML = '<option value="">GENERIC (no opponent data)</option>' +
+    opps.map(o => `<option value="${dbEscapeHTML(o)}">${dbEscapeHTML(o)}</option>`).join('');
+  if (opps.length) sel.value = opps[opps.length - 1];
+  const grid = document.getElementById('pg-cfg-grid');
+  grid.innerHTML = PG_SECTIONS.map(s =>
+    `<label><input type="number" min="4" max="24" value="${s.reps}" data-pg-reps="${s.key}">${s.label.split(' ')[0]}</label>`).join('');
+}
+
+// ---- self-scout verdict engine (same rules as the season verdict analysis) ----
+// In-window per pass family; a concept losing inside its own window is a concept
+// problem, losing only outside it is a usage problem.
+function pgInWindow(family, dn, dist) {
+  const d = dn || 1, x = dist == null ? 10 : dist;
+  if (family === 'QUICK GAME') return !((d === 3 || d === 4) && x >= 8);
+  if (family === 'DROP BACK') return x > 3 && !((d === 3 || d === 4) && x >= 13);
+  if (family === 'SPRINT OUT') return x >= 3 && x <= 8;
+  if (family === 'PLAYACTION' || family === 'BOOTS') return d === 1 || (d === 2 && x <= 7);
+  if (family === 'SCREENS') return x >= 7;
+  if (family === 'RPO') return !((d === 3 || d === 4) && x >= 7);
+  return true;
+}
+// D&D situations a family is scripted into (dn, dist pairs cycled per rep).
+const PG_WINDOW_DD = {
+  'QUICK GAME': [[1, 10], [2, 6], [3, 4]],
+  'DROP BACK': [[2, 8], [3, 7], [3, 10]],
+  'SPRINT OUT': [[3, 5], [2, 5], [3, 7]],
+  'PLAYACTION': [[1, 10], [2, 5]],
+  'BOOTS': [[1, 10], [2, 6]],
+  'SCREENS': [[2, 10], [3, 12]],
+  'RPO': [[1, 10], [2, 7]],
+};
+
+function pgComputeVerdicts(rows) {
+  const live = rows.filter(r => !dbIsDeadPlay(r));
+  const passes = live.filter(r => ssIsPass(r));
+  const runs = live.filter(r => ssIsRun(r) && ssIsRunHandoff(r));
+  const teamPass = passes.length ? passes.filter(dbIsOffenseSuccess).length / passes.length * 100 : 50;
+  const teamRun = runs.length ? runs.filter(dbIsOffenseSuccess).length / runs.length * 100 : 50;
+  const out = {};
+  [[passes, ssPassConceptBucket, 'pass', teamPass], [runs, ssRunConceptBucket, 'run', teamRun]].forEach(([rs, bucketFn, kind, teamAvg]) => {
+    const groups = dbGroupBy(rs, bucketFn);
+    Object.entries(groups).forEach(([concept, crs]) => {
+      const n = crs.length;
+      if (n < 4) return;
+      const fams = dbFreqByFn(crs, ssCategoryBucket);
+      const family = dbTop(fams, 1)[0]?.label || (kind === 'run' ? 'RUN' : null);
+      const succ = Math.round(crs.filter(dbIsOffenseSuccess).length / n * 100);
+      const inRs = crs.filter(r => kind === 'run' || pgInWindow(family, parseInt(r.down, 10), parseFloat(r.dist)));
+      const outRs = crs.filter(r => !inRs.includes(r));
+      const inSucc = inRs.length ? Math.round(inRs.filter(dbIsOffenseSuccess).length / inRs.length * 100) : null;
+      const outShare = Math.round(outRs.length / n * 100);
+      let verdict = 'INCONCLUSIVE';
+      if (n >= 6) {
+        if (succ >= teamAvg - 8) verdict = 'KEEP';
+        else if (outRs.length >= 3 && outShare >= 40 && inSucc != null && inSucc >= teamAvg - 5) verdict = 'BAD USAGE';
+        else if (inRs.length >= 5 && inSucc != null && inSucc < teamAvg - 15) verdict = 'BAD CONCEPT';
+      }
+      out[concept + '|' + kind] = { concept, kind, family, n, succ, inSucc, outShare, verdict, teamAvg: Math.round(teamAvg) };
+    });
+  });
+  // uploaded CSV wins over computed verdicts
+  if (pgVerdictOverride) {
+    Object.values(out).forEach(v => {
+      const o = pgVerdictOverride[v.concept + '|' + v.kind] || pgVerdictOverride[v.concept + '|'];
+      if (o) v.verdict = o;
+    });
+  }
+  return out;
+}
+
+function pgHandleVerdictCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = String(e.target.result).split(/\r?\n/).filter(l => l.trim());
+    const hdr = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const ci = hdr.indexOf('concept'), ki = hdr.indexOf('kind'), vi = hdr.indexOf('verdict');
+    if (ci < 0 || vi < 0) { document.getElementById('pg-status').textContent = 'CSV needs concept + verdict columns.'; return; }
+    pgVerdictOverride = {};
+    lines.slice(1).forEach(l => {
+      const cells = l.split(',');
+      const c = (cells[ci] || '').trim().toUpperCase();
+      const k = ki >= 0 ? (cells[ki] || '').trim().toLowerCase() : '';
+      const v = (cells[vi] || '').trim().toUpperCase();
+      if (c && v) pgVerdictOverride[c + '|' + k] = v;
+    });
+    document.getElementById('pg-status').textContent = 'Verdict CSV loaded (' + Object.keys(pgVerdictOverride).length + ' concepts) — overrides computed verdicts.';
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ---- opponent profile from Defense Breakdown data ----
+function pgOpponentProfile(name) {
+  if (!name) return null;
+  const entry = getDefOpponents()[name];
+  if (!entry) return null;
+  let rows = entry.games.reduce((acc, g) => acc.concat(g.rows), []);
+  const dRows = rows.filter(r => String(r.odk == null ? '' : r.odk).trim().toUpperCase().charAt(0) === 'D');
+  if (dRows.length) rows = dRows;
+  if (!rows.length) return null;
+  const blitzRows = rows.filter(dbIsBlitz);
+  const dd = dbGroupBy(rows, dbDownDistBucket);
+  const ddLook = {};
+  Object.entries(dd).forEach(([bucket, rs]) => {
+    ddLook[bucket] = {
+      n: rs.length,
+      front: dbTop(dbFreq(rs, 'defFront'), 1)[0] || null,
+      cov: dbTop(dbFreq(rs, 'coverage'), 1)[0] || null,
+      blitzPct: Math.round(rs.filter(dbIsBlitz).length / rs.length * 100),
+    };
+  });
+  const rz = rows.filter(r => { const y = parseFloat(r.yardLn); return !isNaN(y) && Math.abs(y) <= 20; });
+  return {
+    name, n: rows.length,
+    topFronts: dbTop(dbFreq(rows, 'defFront'), 3),
+    topCovs: dbTop(dbFreq(rows, 'coverage'), 3),
+    topBlitzes: dbTop(dbFreqByFn(blitzRows, dbBlitzLabel), 3),
+    blitzPct: Math.round(blitzRows.length / rows.length * 100),
+    ddLook,
+    rzCov: rz.length >= 4 ? dbTop(dbFreq(rz, 'coverage'), 1)[0] : null,
+    rzN: rz.length,
+  };
+}
+
+// ---- per-concept call synthesis from our own charted snaps ----
+function pgConceptMeta(rows) {
+  const live = rows.filter(r => !dbIsDeadPlay(r));
+  const meta = {};
+  [[live.filter(ssIsPass), ssPassConceptBucket, 'pass'], [live.filter(r => ssIsRun(r) && ssIsRunHandoff(r)), ssRunConceptBucket, 'run']].forEach(([rs, bucketFn, kind]) => {
+    Object.entries(dbGroupBy(rs, bucketFn)).forEach(([concept, crs]) => {
+      const form = dbTop(dbFreq(crs, 'offForm'), 2).map(t => t.label);
+      const pers = dbTop(dbFreq(crs, 'personnel'), 1)[0]?.label || '11';
+      const prot = dbTop(dbFreq(crs, 'protection'), 1)[0]?.label || '';
+      meta[concept + '|' + kind] = { form: form.length ? form : ['BASE'], pers: pers.replace(/\.0$/, ''), prot };
+    });
+  });
+  return meta;
+}
+function pgCall(concept, kind, meta, i) {
+  const m = meta[concept + '|' + kind] || { form: ['BASE'], pers: '11', prot: '' };
+  const form = m.form[i % m.form.length];
+  if (kind === 'run') return `${m.pers} ${form} ${concept} ${i % 2 === 0 ? 'PRO' : 'CON'}`;
+  const prot = m.prot && m.prot !== 'RUN' ? m.prot + ' ' : '';
+  return `${m.pers} ${form} ${prot}${concept}`.replace(/\s+/g, ' ').trim();
+}
+function pgDD(dn, dist, hash) { return `${dn}${dist}${hash}`; }
+
+// ---- the allocator ----
+function pgBuildScript(profile, verdicts, meta, cfg) {
+  const V = Object.values(verdicts);
+  const byV = v => V.filter(x => x.verdict === v).sort((a, b) => b.n - a.n);
+  const keepsRun = byV('KEEP').filter(v => v.kind === 'run');
+  const keepsPass = byV('KEEP').filter(v => v.kind === 'pass');
+  const badUsage = byV('BAD USAGE');
+  const cuts = byV('BAD CONCEPT');
+  const hash = i => PG_HASH_ROT[i % PG_HASH_ROT.length];
+  const oppFront = profile?.topFronts[0];
+  const oppBlitz = profile?.topBlitzes || [];
+  const oppTag = profile ? '' : ' [GENERIC — no opponent data]';
+  const S = {};
+
+  // HYPER: tempo cleanup — base runs + top RPO/quick, no thinking, all keeps.
+  const hyperPool = [...keepsRun.slice(0, 3), ...keepsPass.filter(v => v.family === 'QUICK GAME' || v.family === 'RPO').slice(0, 2)];
+  S.hyper = Array.from({ length: cfg.hyper }, (_, i) => {
+    const v = hyperPool[i % Math.max(hyperPool.length, 1)];
+    if (!v) return { hash: hash(i), call: '— add self scout data —', why: 'no concepts available' };
+    return { hash: hash(i), call: pgCall(v.concept, v.kind, meta, i),
+      why: `tempo rep — ${v.concept} is a keep (${v.succ}% season)` };
+  });
+
+  // ROA: every pass concept scheduled this week gets its air rep first.
+  const roaPool = [...badUsage.filter(v => v.kind === 'pass'), ...keepsPass].slice(0, cfg.roa);
+  S.roa = Array.from({ length: cfg.roa }, (_, i) => {
+    const v = roaPool[i % Math.max(roaPool.length, 1)];
+    if (!v) return { hash: 'L/R', call: '—', why: '' };
+    return { hash: 'L/R', call: v.concept + (meta[v.concept + '|pass']?.prot ? ' (' + meta[v.concept + '|pass'].prot + ')' : ''),
+      why: `timing for ${v.concept} before it runs live in 7on7` };
+  });
+
+  // BPU: protections behind this week's dropbacks vs their top pressure looks.
+  const prots = [];
+  roaPool.forEach(v => { const p = meta[v.concept + '|pass']?.prot; if (p && p !== 'RUN' && !prots.includes(p)) prots.push(p); });
+  if (!prots.length) prots.push('90', '60');
+  S.bpu = Array.from({ length: cfg.bpu }, (_, i) => {
+    const p = prots[i % prots.length];
+    const bz = oppBlitz[i % Math.max(oppBlitz.length, 1)];
+    return { hash: hash(i), call: p,
+      why: bz ? `pickup vs ${bz.label} — ${profile.name} brings it ${bz.pct}% of blitz snaps` : 'generic pressure look' + oppTag };
+  });
+
+  // INSIDE RUN: keeps only, PRO/CON pairs, pointed at their base front.
+  const runPool = keepsRun.slice(0, 4);
+  S.inside = Array.from({ length: cfg.inside }, (_, i) => {
+    const v = runPool[Math.floor(i / 2) % Math.max(runPool.length, 1)];
+    if (!v) return { hash: hash(i), call: '— add self scout data —', why: '' };
+    return { hash: i % 2 === 0 ? 'LU' : 'RU', call: pgCall(v.concept, 'run', meta, i),
+      why: oppFront ? `${v.concept} fits vs ${oppFront.label} (their front ${oppFront.pct}%)` : `${v.concept} keep (${v.succ}%)` + oppTag };
+  });
+
+  // 7ON7: bad-usage concepts get their reps ONLY in-window; keeps fill the rest.
+  const skelly = [];
+  badUsage.filter(v => v.kind === 'pass').forEach(v => {
+    const dds = PG_WINDOW_DD[v.family] || [[2, 8]];
+    for (let k = 0; k < 2 && skelly.length < cfg.skelly; k++) {
+      const [dn, dist] = dds[k % dds.length];
+      skelly.push({ v, dn, dist, why: `USAGE FIX: ${v.concept} only in its window (${v.inSucc}% in-window vs ${v.succ}% overall) — never on ${v.family === 'SPRINT OUT' ? '1st&10/long yardage' : 'wrong downs'}` });
+    }
+  });
+  const skPass = keepsPass.length ? keepsPass : byV('INCONCLUSIVE').filter(v => v.kind === 'pass');
+  let si = 0;
+  while (skelly.length < cfg.skelly && skPass.length) {
+    const v = skPass[si % skPass.length];
+    const dds = PG_WINDOW_DD[v.family] || [[2, 8], [3, 7]];
+    const [dn, dist] = dds[si % dds.length];
+    const look = profile?.ddLook[dn === 3 ? (dist <= 3 ? '3RD & SHORT' : dist <= 6 ? '3RD & MEDIUM' : '3RD & LONG') : '1ST DOWN'];
+    skelly.push({ v, dn, dist, why: look?.cov ? `${v.concept} vs expected ${look.cov.label} (${look.cov.pct}% there)` : `${v.concept} keep (${v.succ}%)` + oppTag });
+    si++;
+  }
+  S.skelly = skelly.map((x, i) => ({ hash: pgDD(x.dn, x.dist, hash(i)), call: pgCall(x.v.concept, 'pass', meta, i), why: x.why }));
+
+  // TEAM 3RD DOWN: ladder 3&2..3&10, short = run/QB, medium = usage fixes + quicks, long = dropback keeps.
+  const ladder = [2, 4, 6, 8, 10];
+  S.team3rd = Array.from({ length: cfg.team3rd }, (_, i) => {
+    const dist = ladder[i % ladder.length];
+    let v;
+    if (dist <= 3) v = keepsRun[0] || keepsPass[0];
+    else if (dist <= 6) v = badUsage.find(x => x.kind === 'pass' && pgInWindow(x.family, 3, dist)) || keepsPass.find(x => x.family === 'QUICK GAME') || keepsPass[0];
+    else v = keepsPass.find(x => x.family === 'DROP BACK') || keepsPass[0];
+    if (!v) return { hash: pgDD(3, dist, hash(i)), call: '—', why: 'no data' };
+    const bucket = dist <= 3 ? '3RD & SHORT' : dist <= 6 ? '3RD & MEDIUM' : '3RD & LONG';
+    const look = profile?.ddLook[bucket];
+    return { hash: pgDD(3, dist, hash(i)), call: pgCall(v.concept, v.kind, meta, i),
+      why: look ? `${bucket.toLowerCase()}: expect ${look.front ? look.front.label : '?'} / ${look.cov ? look.cov.label : '?'}${look.blitzPct >= 40 ? ' — blitz alert ' + look.blitzPct + '%' : ''}` : v.verdict === 'BAD USAGE' ? 'usage-fix rep in its window' : `${v.concept} keep` + oppTag };
+  });
+
+  // TEAM RZ/GL: yardline ladder in, run-heavy at the goal line.
+  const yl = [20, 14, 10, 8, 5, 3, 2, 1];
+  S.teamrz = Array.from({ length: cfg.teamrz }, (_, i) => {
+    const y = yl[i % yl.length];
+    const v = y > 6 ? (keepsPass[i % Math.max(keepsPass.length, 1)] || keepsRun[0]) : (keepsRun[i % Math.max(keepsRun.length, 1)]);
+    if (!v) return { hash: String(y), call: '—', why: 'no data' };
+    return { hash: y + hash(i), call: pgCall(v.concept, v.kind, meta, i),
+      why: y > 6 ? (profile?.rzCov ? `RZ shot — they sit in ${profile.rzCov.label} (${profile.rzCov.pct}% inside the 20, n=${profile.rzN})` : 'RZ rep' + oppTag) : 'GL — hat-on-hat run, best short-yardage keep' };
+  });
+
+  return { sections: S, cuts, badUsage };
+}
+
+function pgGenerate() {
+  const ssRows = getSSData().games.reduce((acc, g) => acc.concat(g.rows), []);
+  if (!ssRows.length) { alert('No Self Scout data loaded — upload your offense breakdown in SELF SCOUT first.'); return; }
+  const opp = document.getElementById('pg-opponent').value;
+  const profile = pgOpponentProfile(opp);
+  const verdicts = pgComputeVerdicts(ssRows);
+  const meta = pgConceptMeta(ssRows);
+  const cfg = {};
+  PG_SECTIONS.forEach(s => {
+    const el = document.querySelector(`[data-pg-reps="${s.key}"]`);
+    cfg[s.key] = Math.max(4, Math.min(24, parseInt(el && el.value, 10) || s.reps));
+  });
+  const built = pgBuildScript(profile, verdicts, meta, cfg);
+  window.pgLast = { generatedAt: new Date().toISOString(), opponent: opp || 'GENERIC', cfg, built, profile,
+    verdicts: Object.values(verdicts) };
+  pgRender(built, profile, opp);
+}
+
+function pgRender(built, profile, opp) {
+  const dash = document.getElementById('pg-dashboard');
+  const date = document.getElementById('pg-date').value || new Date().toISOString().slice(0, 10);
+  const emph = document.getElementById('pg-def-emphasis').value;
+  let html = `<div class="db-section"><div class="db-section-title">WEEK PLAN — ${opp ? 'VS ' + dbEscapeHTML(opp) : 'GENERIC'} · ${dbEscapeHTML(date)}${emph ? ' · DEF EMPHASIS: ' + dbEscapeHTML(emph) : ''}</div>
+    <table class="pg-plan-table"><tr><th>PERIOD</th><th>BLOCK</th><th>SECTION</th><th>REPS</th></tr>
+    ${PG_SECTIONS.map(s => `<tr><td>${s.period}</td><td>${s.key === 'hyper' ? 'PRE/INDY' : s.key === 'skelly' ? 'SKELLY' : s.key.startsWith('team') ? 'TEAM' : 'GROUP'}</td><td>${s.label}</td><td>${built.sections[s.key].length}</td></tr>`).join('')}
+    </table></div>`;
+  if (built.cuts.length) {
+    html += `<div class="pg-cut-note"><strong>CUT THIS WEEK (bad-concept verdicts — do not script):</strong> ${built.cuts.map(c => `${dbEscapeHTML(c.concept)} (${c.succ}% on ${c.n})`).join(' · ')}</div>`;
+  }
+  PG_SECTIONS.forEach(s => {
+    const rows = built.sections[s.key];
+    html += `<div class="pg-section"><div class="pg-section-hdr" style="background:${s.color}"><span>${s.label}</span><span class="pg-period">${s.period}</span></div>
+      <table class="pg-table"><tr><th>#</th><th>HASH/D&amp;D</th><th>CALL</th><th>WHY</th></tr>
+      ${rows.map((r, i) => `<tr><td class="pg-num">${i + 1}</td><td class="pg-hash">${dbEscapeHTML(r.hash)}</td><td class="pg-call">${dbEscapeHTML(r.call)}</td><td class="pg-why">${dbEscapeHTML(r.why)}</td></tr>`).join('')}
+      </table></div>`;
+  });
+  dash.innerHTML = html;
+}
+
+function pgPrint() {
+  if (!window.pgLast) { alert('Generate a script first.'); return; }
+  const { built, opponent } = window.pgLast;
+  const date = document.getElementById('pg-date').value || new Date().toISOString().slice(0, 10);
+  const emph = document.getElementById('pg-def-emphasis').value;
+  const card = document.getElementById('db-print-card');
+  card.innerHTML = `
+    <div class="pc-title">PRACTICE — OFFENSE · ${dbEscapeHTML(date)} · VS ${dbEscapeHTML(opponent)}</div>
+    <div class="pc-sub">${emph ? 'DEFENSIVE EMPHASIS: ' + dbEscapeHTML(emph) + ' — ' : ''}rationale in italics under each call sheet</div>
+    ${PG_SECTIONS.map(s => {
+      const rows = window.pgLast.built.sections[s.key];
+      return `<div class="pc-section"><div class="pc-section-title">${s.label} (${s.period})</div>
+      <table><tr><th>#</th><th>HASH/D&amp;D</th><th>CALL</th></tr>
+      ${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${dbEscapeHTML(r.hash)}</td><td>${dbEscapeHTML(r.call)}</td></tr>`).join('')}</table>
+      <div style="font-size:9px;font-style:italic;color:#555;margin-top:3px">${rows.map((r, i) => r.why ? (i + 1) + '. ' + dbEscapeHTML(r.why) : '').filter(Boolean).join(' &nbsp;·&nbsp; ')}</div>
+      </div>`;
+    }).join('')}
+    ${built.cuts.length ? `<div class="pc-section"><div class="pc-section-title">NOT SCRIPTED (BAD CONCEPT)</div><div style="font-size:11px">${built.cuts.map(c => dbEscapeHTML(c.concept) + ' — ' + c.succ + '% on ' + c.n + ' snaps').join(' · ')}</div></div>` : ''}
+  `;
+  window.print();
+}
+
+function pgExportJSON() {
+  if (!window.pgLast) { alert('Generate a script first.'); return; }
+  const blob = new Blob([JSON.stringify(window.pgLast, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'practice_script_' + (window.pgLast.opponent || 'week').replace(/[^a-z0-9]/gi, '_') + '_' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 async function dbExportSlides() {
   if (!currentDefOpponent) { alert('Select an opponent with loaded data first.'); return; }
