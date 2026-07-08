@@ -3335,6 +3335,12 @@ function pgGenerate() {
   const built = pgBuildScript(profile, verdicts, meta, cfg);
   window.pgLast = { generatedAt: new Date().toISOString(), opponent: opp || 'GENERIC', cfg, built, profile,
     verdicts: Object.values(verdicts) };
+  // remember what got practiced so the call sheet can cross-check coverage
+  const practiced = new Set();
+  Object.values(built.sections).forEach(rows => rows.forEach(r => {
+    Object.values(verdicts).forEach(v => { if (r.call && r.call.includes(v.concept)) practiced.add(v.concept); });
+  }));
+  localStorage.setItem('rd_practice_last', JSON.stringify({ opponent: opp || 'GENERIC', generatedAt: new Date().toISOString(), concepts: [...practiced] }));
   pgRender(built, profile, opp);
 }
 
@@ -3486,9 +3492,51 @@ function csGenerate() {
   const passRows = live.filter(ssIsPass);
   const runRows = live.filter(r => ssIsRun(r) && ssIsRunHandoff(r));
 
-  const call = (v, i) => pgCall(v.concept, v.kind, meta, i || 0);
   const fam = f => keepsPass.filter(v => v.family === f);
   const famAll = f => usable('pass').filter(v => v.family === f);
+
+  // Real charted variants per concept: the full dressed call (personnel,
+  // formation, motion, protection, raw OFF PLAY, tag) exactly as charted,
+  // ranked by how well each variant actually performed.
+  const csDressed = r => {
+    const pers = String(r.personnel == null ? '' : r.personnel).trim().replace(/\.0$/, '');
+    const form = String(r.offForm == null ? '' : r.offForm).trim().toUpperCase();
+    const mot = String(r.motion == null ? '' : r.motion).trim().toUpperCase();
+    const prot = String(r.protection == null ? '' : r.protection).trim().toUpperCase();
+    const play = String(r.offPlay == null ? '' : r.offPlay).trim().toUpperCase();
+    const tag = String(r.passTag == null ? '' : r.passTag).trim().toUpperCase();
+    if (!play && !form) return null;
+    return [pers, form, mot, prot && prot !== 'RUN' ? prot : '', play, tag && tag !== 'DEFAULT' ? tag : ''].filter(Boolean).join(' ');
+  };
+  const variantIndex = {};
+  [[passRows, ssPassConceptBucket, 'pass'], [runRows, ssRunConceptBucket, 'run']].forEach(([rs, bucketFn, kind]) => {
+    Object.entries(dbGroupBy(rs, bucketFn)).forEach(([concept, crs]) => {
+      const groups = dbGroupBy(crs, csDressed);
+      variantIndex[concept + '|' + kind] = Object.entries(groups).map(([label, vrs]) => ({
+        label, n: vrs.length, succ: Math.round(vrs.filter(dbIsOffenseSuccess).length / vrs.length * 100),
+      })).sort((a, b) => (b.n >= 2) - (a.n >= 2) || b.succ - a.succ || b.n - a.n);
+    });
+  });
+  // Diversity budget: no concept dominates the sheet, and each appearance
+  // uses that concept's next-best charted variant.
+  const used = {};
+  const CS_MAX_USES = 3;
+  const call = v => {
+    const k = v.concept + '|' + v.kind;
+    const i = used[k] = (used[k] || 0) + 1;
+    const vars = variantIndex[k] || [];
+    const variant = vars[(i - 1) % Math.max(vars.length, 1)];
+    return variant ? variant.label : pgCall(v.concept, v.kind, meta, i - 1);
+  };
+  const pick = (pool, count) => {
+    const out = [];
+    for (const v of pool) {
+      if (out.length >= count) break;
+      if ((used[v.concept + '|' + v.kind] || 0) >= CS_MAX_USES) continue;
+      out.push(call(v));
+    }
+    return out;
+  };
   const mock = profile ? '' : ' [GENERIC]';
   const low = n => n != null && n < 8 ? ' (LOW SAMPLE n=' + n + ')' : '';
   const ddNote = bucket => {
@@ -3516,28 +3564,37 @@ function csGenerate() {
   const topCalls = (rs, filter, n) => dbTop(dbFreqByFn(rs.filter(filter), fullCall), n).map(t => t.label);
 
   const boxes = {};
-  const B = (id, lines) => { boxes[id] = lines.filter(Boolean); };
+  // Fixed slot counts per box (from the reference sheet) — pad with blank
+  // lines so the printed geometry stays identical week to week; visible
+  // blanks show where the menu is thin.
+  const B = (id, lines, slots) => {
+    let arr = lines.filter(l => l);
+    if (slots) { arr = arr.slice(0, slots); while (arr.length < slots) arr.push(' '); }
+    boxes[id] = arr;
+  };
 
   // ---- SIDE 1: situational ----
-  const opener = [...keepsRun.slice(0, 3), ...keepsPass.slice(0, 4), ...keepsRun.slice(3, 4)];
-  B('openers', opener.slice(0, 8).map((v, i) => call(v, i)));
-  B('comingoff', [...keepsRun.slice(0, 2), ...fam('PLAYACTION').slice(0, 1), ...fam('SCREENS').slice(0, 1)].slice(0, 4).map((v, i) => call(v, i)).concat(['ALERT PRESSURE']));
-  B('yellowzone', [...keepsRun.slice(0, 1), ...fam('QUICK GAME').slice(0, 1), ...keepsRun.slice(1, 2)].map((v, i) => call(v, i)).concat(['ALERT PRESSURE']));
-  B('redzone', [...usable('run').slice(0, 2), ...famAll('QUICK GAME').slice(0, 2), ...fam('PLAYACTION').slice(0, 1)].slice(0, 5).map((v, i) => call(v, i)));
-  B('goalline', ['SLEDGE', 'SLEDGE R TO L', 'SLEDGE L TO R', keepsRun[0] ? call(keepsRun[0], 0) : '', 'HARBAUGH']);
-  B('twopoint', [...famAll('QUICK GAME').slice(0, 2), ...keepsRun.slice(0, 1)].slice(0, 3).map((v, i) => call(v, i)).concat(['SLEDGE (IF NOT RAN)']));
+  B('openers', pick([...keepsRun.slice(0, 3), ...keepsPass, ...usable('run')], 8), 8);
+  // backed up (GL-5): safe pool only — no straight dropbacks in your own end zone
+  const safePool = [...usable('run'), ...famAll('QUICK GAME'), ...fam('PLAYACTION'), ...famAll('SCREENS')];
+  B('comingoff', pick(safePool, 5).concat(['ALERT PRESSURE']), 6);
+  B('yellowzone', pick(safePool, 3).concat(['ALERT PRESSURE']), 5);
+  B('redzone', pick([...usable('run'), ...famAll('QUICK GAME'), ...fam('PLAYACTION')], 5)
+    .concat(pick([...fam('BOOTS'), ...fam('PLAYACTION')], 1).map(c => 'BOOT - ' + c)), 7);
+  B('goalline', ['SLEDGE', 'SLEDGE R TO L', 'SLEDGE L TO R', ...pick(usable('run'), 1), 'HARBAUGH'], 6);
+  B('twopoint', pick([...famAll('QUICK GAME'), ...usable('run')], 3).concat(['SLEDGE (IF NOT RAN)']), 4);
   const w3 = (dn, dist) => usable('pass').filter(v => pgInWindow(v.family, dn, dist));
-  B('3s', ['SLEDGE (SHIFT PACKAGES)', ...[...keepsRun.slice(0, 1), ...w3(3, 2).slice(0, 2)].map((v, i) => call(v, i))]);
-  B('3m', [...badUsage.filter(v => v.kind === 'pass' && pgInWindow(v.family, 3, 5)).slice(0, 1), ...w3(3, 5).slice(0, 3)].map((v, i) => call(v, i)));
-  B('3l', w3(3, 10).slice(0, 4).map((v, i) => call(v, i)));
-  B('3xl', [...fam('DROP BACK').slice(0, 2), ...fam('SCREENS').slice(0, 1)].slice(0, 3).map((v, i) => call(v, i)));
-  B('4s', ['SLEDGE W/ SHIFT', keepsRun[0] ? call(keepsRun[0], 1) : '']);
-  B('4m', w3(4, 5).slice(0, 2).map((v, i) => call(v, i)));
-  B('4l', w3(4, 10).slice(0, 2).map((v, i) => call(v, i)));
-  B('2s', [keepsRun[0] ? call(keepsRun[0], 2) : '', fam('PLAYACTION')[0] ? call(fam('PLAYACTION')[0], 0) : ''].filter(Boolean).slice(0, 1));
-  B('2m', famAll('QUICK GAME')[0] ? [call(famAll('QUICK GAME')[0], 1)] : []);
-  B('2l', [keepsRun[1] ? call(keepsRun[1], 1) : (keepsPass[0] ? call(keepsPass[0], 2) : '')]);
-  B('sledge', ['RAMS/ BUCS', 'CINCY CON', 'RIVER FLORIDA 2']);
+  B('3s', ['SLEDGE (SHIFT PACKAGES)', ...pick([...usable('run'), ...w3(3, 2)], 3)], 4);
+  B('3m', pick([...badUsage.filter(v => v.kind === 'pass' && pgInWindow(v.family, 3, 5)), ...w3(3, 5)], 4), 4);
+  B('3l', pick(w3(3, 10), 4), 4);
+  B('3xl', pick([...fam('DROP BACK'), ...fam('SCREENS')], 3), 3);
+  B('4s', ['SLEDGE W/ SHIFT', ...pick(usable('run'), 1)], 2);
+  B('4m', pick(w3(4, 5), 2), 2);
+  B('4l', pick(w3(4, 10), 1), 1);
+  B('2s', pick([...usable('run'), ...fam('PLAYACTION')], 1), 1);
+  B('2m', pick(famAll('QUICK GAME'), 1), 1);
+  B('2l', pick([...usable('run').slice(1), ...keepsPass], 1), 1);
+  B('sledge', ['RAMS/ BUCS', 'CINCY CON', 'RIVER FLORIDA 2'], 3);
   const twoMinPass = usable('pass').filter(v => v.family === 'DROP BACK' || v.family === 'QUICK GAME');
   B('twomin', [
     '2X2: ' + (twoMinPass.slice(0, 3).map(v => v.concept).join('/ ') || '—'),
@@ -3545,7 +3602,7 @@ function csGenerate() {
     'EMPTY: ' + (twoMinPass.slice(0, 2).map(v => v.concept).join('/ ') || '—'),
     'R/L FLORIDA 1 SWITCH/ 2',
     'LAST PLAY: HEARTBREAK/ JUMP MAN',
-  ]);
+  ], 6);
   // static judgment boxes — CARRYOVER seeds from the reference sheet, edit weekly
   B('baseoffense', [
     'RUN: ' + (keepsRun.slice(0, 4).map(v => v.concept).join('/ ') || '—'),
@@ -3563,7 +3620,7 @@ function csGenerate() {
   B('tempo', ['KENTUCKY/ EMPTY QK/ RUN SMOKE']);
   B('rporeminder', ['DEFAULTS/ SMOKES/ HAWAII/ COKE/ SINGLE OUT']);
   B('gottahaveit', ['FEED #22, #4, #5']);
-  B('backontrack', [keepsRun[0] ? call(keepsRun[0], 0) + ' W/ COKES & DEFAULTS' : '—']);
+  B('backontrack', pick(usable('run'), 1).map(c => c + ' W/ COKES & DEFAULTS'));
   B('shots', fam('DROP BACK').slice(0, 2).map(v => v.concept).join('/ ') ? ['NUTS/ ' + fam('DROP BACK').slice(0, 2).map(v => v.concept).join('/ ')] : ['NUTS']);
   B('notes', ['', '', '']);
 
@@ -3604,8 +3661,18 @@ function csGenerate() {
   sheetForms.filter(f => f && !CS_APP_FORMATIONS.includes(f)).forEach(f => flags.push(`FORMATION CHECK: "${f}" is charted but not diagrammed in the playbook app.`));
   boxes.motions.filter(m => m && !CS_APP_MOTIONS.includes(m)).forEach(m => flags.push(`MOTION CHECK: "${m}" is charted but not taught in the playbook app.`));
   if (!profile) flags.push('NO OPPONENT DATA — expected-look notes are generic placeholders. Load a breakdown for real looks.');
+  // consistency vs the last generated practice script: everything on the
+  // call sheet should have gotten practice reps this week
+  const lastScript = JSON.parse(localStorage.getItem('rd_practice_last') || 'null');
+  if (lastScript) {
+    const onSheet = Object.keys(used).map(k => k.split('|')[0]);
+    const unpracticed = [...new Set(onSheet)].filter(c => !lastScript.concepts.includes(c));
+    if (unpracticed.length) flags.push(`PRACTICE GAP: on this call sheet but zero reps in the last practice script (${lastScript.opponent}, ${lastScript.generatedAt.slice(0, 10)}): ${unpracticed.join(', ')}.`);
+  } else {
+    flags.push('NO PRACTICE SCRIPT ON RECORD — generate one so the sheet can verify everything got practiced.');
+  }
 
-  window.csLast = { generatedAt: new Date().toISOString(), opponent: opp || 'GENERIC', boxes, flags, notes: {
+  window.csLast = { generatedAt: new Date().toISOString(), opponent: opp || 'GENERIC', boxes, flags, usedBudget: used, notes: {
     redzone: profile?.rzCov ? '20YL-10YL: ' + profile.rzCov.label + ' ' + profile.rzCov.pct + '%' + low(profile.rzN) : 'MIX OF COVERAGE' + mock,
     goalline: 'BEAR/ 6-2 0 COV' + mock,
     '3s': ddNote('3RD & SHORT'), '3m': ddNote('3RD & MEDIUM'), '3l': ddNote('3RD & LONG'),
@@ -3680,9 +3747,18 @@ function csPrint() {
   const { side1, side2 } = csSideHTML(true);
   const card = document.getElementById('db-print-card');
   card.innerHTML = `
-    <div class="cs-page"><div class="pc-title" style="text-align:center">${dbEscapeHTML(window.csLast.opponent)} VS. OWENSBORO ${dbEscapeHTML(date)}</div>${side1}</div>
-    <div><div class="pc-title" style="text-align:center">${dbEscapeHTML(window.csLast.opponent)} — MENU</div>${side2}</div>`;
+    <div class="cs-page"><div class="pc-title" style="text-align:center;font-size:14px">${dbEscapeHTML(window.csLast.opponent)} VS. OWENSBORO ${dbEscapeHTML(date)}</div>${side1}</div>
+    <div><div class="pc-title" style="text-align:center;font-size:14px">${dbEscapeHTML(window.csLast.opponent)} — MENU</div>${side2}</div>`;
+  // call sheet prints landscape like the Excel original; scoped so the other
+  // tools' print flows stay portrait
+  const st = document.createElement('style');
+  st.id = 'cs-landscape';
+  st.textContent = '@media print { @page { size: letter landscape; margin: 7mm; } #db-print-card { padding: 0; } }';
+  document.head.appendChild(st);
+  const cleanup = () => { st.remove(); window.removeEventListener('afterprint', cleanup); };
+  window.addEventListener('afterprint', cleanup);
   window.print();
+  setTimeout(cleanup, 2000);
 }
 
 function csExportJSON() {
