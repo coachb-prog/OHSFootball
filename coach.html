@@ -441,6 +441,17 @@ body {
 .db-bar-pct { width: 34px; text-align: right; color: var(--gold); font-weight: 700; flex-shrink: 0; }
 #db-print-card { display: none; }
 @media (max-width: 600px) { .db-bar-grid { grid-template-columns: 1fr; } }
+.ds-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+.ds-grid label { font-size: 9px; font-weight: 800; letter-spacing: 1px; color: var(--gray); display: flex; flex-direction: column; gap: 3px; }
+.ds-grid .db-input { margin: 0; }
+.ds-chip-label { font-size: 9px; font-weight: 800; letter-spacing: 1px; color: var(--gray); margin: 8px 0 4px; }
+.ds-chip-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ds-chip { background: var(--black3); border: 1px solid #333; border-radius: 6px; color: var(--white); padding: 7px 10px; font-size: 11px; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; }
+.ds-chip.sel { background: var(--red); border-color: var(--red); }
+.ds-chip.ds-explosive.sel { background: var(--gold); border-color: var(--gold); color: var(--black); }
+.ds-recent-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.ds-recent-table th { text-align: left; padding: 5px 8px; font-size: 9px; letter-spacing: 1px; color: var(--gray); border-bottom: 1px solid #333; }
+.ds-recent-table td { padding: 5px 8px; border-bottom: 1px solid #222; color: var(--white); }
 .cs-side { display: flex; gap: 10px; margin-bottom: 18px; align-items: flex-start; }
 .cs-col { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .cs-box { border: 2px solid #000; background: #fff; border-radius: 3px; overflow: hidden; }
@@ -545,6 +556,14 @@ body {
         <div class="mode-info">
           <div class="mode-name">GAME CALL SHEET</div>
           <div class="mode-desc">Two-sided game week call sheet from live data</div>
+        </div>
+        <div class="mode-badge">▶</div>
+      </button>
+      <button class="mode-btn mode-btn-featured" onclick="startDefScout()">
+        <div class="mode-icon">🛡️</div>
+        <div class="mode-info">
+          <div class="mode-name">OPPONENT OFFENSE SCOUT</div>
+          <div class="mode-desc">Chart opponent offense for the defensive staff</div>
         </div>
         <div class="mode-badge">▶</div>
       </button>
@@ -684,6 +703,58 @@ body {
   </div>
 </div>
 
+<!-- OPPONENT OFFENSE SCOUT (defensive staff) -->
+<div id="defscout-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">OPPONENT OFFENSE SCOUT</div>
+    <div class="header-xp"></div>
+  </div>
+  <div class="db-wrap">
+    <div class="db-card">
+      <div class="db-card-title">OPPONENTS</div>
+      <div class="db-opp-row" id="ds-opp-list"></div>
+      <div id="ds-games-list"></div>
+      <input class="db-input" id="ds-opp-name" placeholder="OPPONENT NAME" maxlength="24">
+      <input class="db-input" id="ds-game-label" placeholder="GAME LABEL (e.g. WK 3 VS X)" maxlength="32">
+      <button class="db-upload-btn" style="display:block;text-align:center" onclick="dsAddGame()">＋ NEW GAME</button>
+      <div class="db-upload-status" id="ds-status"></div>
+    </div>
+    <div id="ds-main">
+      <div class="db-card" id="ds-entry-card" style="display:none">
+        <div class="db-card-title">CHART A PLAY <span id="ds-entry-ctx" style="color:var(--gray);font-weight:400"></span></div>
+        <div class="ds-grid">
+          <label>QTR<input class="db-input" id="ds-qtr" type="number" min="1" max="5"></label>
+          <label>DN<input class="db-input" id="ds-down" type="number" min="1" max="4"></label>
+          <label>DIST<input class="db-input" id="ds-dist" type="number" min="0" max="40"></label>
+          <label>YARD LN (±)<input class="db-input" id="ds-yardln" type="number" min="-49" max="50" onchange="dsSuggestZone()"></label>
+          <label>PERSONNEL<input class="db-input" id="ds-personnel" maxlength="4" placeholder="11"></label>
+          <label>OFF FORM<input class="db-input" id="ds-offform" maxlength="24" placeholder="TRIPS RT"></label>
+          <label>RB ALIGN<input class="db-input" id="ds-rbalign" maxlength="16" placeholder="FAR / NEAR / PISTOL"></label>
+          <label>MOTION<input class="db-input" id="ds-motion" maxlength="16"></label>
+          <label>TARGET (WR #)<input class="db-input" id="ds-target" maxlength="4"></label>
+          <label>TREE<input class="db-input" id="ds-tree" maxlength="16"></label>
+          <label>PASS PRO<input class="db-input" id="ds-passpro" maxlength="16"></label>
+          <label>GN/LS<input class="db-input" id="ds-gainloss" type="number" min="-30" max="99"></label>
+        </div>
+        <div class="ds-chip-label">HASH</div>
+        <div class="ds-chip-row" id="ds-hash-row"></div>
+        <div class="ds-chip-label">FIELD ZONE</div>
+        <div class="ds-chip-row" id="ds-zone-row"></div>
+        <div class="ds-chip-label">PLAY TYPE (canonical codes)</div>
+        <div class="ds-chip-row" id="ds-ptype-run"></div>
+        <div class="ds-chip-row" id="ds-ptype-pass"></div>
+        <div class="ds-chip-row" style="margin-bottom:8px">
+          <button class="ds-chip ds-explosive" id="ds-explosive" onclick="dsToggleExplosive()">💥 EXPLOSIVE</button>
+          <input class="db-input" id="ds-notes" placeholder="NOTES (feeds report callouts)" style="flex:1" maxlength="80">
+        </div>
+        <button class="ss-slides-btn" onclick="dsAddPlay()">＋ ADD PLAY</button>
+      </div>
+      <div id="ds-recent"></div>
+    </div>
+  </div>
+</div>
+
 <!-- shared print surface: must live outside the .screen divs so printing works from any screen -->
 <div id="db-print-card"></div>
 
@@ -698,7 +769,7 @@ function goHome() {
 }
 // ---- backup nag: everything lives in localStorage, so nag when data changed since last backup ----
 function rdBackupFingerprint() {
-  return (localStorage.getItem('rd_defbreak') || '').length + ':' + (localStorage.getItem('rd_selfscout') || '').length;
+  return (localStorage.getItem('rd_defbreak') || '').length + ':' + (localStorage.getItem('rd_selfscout') || '').length + ':' + (localStorage.getItem('rd_defscout') || '').length;
 }
 function rdRenderBackupNag() {
   const el = document.getElementById('rd-backup-nag');
@@ -718,6 +789,7 @@ function rdBackupAll() {
     exportedAt: new Date().toISOString(),
     defbreak: JSON.parse(localStorage.getItem('rd_defbreak') || '{}'),
     selfscout: JSON.parse(localStorage.getItem('rd_selfscout') || '{"games":[]}'),
+    defscout: JSON.parse(localStorage.getItem('rd_defscout') || '{}'),
   };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -740,6 +812,7 @@ function rdHandleRestoreFile(input) {
       if (!confirm('Restore will REPLACE all current scouting data with this backup. Continue?')) return;
       if (data.defbreak) localStorage.setItem('rd_defbreak', JSON.stringify(data.defbreak));
       if (data.selfscout) localStorage.setItem('rd_selfscout', JSON.stringify(data.selfscout));
+      if (data.defscout) localStorage.setItem('rd_defscout', JSON.stringify(data.defscout));
       localStorage.setItem('rd_backup_fp', rdBackupFingerprint());
       localStorage.setItem('rd_backup_at', String(Date.now()));
       rdRenderBackupNag();
@@ -3759,6 +3832,143 @@ function csPrint() {
   window.addEventListener('afterprint', cleanup);
   window.print();
   setTimeout(cleanup, 2000);
+}
+
+// ==================== OPPONENT OFFENSE SCOUT (defensive staff) ====================
+// Mirror of the opponent-defense breakdown, charting the opponent's OFFENSE.
+// Step 1 schema (confirmed): canonical play-type codes stored everywhere,
+// descriptive names display-only. Storage mirrors rd_defbreak so multi-game
+// aggregation reuses the same logic.
+const DS_PLAY_TYPES = {
+  D: { label: 'DRAW', cat: 'RUN' }, G: { label: 'GAP (PULL)', cat: 'RUN' }, O: { label: 'OPTION', cat: 'RUN' },
+  R: { label: 'READ', cat: 'RUN' }, IZ: { label: 'INSIDE ZONE', cat: 'RUN' }, OZ: { label: 'OUTSIDE ZONE', cat: 'RUN' },
+  MIX: { label: 'RPO/MIX', cat: 'RPO' },
+  DB: { label: 'DROP BACK', cat: 'PASS' }, QK: { label: 'QUICK GAME', cat: 'PASS' }, SO: { label: 'SPRINT OUT', cat: 'PASS' },
+  PA: { label: 'PLAY ACTION', cat: 'PASS' }, B: { label: 'BOOT/WAGGLE', cat: 'PASS' }, S: { label: 'SCREEN', cat: 'PASS' },
+};
+const DS_ZONES = { BU: 'BACKED UP', OF: 'OPEN FIELD', PLUS: 'PLUS TERR.', RZ: 'RED ZONE', GL: 'GOAL LINE' };
+let dsCurrentOpp = null, dsActiveGameId = null, dsSel = { hash: null, zone: null, playType: null, explosive: false };
+
+function getDSOpponents() { return JSON.parse(localStorage.getItem('rd_defscout') || '{}'); }
+function saveDSOpponents(all) { localStorage.setItem('rd_defscout', JSON.stringify(all)); }
+function dsActiveGame() {
+  const entry = getDSOpponents()[dsCurrentOpp];
+  return entry ? entry.games.find(g => g.id === dsActiveGameId) : null;
+}
+
+// negative yard line = own territory (Hudl convention)
+function dsZoneFromYard(y) {
+  if (y == null || isNaN(y)) return null;
+  if (y < 0) return y >= -20 ? 'BU' : 'OF';
+  if (y <= 5) return 'GL';
+  if (y <= 20) return 'RZ';
+  if (y <= 40) return 'PLUS';
+  return 'OF';
+}
+function dsSuggestZone() {
+  const z = dsZoneFromYard(parseFloat(document.getElementById('ds-yardln').value));
+  if (z) { dsSel.zone = z; dsRenderChips(); }
+}
+
+function startDefScout() {
+  showScreen('defscout-screen');
+  dsRenderOppList();
+  dsRenderChips();
+  dsRenderRecent();
+}
+function dsRenderOppList() {
+  const all = getDSOpponents();
+  const el = document.getElementById('ds-opp-list');
+  el.innerHTML = Object.keys(all).map(name =>
+    `<button class="db-opp-pill${name === dsCurrentOpp ? ' active' : ''}" onclick="dsSelectOpp('${dbEscapeHTML(name)}')">${dbEscapeHTML(name)}</button>`).join('') || '<div class="db-empty" style="padding:4px 0">No opponents yet — name one below and hit NEW GAME.</div>';
+  const gl = document.getElementById('ds-games-list');
+  const entry = all[dsCurrentOpp];
+  gl.innerHTML = entry ? entry.games.map(g =>
+    `<div class="ss-game-select-row${g.id === dsActiveGameId ? ' active' : ''}" onclick="dsSelectGame('${g.id}')">${dbEscapeHTML(g.label)} <span style="color:var(--gray)">(${g.rows.length} plays)</span><span class="db-game-del" onclick="event.stopPropagation();dsDeleteGame('${g.id}')">✕</span></div>`).join('') : '';
+  document.getElementById('ds-entry-card').style.display = dsActiveGame() ? 'block' : 'none';
+  document.getElementById('ds-entry-ctx').textContent = dsActiveGame() ? '— ' + dsCurrentOpp + ' · ' + dsActiveGame().label : '';
+}
+function dsSelectOpp(name) { dsCurrentOpp = name; const e = getDSOpponents()[name]; dsActiveGameId = e && e.games.length ? e.games[e.games.length - 1].id : null; dsRenderOppList(); dsRenderRecent(); }
+function dsSelectGame(id) { dsActiveGameId = id; dsRenderOppList(); dsRenderRecent(); }
+function dsAddGame() {
+  const name = (document.getElementById('ds-opp-name').value || dsCurrentOpp || '').toUpperCase().trim();
+  if (!name) { alert('Enter an opponent name.'); return; }
+  const label = (document.getElementById('ds-game-label').value || '').toUpperCase().trim();
+  const all = getDSOpponents();
+  if (!all[name]) all[name] = { games: [] };
+  const g = { id: 'g' + Date.now(), label: label || ('GAME ' + (all[name].games.length + 1)), rows: [], savedAt: Date.now() };
+  all[name].games.push(g);
+  saveDSOpponents(all);
+  dsCurrentOpp = name; dsActiveGameId = g.id;
+  document.getElementById('ds-game-label').value = '';
+  dsRenderOppList(); dsRenderRecent();
+}
+function dsDeleteGame(id) {
+  if (!confirm('Delete this game and its charted plays?')) return;
+  const all = getDSOpponents();
+  const entry = all[dsCurrentOpp];
+  entry.games = entry.games.filter(g => g.id !== id);
+  if (!entry.games.length) delete all[dsCurrentOpp];
+  saveDSOpponents(all);
+  if (dsActiveGameId === id) dsActiveGameId = null;
+  if (!all[dsCurrentOpp]) dsCurrentOpp = null;
+  dsRenderOppList(); dsRenderRecent();
+}
+
+function dsRenderChips() {
+  document.getElementById('ds-hash-row').innerHTML = ['L', 'M', 'R'].map(h =>
+    `<button class="ds-chip${dsSel.hash === h ? ' sel' : ''}" onclick="dsSel.hash='${h}';dsRenderChips()">${h}</button>`).join('');
+  document.getElementById('ds-zone-row').innerHTML = Object.entries(DS_ZONES).map(([code, label]) =>
+    `<button class="ds-chip${dsSel.zone === code ? ' sel' : ''}" onclick="dsSel.zone='${code}';dsRenderChips()">${code} · ${label}</button>`).join('');
+  const chip = code => `<button class="ds-chip${dsSel.playType === code ? ' sel' : ''}" onclick="dsSel.playType='${code}';dsRenderChips()">${code} · ${DS_PLAY_TYPES[code].label}</button>`;
+  document.getElementById('ds-ptype-run').innerHTML = ['D', 'G', 'O', 'R', 'IZ', 'OZ', 'MIX'].map(chip).join('');
+  document.getElementById('ds-ptype-pass').innerHTML = ['DB', 'QK', 'SO', 'PA', 'B', 'S'].map(chip).join('');
+  const ex = document.getElementById('ds-explosive');
+  ex.classList.toggle('sel', dsSel.explosive);
+}
+function dsToggleExplosive() { dsSel.explosive = !dsSel.explosive; dsRenderChips(); }
+
+function dsAddPlay() {
+  const game = dsActiveGame();
+  if (!game) { alert('Create/select a game first.'); return; }
+  const val = id => document.getElementById(id).value.trim();
+  const num = id => { const v = parseFloat(val(id)); return isNaN(v) ? null : v; };
+  if (!dsSel.playType) { alert('Pick a PLAY TYPE code.'); return; }
+  if (num('ds-down') == null) { alert('Enter the down.'); return; }
+  const row = {
+    qtr: num('ds-qtr'), down: num('ds-down'), dist: num('ds-dist'),
+    yardLn: num('ds-yardln'), hash: dsSel.hash || '', zone: dsSel.zone || '',
+    personnel: val('ds-personnel').toUpperCase(), offForm: val('ds-offform').toUpperCase(),
+    rbAlign: val('ds-rbalign').toUpperCase(), motion: val('ds-motion').toUpperCase(),
+    playType: dsSel.playType, target: val('ds-target'), tree: val('ds-tree').toUpperCase(),
+    passPro: val('ds-passpro').toUpperCase(),
+    gainLoss: num('ds-gainloss') == null ? 0 : num('ds-gainloss'),
+    explosive: dsSel.explosive, notes: val('ds-notes'),
+  };
+  const all = getDSOpponents();
+  all[dsCurrentOpp].games.find(g => g.id === dsActiveGameId).rows.push(row);
+  saveDSOpponents(all);
+  // sticky context between plays (film charting is sequential); result fields clear
+  ['ds-target', 'ds-tree', 'ds-gainloss', 'ds-notes', 'ds-motion'].forEach(id => document.getElementById(id).value = '');
+  dsSel.playType = null; dsSel.explosive = false;
+  dsRenderChips(); dsRenderOppList(); dsRenderRecent();
+}
+function dsDeletePlay(i) {
+  const all = getDSOpponents();
+  const game = all[dsCurrentOpp].games.find(g => g.id === dsActiveGameId);
+  game.rows.splice(i, 1);
+  saveDSOpponents(all);
+  dsRenderOppList(); dsRenderRecent();
+}
+function dsRenderRecent() {
+  const el = document.getElementById('ds-recent');
+  const game = dsActiveGame();
+  if (!game) { el.innerHTML = '<div class="db-empty">Select an opponent and game to start charting. Tendency tables come online in the next build step.</div>'; return; }
+  const last = game.rows.map((r, i) => ({ r, i })).slice(-12).reverse();
+  el.innerHTML = `<div class="db-section"><div class="db-section-title">LAST ${last.length} PLAYS — ${game.rows.length} TOTAL</div>
+    <table class="ds-recent-table"><tr><th>DN&amp;D</th><th>HASH</th><th>ZONE</th><th>PERS</th><th>FORM</th><th>RB</th><th>MOT</th><th>TYPE</th><th>TGT</th><th>GN</th><th></th></tr>
+    ${last.map(({ r, i }) => `<tr><td>${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</td><td>${dbEscapeHTML(r.hash)}</td><td>${dbEscapeHTML(r.zone)}</td><td>${dbEscapeHTML(r.personnel)}</td><td>${dbEscapeHTML(r.offForm)}</td><td>${dbEscapeHTML(r.rbAlign)}</td><td>${dbEscapeHTML(r.motion)}</td><td><strong>${dbEscapeHTML(r.playType)}</strong></td><td>${dbEscapeHTML(r.target)}</td><td>${r.gainLoss}${r.explosive ? ' 💥' : ''}</td><td><span class="db-game-del" onclick="dsDeletePlay(${i})">✕</span></td></tr>`).join('')}
+    </table></div>`;
 }
 
 function csExportJSON() {
