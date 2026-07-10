@@ -717,7 +717,11 @@ body {
       <div id="ds-games-list"></div>
       <input class="db-input" id="ds-opp-name" placeholder="OPPONENT NAME" maxlength="24">
       <input class="db-input" id="ds-game-label" placeholder="GAME LABEL (e.g. WK 3 VS X)" maxlength="32">
-      <button class="db-upload-btn" style="display:block;text-align:center" onclick="dsAddGame()">＋ NEW GAME</button>
+      <label for="ds-file-input">
+        <input type="file" id="ds-file-input" accept=".csv,.xlsx,.xls" onchange="handleDSFile(this)" style="display:none">
+        <span class="db-upload-btn">📁 UPLOAD HUDL FILE (.csv / .xlsx)</span>
+      </label>
+      <button class="db-upload-btn" style="display:block;text-align:center" onclick="dsAddGame()">＋ NEW GAME (chart by hand)</button>
       <div class="db-upload-status" id="ds-status"></div>
     </div>
     <div id="ds-main">
@@ -3847,6 +3851,120 @@ const DS_PLAY_TYPES = {
   PA: { label: 'PLAY ACTION', cat: 'PASS' }, B: { label: 'BOOT/WAGGLE', cat: 'PASS' }, S: { label: 'SCREEN', cat: 'PASS' },
 };
 const DS_ZONES = { BU: 'BACKED UP', OF: 'OPEN FIELD', PLUS: 'PLUS TERR.', RZ: 'RED ZONE', GL: 'GOAL LINE' };
+
+// Hudl export columns for opponent-offense scouts (PlaylistData tagged file).
+const DS_COLUMN_ALIASES = {
+  'ODK': 'odk', 'PLAY #': 'playNum', 'PLAY NUM': 'playNum', 'QTR': 'qtr', 'QUARTER': 'qtr',
+  'DN': 'down', 'DOWN': 'down', 'DIST': 'dist', 'DISTANCE': 'dist',
+  'GN/LS': 'gainLoss', 'GN LS': 'gainLoss', 'RESULT': 'result',
+  'PLAY TYPE': 'playTypeRaw', 'OFF FORM': 'offForm', 'OFF FORMATION': 'offForm',
+  'BACKFIELD': 'rbAlign', 'RB ALIGN': 'rbAlign', 'OFF PLAY': 'offPlay', 'TAG': 'tag',
+  'TREE': 'tree', 'TARGET': 'target', 'MOTION': 'motion', 'MOTION DIR': 'motionDir',
+  'YARD LN': 'yardLn', 'YARDLINE': 'yardLn', 'YARD LINE': 'yardLn',
+  'HASH': 'hash', 'OFF STR': 'offStr', 'PLAY DIR': 'playDir', 'BOUNDARY': 'boundary',
+  'PERSONNEL': 'personnel', 'COVERAGE': 'coverage', 'NOTES': 'notes',
+};
+
+// Derive the canonical play-type code from Hudl's Run/Pass + OFF PLAY text.
+// Hudl tags the call ("IZ", "OZ LEFT", "FK IZ/H BUBBLE", route strings) — we
+// map to the code taxonomy; anything unmatched stays uncoded ('') and is
+// counted in the upload status rather than guessed.
+function dsDeriveCode(playTypeRaw, offPlay) {
+  const t = String(playTypeRaw || '').trim().toUpperCase();
+  const p = ' ' + String(offPlay || '').trim().toUpperCase() + ' ';
+  const has = re => re.test(p);
+  if (has(/BUBBLE|\bNOW\b|\bRPO\b/)) return 'MIX';
+  if (t.startsWith('R')) {
+    if (has(/\bDRAW\b/)) return 'D';
+    if (has(/\bIZ\b|INSIDE ZONE/)) return 'IZ';
+    if (has(/\bOZ\b|OUTSIDE ZONE|STRETCH|WIDE ZONE/)) return 'OZ';
+    if (has(/TRAP|POWER|\bCTR\b|COUNTER|PULL|BUCK|\bGT\b|\bG\b/)) return 'G';
+    if (has(/OPTION|PITCH|TRIPLE/)) return 'O';
+    if (has(/\bREAD\b|\bZR\b|\bQR\b/)) return 'R';
+    return '';
+  }
+  if (t.startsWith('P')) {
+    if (has(/SCREEN|JAIL/)) return 'S';
+    if (has(/BOOT|WAGGLE|NAKED/)) return 'B';
+    if (has(/SPRINT|\bROLL\b/)) return 'SO';
+    if (has(/\bFK\b|\bPA\b|PLAY ACTION|FAKE/)) return 'PA';
+    return 'DB';
+  }
+  return '';
+}
+
+function dsRowsToObjects(aoa) {
+  if (!aoa.length) return [];
+  const colMap = {};
+  aoa[0].forEach((h, i) => {
+    const key = DS_COLUMN_ALIASES[dbNormHeader(h)];
+    if (key) colMap[key] = i;
+  });
+  const S = v => {
+    if (v == null) return '';
+    if (typeof v === 'number' && Number.isInteger(v)) return String(v);
+    return String(v).trim().toUpperCase();
+  };
+  const N = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+  return aoa.slice(1)
+    .filter(r => r && r.some(c => c !== undefined && c !== null && String(c).trim() !== ''))
+    .map(r => {
+      const g = key => colMap[key] != null ? r[colMap[key]] : null;
+      const gainLoss = N(g('gainLoss')) == null ? 0 : N(g('gainLoss'));
+      const yardLn = N(g('yardLn'));
+      const motion = [S(g('motion')), S(g('motionDir'))].filter(Boolean).join(' ');
+      return {
+        odk: S(g('odk')), qtr: N(g('qtr')), down: N(g('down')), dist: N(g('dist')),
+        yardLn, hash: S(g('hash')), zone: dsZoneFromYard(yardLn) || '',
+        personnel: S(g('personnel')), offForm: S(g('offForm')), rbAlign: S(g('rbAlign')),
+        motion, playType: dsDeriveCode(g('playTypeRaw'), g('offPlay')),
+        target: S(g('target')), tree: S(g('tree')), passPro: S(g('tag')),
+        gainLoss, explosive: gainLoss >= 15, notes: S(g('notes')),
+        offPlay: S(g('offPlay')), result: S(g('result')), playDir: S(g('playDir')),
+        offStr: S(g('offStr')), boundary: S(g('boundary')),
+      };
+    })
+    .filter(row => !row.odk || row.odk.charAt(0) === 'O');
+}
+
+async function handleDSFile(input) {
+  const file = input.files[0];
+  const statusEl = document.getElementById('ds-status');
+  if (!file) return;
+  statusEl.textContent = 'Reading file…';
+  try {
+    const ext = file.name.split('.').pop().toLowerCase();
+    let aoa;
+    if (ext === 'csv') {
+      aoa = dbParseCSV(await file.text());
+    } else {
+      await dbLoadXLSXLib();
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
+    }
+    const rows = dsRowsToObjects(aoa);
+    if (!rows.length) throw new Error('No offensive plays found in that file');
+    let name = (document.getElementById('ds-opp-name').value || dsCurrentOpp || '').toUpperCase().trim();
+    if (!name) name = 'OPPONENT ' + (Object.keys(getDSOpponents()).length + 1);
+    const label = (document.getElementById('ds-game-label').value || '').toUpperCase().trim();
+    const all = getDSOpponents();
+    if (!all[name]) all[name] = { games: [] };
+    const g = { id: 'g' + Date.now(), label: label || ('GAME ' + (all[name].games.length + 1)), rows, savedAt: Date.now() };
+    all[name].games.push(g);
+    saveDSOpponents(all);
+    dsCurrentOpp = name; dsActiveGameId = g.id;
+    document.getElementById('ds-opp-name').value = '';
+    document.getElementById('ds-game-label').value = '';
+    const uncoded = rows.filter(r => !r.playType).length;
+    statusEl.textContent = `✅ ${rows.length} plays loaded for ${name}` +
+      (uncoded ? ` — ${uncoded} could not be auto-coded to a play-type code (blank OFF PLAY or unknown call); they stay charted without a code.` : ' — all plays auto-coded.');
+    dsRenderOppList(); dsRenderRecent();
+  } catch (err) {
+    statusEl.textContent = '❌ ' + err.message;
+  }
+  input.value = '';
+}
 let dsCurrentOpp = null, dsActiveGameId = null, dsSel = { hash: null, zone: null, playType: null, explosive: false };
 
 function getDSOpponents() { return JSON.parse(localStorage.getItem('rd_defscout') || '{}'); }
@@ -3966,8 +4084,8 @@ function dsRenderRecent() {
   if (!game) { el.innerHTML = '<div class="db-empty">Select an opponent and game to start charting. Tendency tables come online in the next build step.</div>'; return; }
   const last = game.rows.map((r, i) => ({ r, i })).slice(-12).reverse();
   el.innerHTML = `<div class="db-section"><div class="db-section-title">LAST ${last.length} PLAYS — ${game.rows.length} TOTAL</div>
-    <table class="ds-recent-table"><tr><th>DN&amp;D</th><th>HASH</th><th>ZONE</th><th>PERS</th><th>FORM</th><th>RB</th><th>MOT</th><th>TYPE</th><th>TGT</th><th>GN</th><th></th></tr>
-    ${last.map(({ r, i }) => `<tr><td>${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</td><td>${dbEscapeHTML(r.hash)}</td><td>${dbEscapeHTML(r.zone)}</td><td>${dbEscapeHTML(r.personnel)}</td><td>${dbEscapeHTML(r.offForm)}</td><td>${dbEscapeHTML(r.rbAlign)}</td><td>${dbEscapeHTML(r.motion)}</td><td><strong>${dbEscapeHTML(r.playType)}</strong></td><td>${dbEscapeHTML(r.target)}</td><td>${r.gainLoss}${r.explosive ? ' 💥' : ''}</td><td><span class="db-game-del" onclick="dsDeletePlay(${i})">✕</span></td></tr>`).join('')}
+    <table class="ds-recent-table"><tr><th>DN&amp;D</th><th>HASH</th><th>ZONE</th><th>FORM</th><th>RB</th><th>MOT</th><th>TYPE</th><th>PLAY</th><th>TGT</th><th>GN</th><th></th></tr>
+    ${last.map(({ r, i }) => `<tr><td>${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</td><td>${dbEscapeHTML(r.hash)}</td><td>${dbEscapeHTML(r.zone)}</td><td>${dbEscapeHTML(r.offForm)}</td><td>${dbEscapeHTML(r.rbAlign)}</td><td>${dbEscapeHTML(r.motion)}</td><td><strong>${dbEscapeHTML(r.playType || '—')}</strong></td><td>${dbEscapeHTML((r.offPlay || '').slice(0, 22))}</td><td>${dbEscapeHTML(r.target)}</td><td>${r.gainLoss}${r.explosive ? ' 💥' : ''}</td><td><span class="db-game-del" onclick="dsDeletePlay(${i})">✕</span></td></tr>`).join('')}
     </table></div>`;
 }
 
