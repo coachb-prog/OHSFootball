@@ -4083,7 +4083,7 @@ function dsDeletePlay(i) {
 }
 // ---- breakdown dashboard (auto-renders on upload/selection, defense-breakdown twin) ----
 let dsActiveTab = 'formation';
-let dsFilter = { dd: '', hash: '', zone: '' };
+let dsFilter = { dd: '', hash: '', zone: '', form: '' };
 
 function dsGetActiveRows() {
   const entry = getDSOpponents()[dsCurrentOpp];
@@ -4109,7 +4109,8 @@ function dsApplyFilters(rows) {
   return rows.filter(r =>
     (!dsFilter.dd || dbDownDistBucket(r) === dsFilter.dd) &&
     (!dsFilter.hash || r.hash === dsFilter.hash) &&
-    (!dsFilter.zone || r.zone === dsFilter.zone));
+    (!dsFilter.zone || r.zone === dsFilter.zone) &&
+    (!dsFilter.form || r.offForm === dsFilter.form));
 }
 function dsSplitHTML(rows) {
   const n = rows.length;
@@ -4186,6 +4187,25 @@ const DS_TABS = [
       + dbPanelWrap('FORMATION × BACKFIELD (VARIANTS)', dsTendTable(rows, variant, 'FORMATION · RB', { plays: true }))
       + (rows.some(r => r.personnel) ? dbPanelWrap('BY PERSONNEL', dsTendTable(rows, r => r.personnel || null, 'PERSONNEL', { plays: true })) : '<div class="db-note">PERSONNEL is not tagged in this data — tag it in Hudl to unlock the personnel cut.</div>');
   } },
+  { id: 'formcards', label: 'FORMATION CARDS', render: rows => {
+    const groups = Object.entries(dbGroupBy(rows, r => r.offForm || null)).sort((a, b) => b[1].length - a[1].length);
+    if (!groups.length) return '<div class="db-empty">No formations tagged.</div>';
+    const list = (rs, cat, n) => dbTop(dbFreqByFn(rs.filter(r => dsCat(r) === cat), r => r.offPlay || null), n)
+      .map(t => `<li>${dbEscapeHTML(t.label)} <span style="color:var(--gold)">x${t.count}</span></li>`).join('') || '<li style="color:var(--gray)">—</li>';
+    return groups.map(([form, rs]) => {
+      const variants = dbTop(dbFreqByFn(rs, r => r.rbAlign || null), 4).map(t => `${dbEscapeHTML(t.label)} x${t.count}`).join(', ') || '—';
+      const dd = dbTop(dbFreqByFn(rs, dbDownDistBucket), 3).map(t => `${dbEscapeHTML(t.label)} x${t.count}`).join(', ') || '—';
+      const notes = [...new Set(rs.map(r => r.notes).filter(Boolean))].slice(0, 2);
+      return dbPanelWrap(`${dbEscapeHTML(form)} — ${rs.length} PLAYS (${Math.round(rs.length / rows.length * 100)}%)${dbLowSampleTag(rs.length)}`,
+        `<div style="margin-bottom:8px">${dsSplitHTML(rs)} &nbsp;·&nbsp; AVG ${dsAvg(rs)} &nbsp;·&nbsp; ${rs.filter(r => r.explosive).length} EXPLOSIVE</div>
+        <div style="font-size:11px;color:var(--gray);margin-bottom:8px">VARIANTS: ${variants} &nbsp;·&nbsp; WHEN: ${dd}</div>
+        <div class="db-bar-grid">
+          <div><div class="db-bar-group-title">TOP RUNS</div><ul class="db-insights" style="font-size:12px">${list(rs, 'RUN', 4)}</ul></div>
+          <div><div class="db-bar-group-title">TOP PASSES</div><ul class="db-insights" style="font-size:12px">${list(rs, 'PASS', 4)}${dbTop(dbFreqByFn(rs.filter(r => dsCat(r) === 'RPO'), r => r.offPlay || null), 2).map(t => `<li>${dbEscapeHTML(t.label)} <span style="color:var(--gold)">x${t.count} (RPO)</span></li>`).join('')}</ul></div>
+        </div>
+        ${notes.length ? `<div class="db-note" style="margin-top:8px">📝 ${notes.map(dbEscapeHTML).join(' · ')}</div>` : ''}`);
+    }).join('');
+  } },
   { id: 'plays', label: 'PLAYS', render: rows => {
     const table = (rs, title) => {
       const groups = dbGroupBy(rs, r => r.offPlay || null);
@@ -4251,7 +4271,9 @@ function dsRenderDashboard() {
       <option value="">ALL HASHES</option>${['L', 'M', 'R'].map(h => `<option${dsFilter.hash === h ? ' selected' : ''}>${h}</option>`).join('')}</select>
     <select class="db-input" style="width:auto;margin:0" onchange="dsFilter.zone=this.value;dsRenderDashboard()">
       <option value="">ALL ZONES</option>${Object.entries(DS_ZONES).map(([code, l]) => `<option value="${code}"${dsFilter.zone === code ? ' selected' : ''}>${l}</option>`).join('')}</select>
-    ${(dsFilter.dd || dsFilter.hash || dsFilter.zone) ? `<button class="ds-chip sel" onclick="dsFilter={dd:'',hash:'',zone:''};dsRenderDashboard()">✕ CLEAR — showing ${rows.length}/${all.length}</button>` : ''}
+    <select class="db-input" style="width:auto;margin:0" onchange="dsFilter.form=this.value;dsRenderDashboard()">
+      <option value="">ALL FORMATIONS</option>${[...new Set(all.map(r => r.offForm).filter(Boolean))].sort().map(f => `<option${dsFilter.form === f ? ' selected' : ''}>${dbEscapeHTML(f)}</option>`).join('')}</select>
+    ${(dsFilter.dd || dsFilter.hash || dsFilter.zone || dsFilter.form) ? `<button class="ds-chip sel" onclick="dsFilter={dd:'',hash:'',zone:'',form:''};dsRenderDashboard()">✕ CLEAR — showing ${rows.length}/${all.length}</button>` : ''}
   </div>`;
   el.innerHTML = `
     <div class="db-stats-grid">
