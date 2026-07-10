@@ -755,6 +755,7 @@ body {
         <button class="ss-slides-btn" onclick="dsAddPlay()">＋ ADD PLAY</button>
       </div>
       <div id="ds-recent"></div>
+      <div id="ds-dashboard"></div>
     </div>
   </div>
 </div>
@@ -4001,7 +4002,9 @@ function dsRenderOppList() {
     `<button class="db-opp-pill${name === dsCurrentOpp ? ' active' : ''}" onclick="dsSelectOpp('${dbEscapeHTML(name)}')">${dbEscapeHTML(name)}</button>`).join('') || '<div class="db-empty" style="padding:4px 0">No opponents yet — name one below and hit NEW GAME.</div>';
   const gl = document.getElementById('ds-games-list');
   const entry = all[dsCurrentOpp];
-  gl.innerHTML = entry ? entry.games.map(g =>
+  gl.innerHTML = entry ? (entry.games.length > 1
+    ? `<div class="ss-game-select-row${dsActiveGameId === 'ALL' ? ' active' : ''}" onclick="dsSelectGame('ALL')"><strong>ALL GAMES (${entry.games.length})</strong></div>` : '')
+    + entry.games.map(g =>
     `<div class="ss-game-select-row${g.id === dsActiveGameId ? ' active' : ''}" onclick="dsSelectGame('${g.id}')">${dbEscapeHTML(g.label)} <span style="color:var(--gray)">(${g.rows.length} plays)</span><span class="db-game-del" onclick="event.stopPropagation();dsDeleteGame('${g.id}')">✕</span></div>`).join('') : '';
   document.getElementById('ds-entry-card').style.display = dsActiveGame() ? 'block' : 'none';
   document.getElementById('ds-entry-ctx').textContent = dsActiveGame() ? '— ' + dsCurrentOpp + ' · ' + dsActiveGame().label : '';
@@ -4078,10 +4081,177 @@ function dsDeletePlay(i) {
   saveDSOpponents(all);
   dsRenderOppList(); dsRenderRecent();
 }
+// ---- breakdown dashboard (auto-renders on upload/selection, defense-breakdown twin) ----
+let dsActiveTab = 'formation';
+let dsFilter = { dd: '', hash: '', zone: '' };
+
+function dsGetActiveRows() {
+  const entry = getDSOpponents()[dsCurrentOpp];
+  if (!entry) return [];
+  if (dsActiveGameId === 'ALL') return entry.games.reduce((a, g) => a.concat(g.rows), []);
+  const g = entry.games.find(g => g.id === dsActiveGameId);
+  return g ? g.rows : [];
+}
+// run/pass/RPO category; uncoded plays fall back to Hudl RESULT
+function dsCat(r) {
+  const t = DS_PLAY_TYPES[r.playType];
+  if (t) return t.cat;
+  const res = String(r.result || '').toUpperCase();
+  if (res.includes('RUSH')) return 'RUN';
+  if (res.includes('COMPLETE') || res.includes('INT') || res.includes('SACK') || res.includes('SCRAMBLE')) return 'PASS';
+  return null;
+}
+function dsIsLive(r) {
+  const res = String(r.result || '').toUpperCase();
+  return !res.includes('PENALTY') && !res.includes('TIMEOUT');
+}
+function dsApplyFilters(rows) {
+  return rows.filter(r =>
+    (!dsFilter.dd || dbDownDistBucket(r) === dsFilter.dd) &&
+    (!dsFilter.hash || r.hash === dsFilter.hash) &&
+    (!dsFilter.zone || r.zone === dsFilter.zone));
+}
+function dsSplitHTML(rows) {
+  const n = rows.length;
+  if (!n) return '—';
+  const c = { RUN: 0, PASS: 0, RPO: 0 };
+  rows.forEach(r => { const k = dsCat(r); if (k) c[k]++; });
+  const pct = k => Math.round(c[k] / n * 100);
+  return `<span style="color:#7fdc7f">RUN ${pct('RUN')}%</span> · <span style="color:#7fb8ff">PASS ${pct('PASS')}%</span>${c.RPO ? ` · <span style="color:var(--gold)">RPO ${pct('RPO')}%</span>` : ''}`;
+}
+function dsAvg(rows) {
+  return rows.length ? Math.round(rows.reduce((s, r) => s + (r.gainLoss || 0), 0) / rows.length * 10) / 10 : 0;
+}
+function dsTopPlays(rows, n) {
+  return dbTop(dbFreqByFn(rows, r => r.offPlay || null), n).map(t => `${dbEscapeHTML(t.label)} <span style="color:var(--gold)">x${t.count}</span>`).join(', ') || '—';
+}
+function dsTendRows(rows, keyFn, opts) {
+  const groups = dbGroupBy(rows, keyFn);
+  const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+  return entries.map(([k, rs]) => `<tr${rs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+    <td><strong>${dbEscapeHTML(k)}</strong><br><span style="color:var(--gray);font-size:11px">${rs.length} plays (${Math.round(rs.length / rows.length * 100)}%)${dbLowSampleTag(rs.length)}</span></td>
+    <td>${dsSplitHTML(rs)}</td>
+    <td>${dsAvg(rs)}</td>
+    <td>${rs.filter(r => r.explosive).length}</td>
+    ${opts && opts.plays ? `<td style="font-size:11px">${dsTopPlays(rs, 2)}</td>` : ''}
+  </tr>`).join('');
+}
+function dsTendTable(rows, keyFn, col1, opts) {
+  const trs = dsTendRows(rows, keyFn, opts);
+  if (!trs) return '<div class="db-empty">No data in this cut.</div>';
+  return `<table class="db-table"><tr><th>${col1}</th><th>RUN/PASS</th><th>AVG</th><th>EXPL</th>${opts && opts.plays ? '<th>TOP PLAYS</th>' : ''}</tr>${trs}</table>`;
+}
+
+function dsGenerateInsights(rows) {
+  const items = [];
+  const lean = (rs, label, minN) => {
+    if (rs.length < (minN || 5)) return;
+    const runs = rs.filter(r => dsCat(r) === 'RUN').length;
+    const pct = Math.round(runs / rs.length * 100);
+    if (pct >= 70) items.push({ w: rs.length * 2, t: `On <strong>${dbEscapeHTML(label)}</strong> (${rs.length} plays): <strong>RUN ${pct}%</strong>.` });
+    else if (pct <= 30) items.push({ w: rs.length * 2, t: `On <strong>${dbEscapeHTML(label)}</strong> (${rs.length} plays): <strong>PASS ${100 - pct}%</strong>.` });
+  };
+  Object.entries(dbGroupBy(rows, dbDownDistBucket)).forEach(([b, rs]) => lean(rs, b));
+  Object.entries(dbGroupBy(rows, r => r.offForm || null)).forEach(([f, rs]) => lean(rs, f + ' formation', 4));
+  Object.entries(dbGroupBy(rows, r => r.rbAlign || null)).forEach(([bf, rs]) => lean(rs, bf + ' backfield', 5));
+  Object.entries(dbGroupBy(rows, r => r.zone ? DS_ZONES[r.zone] : null)).forEach(([z, rs]) => lean(rs, z, 4));
+  // motion tells
+  const withMotion = rows.filter(r => r.motion);
+  const noMotion = rows.filter(r => !r.motion);
+  if (withMotion.length >= 5 && noMotion.length >= 5) {
+    const mp = Math.round(withMotion.filter(r => dsCat(r) !== 'RUN').length / withMotion.length * 100);
+    const np = Math.round(noMotion.filter(r => dsCat(r) !== 'RUN').length / noMotion.length * 100);
+    if (Math.abs(mp - np) >= 20) items.push({ w: withMotion.length * 2, t: `Motion tell: <strong>${mp}% pass with motion</strong> vs ${np}% without (${withMotion.length} motion snaps).` });
+  }
+  // direction vs strength
+  const dir = rows.filter(r => dsCat(r) === 'RUN' && r.playDir && r.offStr && r.offStr !== 'BAL');
+  if (dir.length >= 6) {
+    const toStr = dir.filter(r => r.playDir === r.offStr).length;
+    const pct = Math.round(toStr / dir.length * 100);
+    if (pct >= 65) items.push({ w: dir.length, t: `Runs <strong>to strength ${pct}%</strong> of the time (${dir.length} directional runs).` });
+    else if (pct <= 35) items.push({ w: dir.length, t: `Runs <strong>away from strength ${100 - pct}%</strong> of the time (${dir.length} directional runs).` });
+  }
+  // explosive sources
+  const expl = rows.filter(r => r.explosive && r.offPlay);
+  const explTop = dbTop(dbFreqByFn(expl, r => r.offPlay), 3);
+  if (explTop.length) items.push({ w: expl.length * 2, t: `Explosives come from: ${explTop.map(t => `<strong>${dbEscapeHTML(t.label)}</strong> x${t.count}`).join(', ')}.` });
+  items.sort((a, b) => b.w - a.w);
+  return items.slice(0, 12).map(i => i.t);
+}
+
+const DS_TABS = [
+  { id: 'formation', label: 'FORMATION', render: rows => {
+    const variant = r => [r.offForm, r.rbAlign].filter(Boolean).join(' · ') || null;
+    return dbPanelWrap('BY FORMATION', dsTendTable(rows, r => r.offForm || null, 'FORMATION', { plays: true }))
+      + dbPanelWrap('FORMATION × BACKFIELD (VARIANTS)', dsTendTable(rows, variant, 'FORMATION · RB', { plays: true }))
+      + (rows.some(r => r.personnel) ? dbPanelWrap('BY PERSONNEL', dsTendTable(rows, r => r.personnel || null, 'PERSONNEL', { plays: true })) : '<div class="db-note">PERSONNEL is not tagged in this data — tag it in Hudl to unlock the personnel cut.</div>');
+  } },
+  { id: 'downdist', label: 'DOWN & DISTANCE', render: rows => dbPanelWrap('BY DOWN & DISTANCE', dsTendTable(rows, dbDownDistBucket, 'SITUATION', { plays: true })) },
+  { id: 'hashzone', label: 'HASH & ZONE', render: rows =>
+    dbPanelWrap('BY HASH', dsTendTable(rows, r => r.hash || null, 'HASH'))
+    + dbPanelWrap('BY FIELD ZONE', dsTendTable(rows, r => r.zone ? r.zone + ' · ' + DS_ZONES[r.zone] : null, 'ZONE')) },
+  { id: 'backmotion', label: 'BACKFIELD & MOTION', render: rows =>
+    dbPanelWrap('BY BACKFIELD SET', dsTendTable(rows, r => r.rbAlign || null, 'BACKFIELD', { plays: true }))
+    + dbPanelWrap('BY MOTION', dsTendTable(rows, r => r.motion || 'NO MOTION', 'MOTION'))
+    + dbPanelWrap('BACKFIELD × MOTION', dsTendTable(rows.filter(r => r.rbAlign), r => r.rbAlign + (r.motion ? ' + ' + r.motion : ' (STATIC)'), 'COMBO')) },
+  { id: 'playtypes', label: 'PLAY TYPES', render: rows =>
+    dbPanelWrap('BY PLAY TYPE CODE', dsTendTable(rows.filter(r => r.playType), r => r.playType + ' · ' + DS_PLAY_TYPES[r.playType].label, 'CODE', { plays: true })
+    + (rows.some(r => !r.playType && dsIsLive(r)) ? `<div class="db-note">${rows.filter(r => !r.playType && dsIsLive(r)).length} plays are uncoded (blank OFF PLAY in Hudl) and excluded from this cut.</div>` : '')) },
+  { id: 'passpro', label: 'PASS PRO & TARGETS', render: rows => {
+    const passes = rows.filter(r => dsCat(r) !== 'RUN');
+    return (passes.some(r => r.passPro) ? dbPanelWrap('PASS PRO', dsTendTable(passes.filter(r => r.passPro), r => r.passPro, 'PROTECTION', { plays: true })) : '<div class="db-note">TAG (pass pro) not tagged in this data.</div>')
+      + (passes.some(r => r.target) ? dbPanelWrap('TARGETS', dsTendTable(passes.filter(r => r.target), r => '#' + r.target, 'TARGET (WR #)', { plays: true })) : '<div class="db-note">TARGET not tagged in this data — tag WR #s in Hudl to unlock the target cut.</div>')
+      + (passes.some(r => r.tree) ? dbPanelWrap('TREE', dsTendTable(passes.filter(r => r.tree), r => r.tree, 'TREE')) : '');
+  } },
+  { id: 'direction', label: 'DIRECTION', render: rows => {
+    const runs = rows.filter(r => dsCat(r) === 'RUN');
+    return dbPanelWrap('RUN DIRECTION', dsTendTable(runs.filter(r => r.playDir), r => 'RUNS ' + r.playDir, 'DIRECTION', { plays: true }))
+      + dbPanelWrap('DIRECTION VS STRENGTH', dsTendTable(runs.filter(r => r.playDir && r.offStr), r => r.offStr === 'BAL' ? 'BALANCED SET' : (r.playDir === r.offStr ? 'TO STRENGTH' : 'AWAY FROM STRENGTH'), 'RUN SIDE', { plays: true }));
+  } },
+];
+
+function dsRenderDashboard() {
+  const el = document.getElementById('ds-dashboard');
+  const all = dsGetActiveRows().filter(dsIsLive);
+  if (!all.length) { el.innerHTML = ''; return; }
+  const rows = dsApplyFilters(all);
+  const c = { RUN: 0, PASS: 0, RPO: 0 };
+  rows.forEach(r => { const k = dsCat(r); if (k) c[k]++; });
+  const topForm = dbTop(dbFreqByFn(rows, r => r.offForm || null), 1)[0];
+  const topBack = dbTop(dbFreqByFn(rows, r => r.rbAlign || null), 1)[0];
+  const insights = dsGenerateInsights(rows);
+  const ddOpts = [...new Set(all.map(dbDownDistBucket).filter(Boolean))];
+  const filterBar = `<div class="ds-chip-row" style="margin-bottom:12px">
+    <select class="db-input" style="width:auto;margin:0" onchange="dsFilter.dd=this.value;dsRenderDashboard()">
+      <option value="">ALL DOWNS${dsFilter.dd ? '' : ' ✓'}</option>${ddOpts.map(b => `<option${dsFilter.dd === b ? ' selected' : ''}>${b}</option>`).join('')}</select>
+    <select class="db-input" style="width:auto;margin:0" onchange="dsFilter.hash=this.value;dsRenderDashboard()">
+      <option value="">ALL HASHES</option>${['L', 'M', 'R'].map(h => `<option${dsFilter.hash === h ? ' selected' : ''}>${h}</option>`).join('')}</select>
+    <select class="db-input" style="width:auto;margin:0" onchange="dsFilter.zone=this.value;dsRenderDashboard()">
+      <option value="">ALL ZONES</option>${Object.entries(DS_ZONES).map(([code, l]) => `<option value="${code}"${dsFilter.zone === code ? ' selected' : ''}>${l}</option>`).join('')}</select>
+    ${(dsFilter.dd || dsFilter.hash || dsFilter.zone) ? `<button class="ds-chip sel" onclick="dsFilter={dd:'',hash:'',zone:''};dsRenderDashboard()">✕ CLEAR — showing ${rows.length}/${all.length}</button>` : ''}
+  </div>`;
+  el.innerHTML = `
+    <div class="db-stats-grid">
+      <div class="db-stat"><div class="db-stat-num">${rows.length}</div><div class="db-stat-label">PLAYS</div></div>
+      <div class="db-stat"><div class="db-stat-num">${rows.length ? Math.round(c.RUN / rows.length * 100) : 0}%</div><div class="db-stat-label">RUN</div></div>
+      <div class="db-stat"><div class="db-stat-num">${rows.length ? Math.round(c.PASS / rows.length * 100) : 0}%</div><div class="db-stat-label">PASS</div></div>
+      <div class="db-stat"><div class="db-stat-num">${topForm ? dbEscapeHTML(topForm.label) : '—'}</div><div class="db-stat-label">TOP FORMATION</div></div>
+      <div class="db-stat"><div class="db-stat-num">${topBack ? dbEscapeHTML(topBack.label) : '—'}</div><div class="db-stat-label">TOP BACKFIELD</div></div>
+      <div class="db-stat"><div class="db-stat-num">${rows.filter(r => r.explosive).length}</div><div class="db-stat-label">EXPLOSIVES (15+)</div></div>
+    </div>
+    ${filterBar}
+    ${insights.length ? `<div class="db-section"><div class="db-section-title">KEY TENDENCIES</div><div class="db-section-body"><ul class="db-insights">${insights.map(i => `<li>${i}</li>`).join('')}</ul></div></div>` : ''}
+    <div class="db-tabs" style="margin-bottom:10px">${DS_TABS.map(t => `<div class="db-tab${dsActiveTab === t.id ? ' active' : ''}" data-ds-tab="${t.id}">${t.label}</div>`).join('')}</div>
+    ${(DS_TABS.find(t => t.id === dsActiveTab) || DS_TABS[0]).render(rows)}
+  `;
+  el.querySelectorAll('[data-ds-tab]').forEach(t => t.addEventListener('click', () => { dsActiveTab = t.dataset.dsTab; dsRenderDashboard(); }));
+}
+
 function dsRenderRecent() {
+  dsRenderDashboard();
   const el = document.getElementById('ds-recent');
   const game = dsActiveGame();
-  if (!game) { el.innerHTML = '<div class="db-empty">Select an opponent and game to start charting. Tendency tables come online in the next build step.</div>'; return; }
+  if (!game) { el.innerHTML = dsActiveGameId === 'ALL' ? '' : '<div class="db-empty">Select an opponent and game, or upload a Hudl file — the breakdown renders automatically.</div>'; return; }
   const last = game.rows.map((r, i) => ({ r, i })).slice(-12).reverse();
   el.innerHTML = `<div class="db-section"><div class="db-section-title">LAST ${last.length} PLAYS — ${game.rows.length} TOTAL</div>
     <table class="ds-recent-table"><tr><th>DN&amp;D</th><th>HASH</th><th>ZONE</th><th>FORM</th><th>RB</th><th>MOT</th><th>TYPE</th><th>PLAY</th><th>TGT</th><th>GN</th><th></th></tr>
