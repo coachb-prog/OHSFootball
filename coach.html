@@ -4186,6 +4186,29 @@ const DS_TABS = [
       + dbPanelWrap('FORMATION × BACKFIELD (VARIANTS)', dsTendTable(rows, variant, 'FORMATION · RB', { plays: true }))
       + (rows.some(r => r.personnel) ? dbPanelWrap('BY PERSONNEL', dsTendTable(rows, r => r.personnel || null, 'PERSONNEL', { plays: true })) : '<div class="db-note">PERSONNEL is not tagged in this data — tag it in Hudl to unlock the personnel cut.</div>');
   } },
+  { id: 'plays', label: 'PLAYS', render: rows => {
+    const table = (rs, title) => {
+      const groups = dbGroupBy(rs, r => r.offPlay || null);
+      const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length).slice(0, 20);
+      if (!entries.length) return dbPanelWrap(title, '<div class="db-empty">No plays tagged in this cut.</div>');
+      const trs = entries.map(([play, prs]) => {
+        const dd = dbTop(dbFreqByFn(prs, dbDownDistBucket), 2).map(t => `${dbEscapeHTML(t.label)} x${t.count}`).join(', ') || '—';
+        const form = dbTop(dbFreqByFn(prs, r => [r.offForm, r.rbAlign].filter(Boolean).join(' · ') || null), 1)[0];
+        const code = prs[0].playType ? ` <span style="color:var(--gold)">(${dbEscapeHTML(prs[0].playType)})</span>` : '';
+        return `<tr${prs.length < DB_LOW_SAMPLE_N ? ' class="db-low-sample"' : ''}>
+          <td><strong>${dbEscapeHTML(play)}</strong>${code}<br><span style="color:var(--gray);font-size:11px">${prs.length} plays (${Math.round(prs.length / rs.length * 100)}%)${dbLowSampleTag(prs.length)}</span></td>
+          <td>${dsAvg(prs)}</td>
+          <td>${prs.filter(r => r.explosive).length}</td>
+          <td style="font-size:11px">${dd}</td>
+          <td style="font-size:11px">${form ? dbEscapeHTML(form.label) + ' <span style="color:var(--gold)">x' + form.count + '</span>' : '—'}</td>
+        </tr>`;
+      }).join('');
+      return dbPanelWrap(title, `<table class="db-table"><tr><th>PLAY (CODE)</th><th>AVG</th><th>EXPL</th><th>WHEN</th><th>TOP LOOK</th></tr>${trs}</table>`);
+    };
+    return table(rows.filter(r => dsCat(r) === 'RUN'), 'TOP RUNS')
+      + table(rows.filter(r => dsCat(r) === 'PASS'), 'TOP PASSES')
+      + table(rows.filter(r => dsCat(r) === 'RPO'), 'RPO / MIX');
+  } },
   { id: 'downdist', label: 'DOWN & DISTANCE', render: rows => dbPanelWrap('BY DOWN & DISTANCE', dsTendTable(rows, dbDownDistBucket, 'SITUATION', { plays: true })) },
   { id: 'hashzone', label: 'HASH & ZONE', render: rows =>
     dbPanelWrap('BY HASH', dsTendTable(rows, r => r.hash || null, 'HASH'))
