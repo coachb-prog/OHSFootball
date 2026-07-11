@@ -835,6 +835,8 @@ body {
       <label class="lv-cfg-label">MOTIONS<textarea class="db-input" id="lv-cfg-motions" rows="2"></textarea></label>
       <label class="lv-cfg-label">RUN PLAYS<textarea class="db-input" id="lv-cfg-runplays" rows="2"></textarea></label>
       <label class="lv-cfg-label">PASS PLAYS<textarea class="db-input" id="lv-cfg-passplays" rows="3"></textarea></label>
+      <label class="lv-cfg-label">TAGS<textarea class="db-input" id="lv-cfg-tags" rows="2"></textarea></label>
+      <label class="lv-cfg-label">PERSONNEL<textarea class="db-input" id="lv-cfg-personnel" rows="1"></textarea></label>
       <button class="db-backup-btn" style="width:100%" onclick="lvSaveConfig()">SAVE BUTTON SETS</button>
       <div class="db-upload-status">Play codes are the fixed taxonomy (D/G/O/R/IZ/OZ/Mix · DB/QK/SO/PA/B/Mix/S). Every play saves to this device instantly — no internet needed during the game. Move data to the film computer afterward with the home-screen BACKUP file.</div>
     </div>
@@ -861,6 +863,8 @@ body {
         </div>
         <button class="lv-chip lv-newdrive" onclick="lvNewDrive()">NEW DRIVE</button>
       </div>
+      <div class="lv-sec-label">PERSONNEL</div>
+      <div class="lv-grid" id="lv-pers-grid"></div>
       <div class="lv-sec-label">FORMATION</div>
       <div class="lv-grid" id="lv-form-grid"></div>
       <div class="lv-sec-label">MOTION</div>
@@ -869,6 +873,9 @@ body {
       <div class="lv-grid" id="lv-runplay-grid"></div>
       <div class="lv-sec-label">PASS PLAYS</div>
       <div class="lv-grid" id="lv-passplay-grid"></div>
+      <div class="lv-sec-label">TAG (tap or type)</div>
+      <div class="lv-grid" id="lv-tag-grid"></div>
+      <input class="db-input" id="lv-tag-custom" placeholder="TYPE A TAG…" maxlength="24" style="margin-bottom:4px" oninput="lvSel.tag='';lvRenderGrids()">
       <div class="lv-sec-label">TYPE (OPTIONAL — sharpens categories)</div>
       <div class="lv-grid" id="lv-run-grid"></div>
       <div class="lv-grid" id="lv-pass-grid"></div>
@@ -3272,6 +3279,8 @@ const LV_DEFAULT_CONFIG = {
   // actual calls, seeded from the install/concept sheet — the primary pick
   runPlays: ['GIANTS', 'CHARGERS', 'RAVENS', 'CINCY', 'RAMS', 'DENVER', 'BUCS', 'CHICAGO', 'DART'],
   passPlays: ['KENTUCKY', 'LOUISVILLE', 'INDIANA', 'FLORIDA', 'TEXAS', 'CLEMSON', 'MIAMI', 'HAWAII', 'OREGON', 'PITTSBURGH', 'TENNESSEE', 'SYRACUSE', 'MICHIGAN', 'HOUSTON', 'UTAH', 'BOSTON', 'WATER', 'ICE', 'FSU', 'LSU', 'USC', 'SMU', 'SMOKES'],
+  tags: ['DEFAULTS', 'H COKE', 'Y COKE', 'X COKE', 'Z COKE', 'HAWAII', 'CLEMSON', 'MIAMI', 'PITTSBURGH', 'OREGON'],
+  personnel: ['10', '11', '12', '20', 'DYNASTY', 'SLEDGEHAMMER'],
 };
 // protection family per pass call (drives the self-scout category buckets);
 // an explicit TYPE tap overrides this when a call lives in two families
@@ -3298,13 +3307,14 @@ function lvSaveConfig() {
   localStorage.setItem('rd_live_config', JSON.stringify({
     formations: parse('lv-cfg-forms'), motions: parse('lv-cfg-motions'),
     runPlays: parse('lv-cfg-runplays'), passPlays: parse('lv-cfg-passplays'),
+    tags: parse('lv-cfg-tags'), personnel: parse('lv-cfg-personnel'),
   }));
   lvRenderGrids();
   alert('Button sets saved (stored on this device).');
 }
 
 let lvGameId = localStorage.getItem('rd_live_active') || null;
-let lvSel = { down: 1, form: null, motion: null, code: null, call: null, callKind: null, dir: null, jersey: '', explosive: false, td: false, flag: false, to: false };
+let lvSel = { down: 1, pers: null, form: null, motion: null, code: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
 let lvEditIndex = null;
 
 function startLiveChart() {
@@ -3314,6 +3324,8 @@ function startLiveChart() {
   document.getElementById('lv-cfg-motions').value = cfg.motions.join(', ');
   document.getElementById('lv-cfg-runplays').value = cfg.runPlays.join(', ');
   document.getElementById('lv-cfg-passplays').value = cfg.passPlays.join(', ');
+  document.getElementById('lv-cfg-tags').value = cfg.tags.join(', ');
+  document.getElementById('lv-cfg-personnel').value = cfg.personnel.join(', ');
   lvUpdateNet();
   window.addEventListener('online', lvUpdateNet);
   window.addEventListener('offline', lvUpdateNet);
@@ -3377,6 +3389,7 @@ function lvRenderGrids() {
   const cfg = lvGetConfig();
   const chip = (label, key, val, extra) => `<button class="lv-chip${lvSel[key] === val ? ' sel' : ''}${extra || ''}" onclick="lvPick('${key}',${JSON.stringify(val).replace(/"/g, '&quot;')})">${dbEscapeHTML(label)}</button>`;
   document.getElementById('lv-down-row').innerHTML = [1, 2, 3, 4].map(d => chip(String(d), 'down', d)).join('');
+  document.getElementById('lv-pers-grid').innerHTML = cfg.personnel.map(p => chip(p, 'pers', p)).join('');
   document.getElementById('lv-form-grid').innerHTML = cfg.formations.map(f => chip(f, 'form', f)).join('');
   document.getElementById('lv-motion-grid').innerHTML = chip('NONE', 'motion', '') + cfg.motions.map(m => chip(m, 'motion', m)).join('');
   const callChip = (c, kind) => `<button class="lv-chip${lvSel.call === c && lvSel.callKind === kind ? ' sel' : ''}" onclick="lvPickCall('${dbEscapeHTML(c)}','${kind}')">${dbEscapeHTML(c)}</button>`;
@@ -3384,6 +3397,8 @@ function lvRenderGrids() {
   document.getElementById('lv-passplay-grid').innerHTML = cfg.passPlays.map(c => callChip(c, 'pass')).join('');
   document.getElementById('lv-dir-chips').innerHTML = ['PRO', 'CON'].map(d =>
     `<button class="lv-chip${lvSel.dir === d ? ' sel' : ''}" style="min-height:34px;font-size:12px" onclick="lvPick('dir',lvSel.dir==='${d}'?null:'${d}')">${d}</button>`).join('');
+  document.getElementById('lv-tag-grid').innerHTML = cfg.tags.map(t =>
+    `<button class="lv-chip${lvSel.tag === t ? ' sel' : ''}" onclick="lvSel.tag=lvSel.tag==='${t.replace(/'/g, "\\'")}'?'':'${t.replace(/'/g, "\\'")}';document.getElementById('lv-tag-custom').value='';lvRenderGrids()">${dbEscapeHTML(t)}</button>`).join('');
   document.getElementById('lv-run-grid').innerHTML = LV_RUN_CODES.map(c => chip(c === 'MIX' ? 'MIX (RPO)' : c, 'code', c)).join('');
   document.getElementById('lv-pass-grid').innerHTML = LV_PASS_CODES.map(c => chip(c, 'code', c)).join('');
   document.getElementById('lv-numpad').innerHTML =
@@ -3447,6 +3462,8 @@ function lvBuildRow() {
     offPlay,
     concept: isRun ? (call || code || '') : '',
     liveCode: code || '', target: lvSel.jersey,
+    passTag: (lvSel.tag || document.getElementById('lv-tag-custom').value.trim().toUpperCase()) || '',
+    personnel: lvSel.pers || '',
     gainLoss: yards, explosive: lvSel.explosive, result,
     live: true,
   };
@@ -3478,7 +3495,8 @@ function lvSubmit() {
     }
   }
   saveSSData(data); // instant local write — the play is safe now
-  lvSel = { ...lvSel, form: lvSel.form, motion: '', code: null, call: null, callKind: null, dir: null, jersey: '', explosive: false, td: false, flag: false, to: false };
+  lvSel = { ...lvSel, form: lvSel.form, pers: lvSel.pers, motion: '', code: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
+  document.getElementById('lv-tag-custom').value = '';
   document.getElementById('lv-yards').value = 0;
   document.getElementById('lv-submit').textContent = '✓ SUBMIT PLAY';
   document.getElementById('lv-submit').classList.remove('lv-editing');
@@ -3492,7 +3510,7 @@ function lvEditPlay(i) {
   lvEditIndex = i;
   const isRunRow = String(r.playType).startsWith('R');
   const base = String(r.offPlay || '').replace(/\b(PRO|CON)\b/, '').trim();
-  lvSel = { down: r.down || 1, form: r.offForm || null, motion: r.motion || '', code: r.liveCode || null,
+  lvSel = { down: r.down || 1, pers: r.personnel || null, form: r.offForm || null, motion: r.motion || '', code: r.liveCode || null, tag: r.passTag || '',
     call: base || null, callKind: base ? (isRunRow ? 'run' : 'pass') : null,
     dir: /\bPRO\b/.test(r.offPlay || '') ? 'PRO' : /\bCON\b/.test(r.offPlay || '') ? 'CON' : null,
     jersey: r.target || '',
@@ -3525,7 +3543,7 @@ function lvRenderLog() {
       <span class="lv-log-num">#${i + 1}</span>
       <span>${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</span>
       <span>${dbEscapeHTML(r.offForm || '—')}${r.motion ? ' · ' + dbEscapeHTML(r.motion) : ''}</span>
-      <span><strong>${dbEscapeHTML(r.offPlay || r.liveCode || '?')}</strong>${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</span>
+      <span><strong>${dbEscapeHTML(r.offPlay || r.liveCode || '?')}</strong>${r.passTag ? ' · ' + dbEscapeHTML(r.passTag) : ''}${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</span>
       <span class="lv-log-badge">${r.gainLoss > 0 ? '+' : ''}${r.gainLoss}${r.explosive ? ' 💥' : ''}${String(r.result).includes('TD') ? ' TD' : ''}${r.result === 'Penalty' ? ' 🚩' : ''}</span>
     </div>`).join('');
 }
