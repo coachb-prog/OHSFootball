@@ -833,6 +833,8 @@ body {
       <div class="pg-cfg-title" style="margin-top:14px">BUTTON SETS (editable — comma separated)</div>
       <label class="lv-cfg-label">FORMATIONS<textarea class="db-input" id="lv-cfg-forms" rows="2"></textarea></label>
       <label class="lv-cfg-label">MOTIONS<textarea class="db-input" id="lv-cfg-motions" rows="2"></textarea></label>
+      <label class="lv-cfg-label">RUN PLAYS<textarea class="db-input" id="lv-cfg-runplays" rows="2"></textarea></label>
+      <label class="lv-cfg-label">PASS PLAYS<textarea class="db-input" id="lv-cfg-passplays" rows="3"></textarea></label>
       <button class="db-backup-btn" style="width:100%" onclick="lvSaveConfig()">SAVE BUTTON SETS</button>
       <div class="db-upload-status">Play codes are the fixed taxonomy (D/G/O/R/IZ/OZ/Mix · DB/QK/SO/PA/B/Mix/S). Every play saves to this device instantly — no internet needed during the game. Move data to the film computer afterward with the home-screen BACKUP file.</div>
     </div>
@@ -863,7 +865,11 @@ body {
       <div class="lv-grid" id="lv-form-grid"></div>
       <div class="lv-sec-label">MOTION</div>
       <div class="lv-grid" id="lv-motion-grid"></div>
-      <div class="lv-sec-label">PLAY</div>
+      <div class="lv-sec-label">RUN PLAYS <span class="lv-dir-chips" id="lv-dir-chips"></span></div>
+      <div class="lv-grid" id="lv-runplay-grid"></div>
+      <div class="lv-sec-label">PASS PLAYS</div>
+      <div class="lv-grid" id="lv-passplay-grid"></div>
+      <div class="lv-sec-label">TYPE (OPTIONAL — sharpens categories)</div>
       <div class="lv-grid" id="lv-run-grid"></div>
       <div class="lv-grid" id="lv-pass-grid"></div>
       <div class="lv-row2">
@@ -3263,24 +3269,42 @@ document.addEventListener('DOMContentLoaded', () => { ssUpdateLogoPreview(); rdR
 const LV_DEFAULT_CONFIG = {
   formations: ['DEUCE', 'BASE', 'BUNCH', 'CLUSTER', 'QUAD', 'EMPTY', 'SLEDGEHAMMER', 'GATE', 'PAIR'],
   motions: ['ZOOM', 'ZIP', 'YOYO', 'TRADE', 'TIP', 'SHUFFLE', 'BOUNCE', 'HOP', 'ORBIT', 'JET', 'BOOM', 'TAXI'],
+  // actual calls, seeded from the install/concept sheet — the primary pick
+  runPlays: ['GIANTS', 'CHARGERS', 'RAVENS', 'CINCY', 'RAMS', 'DENVER', 'BUCS', 'CHICAGO', 'DART'],
+  passPlays: ['KENTUCKY', 'LOUISVILLE', 'INDIANA', 'FLORIDA', 'TEXAS', 'CLEMSON', 'MIAMI', 'HAWAII', 'OREGON', 'PITTSBURGH', 'TENNESSEE', 'SYRACUSE', 'MICHIGAN', 'HOUSTON', 'UTAH', 'BOSTON', 'WATER', 'ICE', 'FSU', 'LSU', 'USC', 'SMU', 'SMOKES'],
 };
+// protection family per pass call (drives the self-scout category buckets);
+// an explicit TYPE tap overrides this when a call lives in two families
+// (e.g. HAWAII is an RPO tag and a dropback call).
+function lvCallProtection(call) {
+  for (const [cat, table] of Object.entries(SS_CONCEPT_LOOKUP)) {
+    if (table[call]) {
+      return { RPO: 'RUN', 'DROP BACK': '90', SCREENS: 'SCREEN', PLAYACTION: '70', RUN: 'RUN' }[cat] || '90';
+    }
+  }
+  if (call === 'BOSTON') return 'BOSTON';
+  return '90';
+}
 const LV_RUN_CODES = ['D', 'G', 'O', 'R', 'IZ', 'OZ', 'MIX'];
 const LV_PASS_CODES = ['DB', 'QK', 'SO', 'PA', 'B', 'S'];
 const LV_CODE_PROTECTION = { DB: '90', QK: '60', SO: 'RIVER', PA: '70', B: 'BOSTON', S: 'SCREEN', MIX: 'RUN' };
 
 function lvGetConfig() {
   const saved = JSON.parse(localStorage.getItem('rd_live_config') || 'null');
-  return saved && saved.formations ? saved : { ...LV_DEFAULT_CONFIG };
+  return saved && saved.formations ? { ...LV_DEFAULT_CONFIG, ...saved } : { ...LV_DEFAULT_CONFIG };
 }
 function lvSaveConfig() {
   const parse = id => document.getElementById(id).value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-  localStorage.setItem('rd_live_config', JSON.stringify({ formations: parse('lv-cfg-forms'), motions: parse('lv-cfg-motions') }));
+  localStorage.setItem('rd_live_config', JSON.stringify({
+    formations: parse('lv-cfg-forms'), motions: parse('lv-cfg-motions'),
+    runPlays: parse('lv-cfg-runplays'), passPlays: parse('lv-cfg-passplays'),
+  }));
   lvRenderGrids();
   alert('Button sets saved (stored on this device).');
 }
 
 let lvGameId = localStorage.getItem('rd_live_active') || null;
-let lvSel = { down: 1, form: null, motion: null, code: null, jersey: '', explosive: false, td: false, flag: false, to: false };
+let lvSel = { down: 1, form: null, motion: null, code: null, call: null, callKind: null, dir: null, jersey: '', explosive: false, td: false, flag: false, to: false };
 let lvEditIndex = null;
 
 function startLiveChart() {
@@ -3288,6 +3312,8 @@ function startLiveChart() {
   const cfg = lvGetConfig();
   document.getElementById('lv-cfg-forms').value = cfg.formations.join(', ');
   document.getElementById('lv-cfg-motions').value = cfg.motions.join(', ');
+  document.getElementById('lv-cfg-runplays').value = cfg.runPlays.join(', ');
+  document.getElementById('lv-cfg-passplays').value = cfg.passPlays.join(', ');
   lvUpdateNet();
   window.addEventListener('online', lvUpdateNet);
   window.addEventListener('offline', lvUpdateNet);
@@ -3353,6 +3379,11 @@ function lvRenderGrids() {
   document.getElementById('lv-down-row').innerHTML = [1, 2, 3, 4].map(d => chip(String(d), 'down', d)).join('');
   document.getElementById('lv-form-grid').innerHTML = cfg.formations.map(f => chip(f, 'form', f)).join('');
   document.getElementById('lv-motion-grid').innerHTML = chip('NONE', 'motion', '') + cfg.motions.map(m => chip(m, 'motion', m)).join('');
+  const callChip = (c, kind) => `<button class="lv-chip${lvSel.call === c && lvSel.callKind === kind ? ' sel' : ''}" onclick="lvPickCall('${dbEscapeHTML(c)}','${kind}')">${dbEscapeHTML(c)}</button>`;
+  document.getElementById('lv-runplay-grid').innerHTML = cfg.runPlays.map(c => callChip(c, 'run')).join('');
+  document.getElementById('lv-passplay-grid').innerHTML = cfg.passPlays.map(c => callChip(c, 'pass')).join('');
+  document.getElementById('lv-dir-chips').innerHTML = ['PRO', 'CON'].map(d =>
+    `<button class="lv-chip${lvSel.dir === d ? ' sel' : ''}" style="min-height:34px;font-size:12px" onclick="lvPick('dir',lvSel.dir==='${d}'?null:'${d}')">${d}</button>`).join('');
   document.getElementById('lv-run-grid').innerHTML = LV_RUN_CODES.map(c => chip(c === 'MIX' ? 'MIX (RPO)' : c, 'code', c)).join('');
   document.getElementById('lv-pass-grid').innerHTML = LV_PASS_CODES.map(c => chip(c, 'code', c)).join('');
   document.getElementById('lv-numpad').innerHTML =
@@ -3362,6 +3393,11 @@ function lvRenderGrids() {
   document.getElementById('lv-jersey').textContent = lvSel.jersey || '—';
 }
 function lvPick(key, val) { lvSel[key] = val; lvRenderGrids(); }
+function lvPickCall(call, kind) {
+  if (lvSel.call === call && lvSel.callKind === kind) { lvSel.call = null; lvSel.callKind = null; }
+  else { lvSel.call = call; lvSel.callKind = kind; }
+  lvRenderGrids();
+}
 function lvToggle(key) { lvSel[key] = !lvSel[key]; lvRenderGrids(); }
 function lvJersey(d) {
   if (d === null) lvSel.jersey = '';
@@ -3384,27 +3420,39 @@ function lvBuildRow() {
   const yardLn = parseFloat(document.getElementById('lv-yardln').value);
   const yards = parseInt(document.getElementById('lv-yards').value, 10) || 0;
   const code = lvSel.code;
-  const isRun = LV_RUN_CODES.includes(code) && code !== 'MIX';
+  const isRun = lvSel.callKind === 'run' || (!lvSel.call && LV_RUN_CODES.includes(code) && code !== 'MIX');
   let result;
   if (lvSel.flag) result = 'Penalty';
   else if (lvSel.to) result = isRun ? 'Fumble' : 'Interception';
-  else if (isRun || code === 'MIX') result = 'Rush' + (lvSel.td ? ', TD' : '');
+  else if (isRun || (!lvSel.call && code === 'MIX')) result = 'Rush' + (lvSel.td ? ', TD' : '');
   else if (yards < 0) result = 'Sack';
   else if (yards === 0 && !lvSel.td) result = 'Incomplete';
   else result = 'Complete' + (lvSel.td ? ', TD' : '');
+  // the actual call is the primary record: OFF PLAY carries call (+PRO/CON for
+  // runs) exactly like the Hudl export, so every self-scout bucket groups it
+  // with film-charted data. Explicit TYPE code overrides the protection family
+  // when a call lives in two families.
+  const call = lvSel.call || '';
+  const offPlay = call ? call + (isRun && lvSel.dir ? ' ' + lvSel.dir : '') : '';
+  let protection;
+  if (isRun) protection = code === 'MIX' ? 'RUN' : '';
+  else if (code && LV_CODE_PROTECTION[code]) protection = LV_CODE_PROTECTION[code];
+  else if (call) protection = lvCallProtection(call);
+  else protection = '90';
   return {
     down: lvSel.down, dist: isNaN(dist) ? null : dist, yardLn: isNaN(yardLn) ? null : yardLn,
     offForm: lvSel.form || '', motion: lvSel.motion || '',
-    playType: isRun || code === 'MIX' && result.startsWith('Rush') ? 'Run' : 'Pass',
-    protection: LV_CODE_PROTECTION[code] || 'RUN',
-    concept: isRun ? code : '',
-    liveCode: code, target: lvSel.jersey,
+    playType: isRun ? 'Run' : 'Pass',
+    protection,
+    offPlay,
+    concept: isRun ? (call || code || '') : '',
+    liveCode: code || '', target: lvSel.jersey,
     gainLoss: yards, explosive: lvSel.explosive, result,
     live: true,
   };
 }
 function lvSubmit() {
-  if (!lvSel.code) { alert('Pick a play code.'); return; }
+  if (!lvSel.call && !lvSel.code) { alert('Pick a play (or at least a type code).'); return; }
   const data = getSSData();
   const game = data.games.find(g => g.id === lvGameId);
   if (!game) { alert('Game not found — restart from setup.'); return; }
@@ -3430,7 +3478,7 @@ function lvSubmit() {
     }
   }
   saveSSData(data); // instant local write — the play is safe now
-  lvSel = { ...lvSel, form: lvSel.form, motion: '', code: null, jersey: '', explosive: false, td: false, flag: false, to: false };
+  lvSel = { ...lvSel, form: lvSel.form, motion: '', code: null, call: null, callKind: null, dir: null, jersey: '', explosive: false, td: false, flag: false, to: false };
   document.getElementById('lv-yards').value = 0;
   document.getElementById('lv-submit').textContent = '✓ SUBMIT PLAY';
   document.getElementById('lv-submit').classList.remove('lv-editing');
@@ -3442,7 +3490,12 @@ function lvEditPlay(i) {
   const game = lvActiveGame();
   const r = game.rows[i];
   lvEditIndex = i;
-  lvSel = { down: r.down || 1, form: r.offForm || null, motion: r.motion || '', code: r.liveCode || null, jersey: r.target || '',
+  const isRunRow = String(r.playType).startsWith('R');
+  const base = String(r.offPlay || '').replace(/\b(PRO|CON)\b/, '').trim();
+  lvSel = { down: r.down || 1, form: r.offForm || null, motion: r.motion || '', code: r.liveCode || null,
+    call: base || null, callKind: base ? (isRunRow ? 'run' : 'pass') : null,
+    dir: /\bPRO\b/.test(r.offPlay || '') ? 'PRO' : /\bCON\b/.test(r.offPlay || '') ? 'CON' : null,
+    jersey: r.target || '',
     explosive: !!r.explosive, td: String(r.result).includes('TD'), flag: String(r.result) === 'Penalty', to: /Fumble|Interception/.test(String(r.result)) };
   document.getElementById('lv-dist').value = r.dist == null ? '' : r.dist;
   document.getElementById('lv-yardln').value = r.yardLn == null ? '' : r.yardLn;
@@ -3472,7 +3525,7 @@ function lvRenderLog() {
       <span class="lv-log-num">#${i + 1}</span>
       <span>${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</span>
       <span>${dbEscapeHTML(r.offForm || '—')}${r.motion ? ' · ' + dbEscapeHTML(r.motion) : ''}</span>
-      <span><strong>${dbEscapeHTML(r.liveCode || '?')}</strong>${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</span>
+      <span><strong>${dbEscapeHTML(r.offPlay || r.liveCode || '?')}</strong>${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</span>
       <span class="lv-log-badge">${r.gainLoss > 0 ? '+' : ''}${r.gainLoss}${r.explosive ? ' 💥' : ''}${String(r.result).includes('TD') ? ' TD' : ''}${r.result === 'Penalty' ? ' 🚩' : ''}</span>
     </div>`).join('');
 }
@@ -3507,6 +3560,13 @@ function lvRenderDash() {
     ${bar('1ST DOWN', byDown(1)?.runPct, byDown(1)?.n || 0)}
     ${bar('2ND DOWN', byDown(2)?.runPct, byDown(2)?.n || 0)}
     ${bar('3RD DOWN', byDown(3)?.runPct, byDown(3)?.n || 0)}
+    <div class="lv-sec-label">PLAYS TONIGHT (avg per call)</div>
+    ${Object.entries(dbGroupBy(rows.filter(r => r.offPlay), r => String(r.offPlay).replace(/\b(PRO|CON)\b/, '').trim()))
+      .sort((a, b) => b[1].length - a[1].length).slice(0, 8)
+      .map(([call, rs]) => {
+        const a = Math.round(rs.reduce((s, r) => s + (r.gainLoss || 0), 0) / rs.length * 10) / 10;
+        return `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(call)}</strong><span>x${rs.length}</span><span class="lv-log-badge" style="color:${a >= 4 ? '#7fdc7f' : '#ff8888'}">${a} avg${rs.some(r => r.explosive) ? ' 💥' : ''}</span></div>`;
+      }).join('') || '<div class="db-empty">no calls tagged yet</div>'}
     <div class="lv-row2" style="margin-top:12px">
       <div><div class="lv-sec-label">TOUCHES</div>${carriers.map(c => `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(c.label)}</strong><span class="lv-log-badge">x${c.count}</span></div>`).join('') || '<div class="db-empty">no #s tagged</div>'}</div>
       <div><div class="lv-sec-label">TOP FORMATIONS</div>${forms.map(f => `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(f.label)}</strong><span class="lv-log-badge">${f.pct}%</span></div>`).join('')}</div>
