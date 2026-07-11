@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Red Devils Playbook</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#111111">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>
 :root {
   --red: #CC0000;
@@ -441,6 +446,45 @@ body {
 .db-bar-pct { width: 34px; text-align: right; color: var(--gold); font-weight: 700; flex-shrink: 0; }
 #db-print-card { display: none; }
 @media (max-width: 600px) { .db-bar-grid { grid-template-columns: 1fr; } }
+.lv-wrap { padding: 12px; max-width: 900px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+.lv-cfg-label { font-size: 10px; font-weight: 800; letter-spacing: 1px; color: var(--gray); display: block; margin-top: 8px; }
+.lv-cfg-label textarea { width: 100%; box-sizing: border-box; font-size: 13px; }
+.lv-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.lv-tab { flex: 1; padding: 14px 0; background: var(--black3); border: 1px solid #333; border-radius: 10px; color: var(--gray); font-size: 15px; font-weight: 900; letter-spacing: 1px; cursor: pointer; }
+.lv-tab.active { background: var(--red); border-color: var(--red); color: var(--white); }
+.lv-situation { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; background: var(--black2); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+.lv-sit-group { display: flex; flex-direction: column; gap: 4px; }
+.lv-sit-label { font-size: 9px; font-weight: 800; letter-spacing: 1px; color: var(--gray); }
+.lv-num { width: 74px; background: var(--black3); border: 1px solid #444; border-radius: 10px; color: var(--white); padding: 12px 8px; font-size: 20px; font-weight: 900; text-align: center; }
+.lv-chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.lv-chip { min-width: 52px; min-height: 48px; background: var(--black3); border: 1px solid #444; border-radius: 10px; color: var(--white); font-size: 15px; font-weight: 900; cursor: pointer; padding: 0 12px; }
+.lv-chip.sel { background: var(--red); border-color: var(--red); }
+.lv-chip.lv-toggle.sel { background: var(--gold); border-color: var(--gold); color: var(--black); }
+.lv-newdrive { background: #1A4A8A; border-color: #1A4A8A; margin-left: auto; }
+.lv-sec-label { font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: var(--gray); margin: 10px 0 6px; }
+.lv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 7px; margin-bottom: 6px; }
+.lv-grid .lv-chip { min-height: 54px; }
+.lv-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 8px; }
+@media (max-width: 640px) { .lv-row2 { grid-template-columns: 1fr; } }
+.lv-pad-display { background: var(--black3); border: 1px solid #444; border-radius: 10px; text-align: center; font-size: 26px; font-weight: 900; color: var(--gold); padding: 8px 0; margin-bottom: 7px; }
+.lv-numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.lv-numpad .lv-chip { min-height: 52px; font-size: 19px; }
+.lv-yards-row { display: flex; gap: 6px; align-items: center; }
+.lv-yards { flex: 1; font-size: 24px; }
+.lv-submit { width: 100%; margin-top: 12px; padding: 18px 0; background: #2A7A2A; border: none; border-radius: 12px; color: var(--white); font-size: 18px; font-weight: 900; letter-spacing: 2px; cursor: pointer; }
+.lv-submit.lv-editing { background: var(--gold); color: var(--black); }
+.lv-cancel { width: 100%; margin-top: 6px; padding: 10px 0; background: var(--black3); border: 1px solid #444; border-radius: 10px; color: var(--gray); font-size: 13px; font-weight: 800; cursor: pointer; }
+.lv-log-row { display: flex; gap: 10px; align-items: center; background: var(--black2); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; font-size: 14px; font-weight: 700; color: var(--white); cursor: pointer; }
+.lv-log-row.lv-editing-row { outline: 2px solid var(--gold); }
+.lv-log-num { color: var(--gray); font-size: 12px; min-width: 28px; }
+.lv-log-badge { margin-left: auto; font-weight: 900; color: var(--gold); }
+.lv-dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.lv-dash-tile { background: var(--black2); border-radius: 14px; padding: 16px 12px; text-align: center; }
+.lv-dash-num { font-size: 40px; font-weight: 900; color: var(--red-light); line-height: 1; }
+.lv-dash-label { font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: var(--gray); margin-top: 6px; }
+.lv-dash-sub { font-size: 15px; font-weight: 900; color: var(--white); margin-top: 4px; }
+.lv-bar { display: flex; height: 34px; border-radius: 8px; overflow: hidden; margin-bottom: 6px; font-size: 14px; font-weight: 900; color: var(--white); }
+.lv-bar > div { display: flex; align-items: center; justify-content: center; min-width: 40px; }
 .ds-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
 .ds-grid label { font-size: 9px; font-weight: 800; letter-spacing: 1px; color: var(--gray); display: flex; flex-direction: column; gap: 3px; }
 .ds-grid .db-input { margin: 0; }
@@ -564,6 +608,14 @@ body {
         <div class="mode-info">
           <div class="mode-name">OPPONENT OFFENSE SCOUT</div>
           <div class="mode-desc">Chart opponent offense for the defensive staff</div>
+        </div>
+        <div class="mode-badge">▶</div>
+      </button>
+      <button class="mode-btn mode-btn-featured" onclick="startLiveChart()">
+        <div class="mode-icon">⚡</div>
+        <div class="mode-info">
+          <div class="mode-name">LIVE GAME CHARTING</div>
+          <div class="mode-desc">Sideline capture → self scout, works with no internet</div>
         </div>
         <div class="mode-badge">▶</div>
       </button>
@@ -759,6 +811,90 @@ body {
       <div id="ds-recent"></div>
       <div id="ds-dashboard"></div>
     </div>
+  </div>
+</div>
+
+<!-- LIVE GAME CHARTING -->
+<div id="live-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">LIVE CHARTING</div>
+    <div class="header-xp" id="lv-net">●</div>
+  </div>
+  <div id="lv-setup" class="lv-wrap">
+    <div class="db-card">
+      <div class="db-card-title">START A LIVE GAME</div>
+      <div class="ss-meta-row">
+        <input class="db-input ss-meta-short" id="lv-week" type="number" placeholder="WK #" min="1" max="20">
+        <input class="db-input ss-meta-grow" id="lv-opponent" placeholder="OPPONENT" maxlength="32">
+      </div>
+      <button class="ss-slides-btn" onclick="lvStartGame()">🏈 START GAME</button>
+      <div id="lv-resume"></div>
+      <div class="pg-cfg-title" style="margin-top:14px">BUTTON SETS (editable — comma separated)</div>
+      <label class="lv-cfg-label">FORMATIONS<textarea class="db-input" id="lv-cfg-forms" rows="2"></textarea></label>
+      <label class="lv-cfg-label">MOTIONS<textarea class="db-input" id="lv-cfg-motions" rows="2"></textarea></label>
+      <button class="db-backup-btn" style="width:100%" onclick="lvSaveConfig()">SAVE BUTTON SETS</button>
+      <div class="db-upload-status">Play codes are the fixed taxonomy (D/G/O/R/IZ/OZ/Mix · DB/QK/SO/PA/B/Mix/S). Every play saves to this device instantly — no internet needed during the game. Move data to the film computer afterward with the home-screen BACKUP file.</div>
+    </div>
+  </div>
+  <div id="lv-game" class="lv-wrap" style="display:none">
+    <div class="lv-tabs">
+      <button class="lv-tab active" id="lv-tab-entry" onclick="lvShowTab('entry')">⚡ ENTRY</button>
+      <button class="lv-tab" id="lv-tab-dash" onclick="lvShowTab('dash')">📊 LIVE DASH</button>
+      <button class="lv-tab" onclick="lvEndGame()">■ END</button>
+    </div>
+    <div id="lv-entry">
+      <div class="lv-situation">
+        <div class="lv-sit-group">
+          <span class="lv-sit-label">DN</span>
+          <div class="lv-chip-row" id="lv-down-row"></div>
+        </div>
+        <div class="lv-sit-group">
+          <span class="lv-sit-label">DIST</span>
+          <input class="lv-num" id="lv-dist" type="number" min="0" max="40" inputmode="numeric">
+        </div>
+        <div class="lv-sit-group">
+          <span class="lv-sit-label">YD LN (− = own)</span>
+          <input class="lv-num" id="lv-yardln" type="number" min="-49" max="50" inputmode="numeric">
+        </div>
+        <button class="lv-chip lv-newdrive" onclick="lvNewDrive()">NEW DRIVE</button>
+      </div>
+      <div class="lv-sec-label">FORMATION</div>
+      <div class="lv-grid" id="lv-form-grid"></div>
+      <div class="lv-sec-label">MOTION</div>
+      <div class="lv-grid" id="lv-motion-grid"></div>
+      <div class="lv-sec-label">PLAY</div>
+      <div class="lv-grid" id="lv-run-grid"></div>
+      <div class="lv-grid" id="lv-pass-grid"></div>
+      <div class="lv-row2">
+        <div>
+          <div class="lv-sec-label">BALL CARRIER / TARGET #</div>
+          <div class="lv-pad-display" id="lv-jersey">—</div>
+          <div class="lv-numpad" id="lv-numpad"></div>
+        </div>
+        <div>
+          <div class="lv-sec-label">RESULT</div>
+          <div class="lv-yards-row">
+            <button class="lv-chip" onclick="lvBumpYards(-5)">−5</button>
+            <button class="lv-chip" onclick="lvBumpYards(-1)">−1</button>
+            <input class="lv-num lv-yards" id="lv-yards" type="number" min="-30" max="99" inputmode="numeric" value="0">
+            <button class="lv-chip" onclick="lvBumpYards(1)">+1</button>
+            <button class="lv-chip" onclick="lvBumpYards(5)">+5</button>
+          </div>
+          <div class="lv-chip-row" style="margin-top:8px">
+            <button class="lv-chip lv-toggle" id="lv-explosive" onclick="lvToggle('explosive')">💥 EXPL</button>
+            <button class="lv-chip lv-toggle" id="lv-td" onclick="lvToggle('td')">TD</button>
+            <button class="lv-chip lv-toggle" id="lv-flag" onclick="lvToggle('flag')">🚩 FLAG</button>
+            <button class="lv-chip lv-toggle" id="lv-to" onclick="lvToggle('to')">TO</button>
+          </div>
+          <button class="lv-submit" id="lv-submit" onclick="lvSubmit()">✓ SUBMIT PLAY</button>
+          <button class="lv-cancel" id="lv-cancel-edit" onclick="lvCancelEdit()" style="display:none">✕ CANCEL EDIT</button>
+        </div>
+      </div>
+      <div class="lv-sec-label">LAST PLAYS (tap to fix)</div>
+      <div id="lv-log"></div>
+    </div>
+    <div id="lv-dash" style="display:none"></div>
   </div>
 </div>
 
@@ -3115,6 +3251,272 @@ async function ssExportSlides() {
 }
 
 document.addEventListener('DOMContentLoaded', () => { ssUpdateLogoPreview(); rdRenderBackupNag(); });
+
+// ==================== LIVE GAME CHARTING ====================
+// Sideline capture that writes normal self-scout rows into rd_selfscout —
+// the live front end for the same dataset, not a separate system. Fully
+// offline: the service worker caches the app shell, every play write is a
+// synchronous localStorage save, and button sets live in local config.
+// Pass codes map to the self-scout protection families; run codes are kept
+// in liveCode and mirrored into concept as a placeholder until the
+// post-game film upload replaces the game with full detail.
+const LV_DEFAULT_CONFIG = {
+  formations: ['DEUCE', 'BASE', 'BUNCH', 'CLUSTER', 'QUAD', 'EMPTY', 'SLEDGEHAMMER', 'GATE', 'PAIR'],
+  motions: ['ZOOM', 'ZIP', 'YOYO', 'TRADE', 'TIP', 'SHUFFLE', 'BOUNCE', 'HOP', 'ORBIT', 'JET', 'BOOM', 'TAXI'],
+};
+const LV_RUN_CODES = ['D', 'G', 'O', 'R', 'IZ', 'OZ', 'MIX'];
+const LV_PASS_CODES = ['DB', 'QK', 'SO', 'PA', 'B', 'S'];
+const LV_CODE_PROTECTION = { DB: '90', QK: '60', SO: 'RIVER', PA: '70', B: 'BOSTON', S: 'SCREEN', MIX: 'RUN' };
+
+function lvGetConfig() {
+  const saved = JSON.parse(localStorage.getItem('rd_live_config') || 'null');
+  return saved && saved.formations ? saved : { ...LV_DEFAULT_CONFIG };
+}
+function lvSaveConfig() {
+  const parse = id => document.getElementById(id).value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  localStorage.setItem('rd_live_config', JSON.stringify({ formations: parse('lv-cfg-forms'), motions: parse('lv-cfg-motions') }));
+  lvRenderGrids();
+  alert('Button sets saved (stored on this device).');
+}
+
+let lvGameId = localStorage.getItem('rd_live_active') || null;
+let lvSel = { down: 1, form: null, motion: null, code: null, jersey: '', explosive: false, td: false, flag: false, to: false };
+let lvEditIndex = null;
+
+function startLiveChart() {
+  showScreen('live-screen');
+  const cfg = lvGetConfig();
+  document.getElementById('lv-cfg-forms').value = cfg.formations.join(', ');
+  document.getElementById('lv-cfg-motions').value = cfg.motions.join(', ');
+  lvUpdateNet();
+  window.addEventListener('online', lvUpdateNet);
+  window.addEventListener('offline', lvUpdateNet);
+  const game = lvActiveGame();
+  if (game) { lvEnterGame(); } else {
+    lvGameId = null; localStorage.removeItem('rd_live_active');
+    document.getElementById('lv-setup').style.display = 'block';
+    document.getElementById('lv-game').style.display = 'none';
+    const games = getSSData().games.filter(g => g.live);
+    document.getElementById('lv-resume').innerHTML = games.length
+      ? '<div class="pg-cfg-title" style="margin-top:12px">RESUME</div>' + games.map(g => `<div class="ss-game-select-row" onclick="lvResume('${g.id}')">${dbEscapeHTML(g.label)} (${g.rows.length} plays)</div>`).join('')
+      : '';
+  }
+}
+function lvUpdateNet() {
+  const el = document.getElementById('lv-net');
+  if (el) el.innerHTML = navigator.onLine ? '<span style="color:#7fdc7f">● ONLINE</span>' : '<span style="color:var(--gold)">● OFFLINE — SAVING LOCALLY</span>';
+}
+function lvActiveGame() {
+  if (!lvGameId) return null;
+  return getSSData().games.find(g => g.id === lvGameId) || null;
+}
+function lvStartGame() {
+  const opp = (document.getElementById('lv-opponent').value || '').toUpperCase().trim();
+  if (!opp) { alert('Enter the opponent.'); return; }
+  const week = parseInt(document.getElementById('lv-week').value, 10) || null;
+  const data = getSSData();
+  const g = { id: 'g' + Date.now(), weekId: week, opponent: opp, live: true,
+    label: (week ? 'WK ' + week + ' ' : '') + 'VS ' + opp + ' (LIVE)',
+    gameDate: new Date().toISOString().slice(0, 10), rows: [], savedAt: Date.now() };
+  data.games.push(g);
+  saveSSData(data);
+  lvGameId = g.id;
+  localStorage.setItem('rd_live_active', g.id);
+  lvNewDrive();
+  lvEnterGame();
+}
+function lvResume(id) { lvGameId = id; localStorage.setItem('rd_live_active', id); lvEnterGame(); }
+function lvEndGame() {
+  if (!confirm('End live charting? The game stays in Self Scout — add film detail there later, and move it to the film computer via the home-screen BACKUP file.')) return;
+  lvGameId = null;
+  localStorage.removeItem('rd_live_active');
+  startLiveChart();
+}
+function lvEnterGame() {
+  document.getElementById('lv-setup').style.display = 'none';
+  document.getElementById('lv-game').style.display = 'block';
+  lvRenderGrids();
+  lvRenderLog();
+  lvShowTab('entry');
+}
+function lvShowTab(tab) {
+  document.getElementById('lv-entry').style.display = tab === 'entry' ? 'block' : 'none';
+  document.getElementById('lv-dash').style.display = tab === 'dash' ? 'block' : 'none';
+  document.getElementById('lv-tab-entry').classList.toggle('active', tab === 'entry');
+  document.getElementById('lv-tab-dash').classList.toggle('active', tab === 'dash');
+  if (tab === 'dash') lvRenderDash();
+}
+
+function lvRenderGrids() {
+  const cfg = lvGetConfig();
+  const chip = (label, key, val, extra) => `<button class="lv-chip${lvSel[key] === val ? ' sel' : ''}${extra || ''}" onclick="lvPick('${key}',${JSON.stringify(val).replace(/"/g, '&quot;')})">${dbEscapeHTML(label)}</button>`;
+  document.getElementById('lv-down-row').innerHTML = [1, 2, 3, 4].map(d => chip(String(d), 'down', d)).join('');
+  document.getElementById('lv-form-grid').innerHTML = cfg.formations.map(f => chip(f, 'form', f)).join('');
+  document.getElementById('lv-motion-grid').innerHTML = chip('NONE', 'motion', '') + cfg.motions.map(m => chip(m, 'motion', m)).join('');
+  document.getElementById('lv-run-grid').innerHTML = LV_RUN_CODES.map(c => chip(c === 'MIX' ? 'MIX (RPO)' : c, 'code', c)).join('');
+  document.getElementById('lv-pass-grid').innerHTML = LV_PASS_CODES.map(c => chip(c, 'code', c)).join('');
+  document.getElementById('lv-numpad').innerHTML =
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map(n => `<button class="lv-chip" onclick="lvJersey('${n}')">${n}</button>`).join('')
+    + '<button class="lv-chip" onclick="lvJersey(null)" style="grid-column:span 2">CLEAR</button>';
+  ['explosive', 'td', 'flag', 'to'].forEach(k => document.getElementById('lv-' + k).classList.toggle('sel', lvSel[k]));
+  document.getElementById('lv-jersey').textContent = lvSel.jersey || '—';
+}
+function lvPick(key, val) { lvSel[key] = val; lvRenderGrids(); }
+function lvToggle(key) { lvSel[key] = !lvSel[key]; lvRenderGrids(); }
+function lvJersey(d) {
+  if (d === null) lvSel.jersey = '';
+  else if (lvSel.jersey.length < 2) lvSel.jersey += d;
+  lvRenderGrids();
+}
+function lvBumpYards(n) {
+  const el = document.getElementById('lv-yards');
+  el.value = (parseInt(el.value, 10) || 0) + n;
+}
+function lvNewDrive() {
+  lvSel.down = 1;
+  const distEl = document.getElementById('lv-dist');
+  if (distEl) { distEl.value = 10; }
+  lvRenderGrids();
+}
+
+function lvBuildRow() {
+  const dist = parseFloat(document.getElementById('lv-dist').value);
+  const yardLn = parseFloat(document.getElementById('lv-yardln').value);
+  const yards = parseInt(document.getElementById('lv-yards').value, 10) || 0;
+  const code = lvSel.code;
+  const isRun = LV_RUN_CODES.includes(code) && code !== 'MIX';
+  let result;
+  if (lvSel.flag) result = 'Penalty';
+  else if (lvSel.to) result = isRun ? 'Fumble' : 'Interception';
+  else if (isRun || code === 'MIX') result = 'Rush' + (lvSel.td ? ', TD' : '');
+  else if (yards < 0) result = 'Sack';
+  else if (yards === 0 && !lvSel.td) result = 'Incomplete';
+  else result = 'Complete' + (lvSel.td ? ', TD' : '');
+  return {
+    down: lvSel.down, dist: isNaN(dist) ? null : dist, yardLn: isNaN(yardLn) ? null : yardLn,
+    offForm: lvSel.form || '', motion: lvSel.motion || '',
+    playType: isRun || code === 'MIX' && result.startsWith('Rush') ? 'Run' : 'Pass',
+    protection: LV_CODE_PROTECTION[code] || 'RUN',
+    concept: isRun ? code : '',
+    liveCode: code, target: lvSel.jersey,
+    gainLoss: yards, explosive: lvSel.explosive, result,
+    live: true,
+  };
+}
+function lvSubmit() {
+  if (!lvSel.code) { alert('Pick a play code.'); return; }
+  const data = getSSData();
+  const game = data.games.find(g => g.id === lvGameId);
+  if (!game) { alert('Game not found — restart from setup.'); return; }
+  const row = lvBuildRow();
+  if (lvEditIndex != null) {
+    game.rows[lvEditIndex] = row;
+    lvEditIndex = null;
+  } else {
+    game.rows.push(row);
+    // auto-advance drive state for the next snap
+    if (row.result === 'Penalty' || row.gainLoss < (row.dist || 10)) {
+      if (row.result !== 'Penalty') {
+        lvSel.down = row.down >= 4 ? 1 : row.down + 1;
+        document.getElementById('lv-dist').value = row.down >= 4 ? 10 : Math.max(1, Math.round((row.dist || 10) - row.gainLoss));
+      }
+    } else { lvSel.down = 1; document.getElementById('lv-dist').value = 10; }
+    if (row.yardLn != null && row.result !== 'Penalty') {
+      // Hudl convention: negative = own side. Convert to distance-from-own-goal,
+      // add the gain, convert back (own 44 + 9 yds = opponent 47).
+      const a = (row.yardLn < 0 ? -row.yardLn : 100 - row.yardLn) + row.gainLoss;
+      const clamped = Math.max(1, Math.min(99, Math.round(a)));
+      document.getElementById('lv-yardln').value = clamped < 50 ? -clamped : 100 - clamped;
+    }
+  }
+  saveSSData(data); // instant local write — the play is safe now
+  lvSel = { ...lvSel, form: lvSel.form, motion: '', code: null, jersey: '', explosive: false, td: false, flag: false, to: false };
+  document.getElementById('lv-yards').value = 0;
+  document.getElementById('lv-submit').textContent = '✓ SUBMIT PLAY';
+  document.getElementById('lv-submit').classList.remove('lv-editing');
+  document.getElementById('lv-cancel-edit').style.display = 'none';
+  lvRenderGrids();
+  lvRenderLog();
+}
+function lvEditPlay(i) {
+  const game = lvActiveGame();
+  const r = game.rows[i];
+  lvEditIndex = i;
+  lvSel = { down: r.down || 1, form: r.offForm || null, motion: r.motion || '', code: r.liveCode || null, jersey: r.target || '',
+    explosive: !!r.explosive, td: String(r.result).includes('TD'), flag: String(r.result) === 'Penalty', to: /Fumble|Interception/.test(String(r.result)) };
+  document.getElementById('lv-dist').value = r.dist == null ? '' : r.dist;
+  document.getElementById('lv-yardln').value = r.yardLn == null ? '' : r.yardLn;
+  document.getElementById('lv-yards').value = r.gainLoss || 0;
+  const btn = document.getElementById('lv-submit');
+  btn.textContent = '✓ SAVE FIX (PLAY ' + (i + 1) + ')';
+  btn.classList.add('lv-editing');
+  document.getElementById('lv-cancel-edit').style.display = 'block';
+  lvShowTab('entry');
+  lvRenderGrids();
+  lvRenderLog();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function lvCancelEdit() {
+  lvEditIndex = null;
+  document.getElementById('lv-submit').textContent = '✓ SUBMIT PLAY';
+  document.getElementById('lv-submit').classList.remove('lv-editing');
+  document.getElementById('lv-cancel-edit').style.display = 'none';
+  lvRenderLog();
+}
+function lvRenderLog() {
+  const game = lvActiveGame();
+  const el = document.getElementById('lv-log');
+  if (!game || !game.rows.length) { el.innerHTML = '<div class="db-empty">No plays yet.</div>'; return; }
+  el.innerHTML = game.rows.map((r, i) => ({ r, i })).slice(-8).reverse().map(({ r, i }) =>
+    `<div class="lv-log-row${lvEditIndex === i ? ' lv-editing-row' : ''}" onclick="lvEditPlay(${i})">
+      <span class="lv-log-num">#${i + 1}</span>
+      <span>${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</span>
+      <span>${dbEscapeHTML(r.offForm || '—')}${r.motion ? ' · ' + dbEscapeHTML(r.motion) : ''}</span>
+      <span><strong>${dbEscapeHTML(r.liveCode || '?')}</strong>${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</span>
+      <span class="lv-log-badge">${r.gainLoss > 0 ? '+' : ''}${r.gainLoss}${r.explosive ? ' 💥' : ''}${String(r.result).includes('TD') ? ' TD' : ''}${r.result === 'Penalty' ? ' 🚩' : ''}</span>
+    </div>`).join('');
+}
+
+// glanceable between-series dashboard — big numbers, no tables to study
+function lvRenderDash() {
+  const game = lvActiveGame();
+  const el = document.getElementById('lv-dash');
+  const rows = (game ? game.rows : []).filter(r => r.result !== 'Penalty');
+  if (!rows.length) { el.innerHTML = '<div class="db-empty">No plays yet.</div>'; return; }
+  const runs = rows.filter(r => String(r.playType).startsWith('R'));
+  const runPct = Math.round(runs.length / rows.length * 100);
+  const avg = Math.round(rows.reduce((s, r) => s + (r.gainLoss || 0), 0) / rows.length * 10) / 10;
+  const byDown = d => {
+    const rs = rows.filter(r => r.down === d);
+    if (!rs.length) return null;
+    return { n: rs.length, runPct: Math.round(rs.filter(r => String(r.playType).startsWith('R')).length / rs.length * 100) };
+  };
+  const carriers = dbTop(dbFreqByFn(rows.filter(r => r.target), r => '#' + r.target), 5);
+  const forms = dbTop(dbFreqByFn(rows, r => r.offForm || null), 3);
+  const bar = (label, pct, n) => pct == null ? '' :
+    `<div class="lv-sec-label">${label} (${n})</div><div class="lv-bar">
+      <div style="background:#2A7A2A;width:${Math.max(pct, 8)}%">RUN ${pct}%</div>
+      <div style="background:#1A4A8A;flex:1">PASS ${100 - pct}%</div></div>`;
+  el.innerHTML = `
+    <div class="lv-dash-grid">
+      <div class="lv-dash-tile"><div class="lv-dash-num">${rows.length}</div><div class="lv-dash-label">PLAYS</div></div>
+      <div class="lv-dash-tile"><div class="lv-dash-num">${runPct}<span style="font-size:20px">%</span></div><div class="lv-dash-label">RUN</div><div class="lv-dash-sub">${100 - runPct}% PASS</div></div>
+      <div class="lv-dash-tile"><div class="lv-dash-num">${avg}</div><div class="lv-dash-label">AVG YDS</div></div>
+      <div class="lv-dash-tile"><div class="lv-dash-num">${rows.filter(r => r.explosive).length}</div><div class="lv-dash-label">EXPLOSIVES</div></div>
+    </div>
+    ${bar('1ST DOWN', byDown(1)?.runPct, byDown(1)?.n || 0)}
+    ${bar('2ND DOWN', byDown(2)?.runPct, byDown(2)?.n || 0)}
+    ${bar('3RD DOWN', byDown(3)?.runPct, byDown(3)?.n || 0)}
+    <div class="lv-row2" style="margin-top:12px">
+      <div><div class="lv-sec-label">TOUCHES</div>${carriers.map(c => `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(c.label)}</strong><span class="lv-log-badge">x${c.count}</span></div>`).join('') || '<div class="db-empty">no #s tagged</div>'}</div>
+      <div><div class="lv-sec-label">TOP FORMATIONS</div>${forms.map(f => `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(f.label)}</strong><span class="lv-log-badge">${f.pct}%</span></div>`).join('')}</div>
+    </div>`;
+}
+
+// offline app shell — after the first online visit, the whole toolkit opens with no signal
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
 
 // ==================== PRACTICE SCRIPT GENERATOR ====================
 // Turns Defense Breakdown tendencies + Self Scout verdicts into the weekly
