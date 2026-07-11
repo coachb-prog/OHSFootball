@@ -722,6 +722,8 @@ body {
         <span class="db-upload-btn">📁 UPLOAD HUDL FILE (.csv / .xlsx)</span>
       </label>
       <button class="db-upload-btn" style="display:block;text-align:center" onclick="dsAddGame()">＋ NEW GAME (chart by hand)</button>
+      <button class="ss-slides-btn" id="ds-slides-btn" onclick="dsExportSlides()">📊 EXPORT PRESENTATION</button>
+      <button class="db-print-btn" onclick="dsPrintReport()" style="width:100%;margin-top:8px">🖨️ PRINT REPORT (PDF)</button>
       <div class="db-upload-status" id="ds-status"></div>
     </div>
     <div id="ds-main">
@@ -4290,6 +4292,168 @@ function dsRenderDashboard() {
     ${(DS_TABS.find(t => t.id === dsActiveTab) || DS_TABS[0]).render(rows)}
   `;
   el.querySelectorAll('[data-ds-tab]').forEach(t => t.addEventListener('click', () => { dsActiveTab = t.dataset.dsTab; dsRenderDashboard(); }));
+}
+
+// ---- exports: formation-card report as slides (.pptx) or print/PDF ----
+function dsReportData() {
+  const rows = dsGetActiveRows().filter(dsIsLive);
+  if (!rows.length) return null;
+  const c = { RUN: 0, PASS: 0, RPO: 0 };
+  rows.forEach(r => { const k = dsCat(r); if (k) c[k]++; });
+  const pct = k => Math.round(c[k] / rows.length * 100);
+  const forms = Object.entries(dbGroupBy(rows, r => r.offForm || null)).sort((a, b) => b[1].length - a[1].length);
+  const topList = (rs, cat, n) => dbTop(dbFreqByFn(rs.filter(r => dsCat(r) === cat), r => r.offPlay || null), n);
+  const entry = getDSOpponents()[dsCurrentOpp];
+  const gamesLabel = dsActiveGameId === 'ALL'
+    ? entry.games.map(g => g.label).join('  ·  ')
+    : (entry.games.find(g => g.id === dsActiveGameId) || {}).label || '';
+  const dd = Object.entries(dbGroupBy(rows, dbDownDistBucket)).sort((a, b) => b[1].length - a[1].length);
+  return {
+    rows, runPct: pct('RUN'), passPct: pct('PASS'), rpoPct: pct('RPO'),
+    topForm: dbTop(dbFreqByFn(rows, r => r.offForm || null), 1)[0],
+    topBack: dbTop(dbFreqByFn(rows, r => r.rbAlign || null), 1)[0],
+    explosives: rows.filter(r => r.explosive).length,
+    insights: dsGenerateInsights(rows).map(ssStripHTML),
+    forms, topList, dd, gamesLabel,
+    cards: forms.slice(0, 8).map(([form, rs]) => ({
+      form, n: rs.length, sharePct: Math.round(rs.length / rows.length * 100),
+      runPct: Math.round(rs.filter(r => dsCat(r) === 'RUN').length / rs.length * 100),
+      avg: dsAvg(rs), expl: rs.filter(r => r.explosive).length,
+      variants: dbTop(dbFreqByFn(rs, r => r.rbAlign || null), 4).map(t => `${t.label} x${t.count}`).join(', ') || '—',
+      when: dbTop(dbFreqByFn(rs, dbDownDistBucket), 3).map(t => `${t.label} x${t.count}`).join(', ') || '—',
+      runs: topList(rs, 'RUN', 4), passes: topList(rs, 'PASS', 4), rpos: topList(rs, 'RPO', 2),
+      notes: [...new Set(rs.map(r => r.notes).filter(Boolean))].slice(0, 2),
+    })),
+  };
+}
+
+function dsPrintReport() {
+  if (!dsCurrentOpp) { alert('Select an opponent first.'); return; }
+  const d = dsReportData();
+  if (!d) { alert('No plays charted for this opponent yet.'); return; }
+  const card = document.getElementById('db-print-card');
+  const playLi = t => `${dbEscapeHTML(t.label)} x${t.count}`;
+  card.innerHTML = `
+    <div class="pc-title">OPPONENT OFFENSIVE REPORT — ${dbEscapeHTML(dsCurrentOpp)}</div>
+    <div class="pc-sub">${dbEscapeHTML(d.gamesLabel)} — ${d.rows.length} plays charted · RUN ${d.runPct}% / PASS ${d.passPct}%${d.rpoPct ? ' / RPO ' + d.rpoPct + '%' : ''} · ${d.explosives} explosives (15+)</div>
+    <div class="pc-section"><div class="pc-section-title">KEY TENDENCIES</div>
+      <table><tr><th>#</th><th>TENDENCY</th></tr>${d.insights.slice(0, 8).map((t, i) => `<tr><td>${i + 1}</td><td>${dbEscapeHTML(t)}</td></tr>`).join('')}</table></div>
+    ${d.cards.map(cd => `<div class="pc-section"><div class="pc-section-title">${dbEscapeHTML(cd.form)} — ${cd.n} PLAYS (${cd.sharePct}%) · RUN ${cd.runPct}% · AVG ${cd.avg} · ${cd.expl} EXPL</div>
+      <div style="font-size:10px;margin-bottom:4px">VARIANTS: ${dbEscapeHTML(cd.variants)} &nbsp;·&nbsp; WHEN: ${dbEscapeHTML(cd.when)}</div>
+      <table><tr><th style="width:50%">TOP RUNS</th><th>TOP PASSES</th></tr>
+      <tr><td>${cd.runs.map(playLi).join('<br>') || '—'}</td><td>${cd.passes.map(playLi).join('<br>') || '—'}${cd.rpos.length ? '<br>' + cd.rpos.map(t => playLi(t) + ' (RPO)').join('<br>') : ''}</td></tr></table>
+      ${cd.notes.length ? `<div style="font-size:10px;font-style:italic;margin-top:3px">📝 ${cd.notes.map(dbEscapeHTML).join(' · ')}</div>` : ''}
+    </div>`).join('')}
+    <div class="pc-section"><div class="pc-section-title">DOWN &amp; DISTANCE</div>
+      <table><tr><th>SITUATION</th><th>N</th><th>RUN%</th><th>AVG</th><th>TOP PLAYS</th></tr>
+      ${d.dd.map(([b, rs]) => `<tr><td>${dbEscapeHTML(b)}</td><td>${rs.length}</td><td>${Math.round(rs.filter(r => dsCat(r) === 'RUN').length / rs.length * 100)}%</td><td>${dsAvg(rs)}</td><td>${dbTop(dbFreqByFn(rs, r => r.offPlay || null), 2).map(playLi).join(', ') || '—'}</td></tr>`).join('')}</table></div>
+  `;
+  window.print();
+}
+
+async function dsExportSlides() {
+  if (!dsCurrentOpp) { alert('Select an opponent first.'); return; }
+  const d = dsReportData();
+  if (!d) { alert('No plays charted for this opponent yet.'); return; }
+  const btn = document.getElementById('ds-slides-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+  try {
+    await ssLoadPptxGen();
+    const C = { RED: 'CC0000', BLACK: '111111', WHITE: 'FFFFFF', GRAY: '888888', LIGHT: 'CCCCCC', NAVY: '13233A', GREEN: '2A7A2A', BLUE: '1A4A8A' };
+    const W = 13.33, H = 7.5;
+    const pptx = new PptxGenJS();
+    pptx.layout = 'LAYOUT_WIDE';
+    const total = d.rows.length;
+    const hdrBar = (sl, title) => {
+      sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.85, fill: { color: C.NAVY }, line: { color: C.NAVY } });
+      sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0.85, w: W, h: 0.06, fill: { color: C.RED }, line: { color: C.RED } });
+      sl.addText(title, { x: 0.3, y: 0.13, w: 10, h: 0.6, fontSize: 22, bold: true, color: C.WHITE, fontFace: 'Arial' });
+      sl.addText('N=' + total + ' charted plays', { x: 10, y: 0.22, w: 3.1, h: 0.4, fontSize: 10, color: C.LIGHT, fontFace: 'Arial', align: 'right' });
+    };
+    const lightSlide = () => { const sl = pptx.addSlide(); sl.background = { color: 'F5F6FA' }; return sl; };
+    const hdr = (t, a) => ({ text: String(t), options: { bold: true, color: C.WHITE, fill: { color: C.NAVY }, fontSize: 11, align: a === 'l' ? 'left' : 'center', fontFace: 'Arial' } });
+    const cell = (t, i, extra) => ({ text: String(t == null || t === '' ? '—' : t), options: { color: '111111', fill: { color: i % 2 === 0 ? 'F2F4F7' : 'FFFFFF' }, fontSize: 11, fontFace: 'Arial', align: 'left', ...(extra || {}) } });
+
+    // cover
+    {
+      const sl = pptx.addSlide();
+      sl.background = { color: C.BLACK };
+      sl.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 4.6, h: H, fill: { color: C.RED }, line: { color: C.RED } });
+      sl.addText('OWENSBORO\nHIGH SCHOOL', { x: 0.2, y: 1.4, w: 4.2, h: 2.0, fontSize: 28, bold: true, color: C.WHITE, fontFace: 'Arial', align: 'center', valign: 'middle', charSpacing: 2 });
+      sl.addShape(pptx.ShapeType.rect, { x: 0.6, y: 3.6, w: 3.4, h: 0.07, fill: { color: C.BLACK }, line: { color: C.BLACK } });
+      sl.addText('RED DEVILS', { x: 0.2, y: 3.7, w: 4.2, h: 0.6, fontSize: 18, bold: true, color: C.BLACK, fontFace: 'Arial', align: 'center', charSpacing: 5 });
+      const logoB64 = ssGetStoredLogo();
+      if (logoB64) sl.addImage({ data: logoB64, x: 1.2, y: 4.4, w: 2.2, h: 2.2 });
+      sl.addText('OPPONENT\nOFFENSIVE\nREPORT', { x: 5.1, y: 0.8, w: 8.0, h: 3.5, fontSize: 48, bold: true, color: C.WHITE, fontFace: 'Arial', valign: 'middle' });
+      sl.addShape(pptx.ShapeType.rect, { x: 5.1, y: 4.5, w: 7.5, h: 0.06, fill: { color: C.RED }, line: { color: C.RED } });
+      sl.addText(dsCurrentOpp, { x: 5.1, y: 4.65, w: 8.0, h: 0.5, fontSize: 18, bold: true, color: C.WHITE, fontFace: 'Arial' });
+      sl.addText(d.gamesLabel || 'ALL GAMES', { x: 5.1, y: 5.2, w: 8.0, h: 0.4, fontSize: 13, color: C.LIGHT, fontFace: 'Arial' });
+      sl.addText('PREPARED  ' + new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase(), { x: 5.1, y: 5.7, w: 8.0, h: 0.35, fontSize: 11, color: C.GRAY, fontFace: 'Arial' });
+      sl.addText('Prepared for: Defensive Staff', { x: 5.1, y: 6.15, w: 8.0, h: 0.3, fontSize: 10, color: C.GRAY, fontFace: 'Arial' });
+    }
+
+    // offensive identity
+    {
+      const sl = lightSlide();
+      hdrBar(sl, 'Offensive Identity');
+      const boxes = [
+        ['Run / Pass', `${d.runPct}% / ${d.passPct}%` + (d.rpoPct ? ` (+${d.rpoPct}% RPO)` : ''), C.GREEN],
+        ['Top formation', d.topForm ? `${d.topForm.label} (${d.topForm.pct}%)` : '—', C.BLUE],
+        ['Top backfield', d.topBack ? `${d.topBack.label} (${d.topBack.pct}%)` : '—', C.BLUE],
+        ['Explosives (15+)', String(d.explosives), C.RED],
+      ];
+      boxes.forEach(([label, value, color], i) => {
+        const x = 0.3 + i * 3.15;
+        sl.addShape(pptx.ShapeType.rect, { x, y: 1.1, w: 3.0, h: 1.5, fill: { color: 'FFFFFF' }, line: { color, pt: 2 } });
+        sl.addText(label, { x: x + 0.12, y: 1.18, w: 2.76, h: 0.3, fontSize: 10, bold: true, color, fontFace: 'Arial' });
+        sl.addText(value, { x: x + 0.12, y: 1.5, w: 2.76, h: 0.9, fontSize: 17, bold: true, color: '111111', fontFace: 'Arial', wrap: true });
+      });
+      const tRows = [[hdr('Key Tendency', 'l')], ...d.insights.slice(0, 8).map((t, i) => [cell(t, i)])];
+      sl.addTable(tRows, { x: 0.3, y: 3.0, w: 12.7, colW: [12.7], rowH: 0.42, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    }
+
+    // formation cards — one slide each
+    d.cards.forEach(cd => {
+      const sl = lightSlide();
+      hdrBar(sl, cd.form + '  —  ' + cd.n + ' plays (' + cd.sharePct + '%)');
+      sl.addText(`RUN ${cd.runPct}% / PASS ${100 - cd.runPct}%   ·   AVG ${cd.avg}   ·   ${cd.expl} EXPLOSIVE`, { x: 0.3, y: 1.05, w: 12.7, h: 0.4, fontSize: 14, bold: true, color: '222222', fontFace: 'Arial' });
+      sl.addText('VARIANTS:  ' + cd.variants + '      WHEN:  ' + cd.when, { x: 0.3, y: 1.5, w: 12.7, h: 0.35, fontSize: 11, color: '555555', fontFace: 'Arial' });
+      const list = (title, items, x) => {
+        sl.addText(title, { x, y: 2.05, w: 6.0, h: 0.35, fontSize: 13, bold: true, color: C.NAVY, fontFace: 'Arial' });
+        const rows = items.length ? items.map((t, i) => [cell(t.label, i, { align: 'left' }), cell('x' + t.count, i, { align: 'center', bold: true })]) : [[cell('—', 0), cell('', 0)]];
+        sl.addTable([[hdr('PLAY', 'l'), hdr('N', 'c')], ...rows], { x, y: 2.45, w: 6.0, colW: [4.9, 1.1], rowH: 0.42, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+      };
+      list('TOP RUNS', cd.runs, 0.3);
+      list('TOP PASSES', cd.passes.concat(cd.rpos.map(t => ({ label: t.label + '  (RPO)', count: t.count }))), 6.9);
+      if (cd.notes.length) {
+        sl.addShape(pptx.ShapeType.rect, { x: 0.3, y: 6.3, w: 12.7, h: 0.85, fill: { color: 'FFFFFF' }, line: { color: C.RED, pt: 2 } });
+        sl.addText('NOTES: ' + cd.notes.join('  ·  '), { x: 0.45, y: 6.42, w: 12.4, h: 0.6, fontSize: 11, bold: true, color: '222222', fontFace: 'Arial', valign: 'middle' });
+      }
+    });
+
+    // down & distance
+    {
+      const sl = lightSlide();
+      hdrBar(sl, 'Down & Distance Tendencies');
+      const rows = [
+        [hdr('Situation', 'l'), hdr('N', 'c'), hdr('Run %', 'c'), hdr('Avg', 'c'), hdr('Top Plays', 'l')],
+        ...d.dd.slice(0, 11).map(([b, rs], i) => [
+          cell(b, i), cell(rs.length, i, { align: 'center' }),
+          cell(Math.round(rs.filter(r => dsCat(r) === 'RUN').length / rs.length * 100) + '%', i, { align: 'center' }),
+          cell(dsAvg(rs), i, { align: 'center' }),
+          cell(dbTop(dbFreqByFn(rs, r => r.offPlay || null), 2).map(t => `${t.label} x${t.count}`).join(', '), i),
+        ]),
+      ];
+      sl.addTable(rows, { x: 0.3, y: 1.1, w: 12.7, colW: [2.4, 0.8, 1.1, 1.0, 7.4], rowH: 0.45, fontSize: 11, fontFace: 'Arial', border: { pt: 0.5, color: 'DDDDDD' } });
+    }
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    await pptx.writeFile({ fileName: dsCurrentOpp.replace(/[^a-zA-Z0-9]/g, '_') + '_Offensive_Report_' + dateStr + '.pptx' });
+  } catch (err) {
+    alert('Slide export failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📊 EXPORT PRESENTATION'; }
+  }
 }
 
 function dsRenderRecent() {
