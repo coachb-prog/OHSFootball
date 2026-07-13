@@ -935,12 +935,17 @@ function rdRenderBackupNag() {
   const lastFp = localStorage.getItem('rd_backup_fp');
   const lastAt = parseInt(localStorage.getItem('rd_backup_at'), 10);
   const iosTab = rdIOSTabWarnHTML();
-  if (!hasData || fp === lastFp) { el.innerHTML = iosTab; return; }
+  const tools = `<button onclick="rdBackupAll()">⬇️ BACKUP NOW</button>
+    <label for="rd-merge-input" class="rd-nag-restore">merge from backup file<input type="file" id="rd-merge-input" accept=".json" onchange="rdHandleRestoreFile(this)" style="display:none"></label>
+    <label for="rd-replace-input" class="rd-nag-restore" style="opacity:0.6">full replace (recovery only)<input type="file" id="rd-replace-input" accept=".json" onchange="rdHandleRestoreFile(this, true)" style="display:none"></label>`;
+  if (!hasData || fp === lastFp) {
+    // clean state: keep the transfer tools reachable, just without the warning
+    el.innerHTML = iosTab + (hasData ? `<div class="rd-nag" style="background:var(--black2);border-color:#333;color:var(--gray)">✅ Backed up. ${tools}</div>` : '');
+    return;
+  }
   const ago = lastAt ? Math.round((Date.now() - lastAt) / 86400000) : null;
   el.innerHTML = iosTab + `<div class="rd-nag">⚠️ Scouting data has changed since your last backup${ago != null ? ' (' + ago + ' day' + (ago === 1 ? '' : 's') + ' ago)' : ' — no backup on record'}. All data lives in this browser only.
-    <button onclick="rdBackupAll()">⬇️ BACKUP NOW</button>
-    <label for="rd-merge-input" class="rd-nag-restore">merge from backup file<input type="file" id="rd-merge-input" accept=".json" onchange="rdHandleRestoreFile(this)" style="display:none"></label>
-    <label for="rd-replace-input" class="rd-nag-restore" style="opacity:0.6">full replace (recovery only)<input type="file" id="rd-replace-input" accept=".json" onchange="rdHandleRestoreFile(this, true)" style="display:none"></label></div>`;
+    ${tools}</div>`;
 }
 // iOS deletes browser-tab storage after ~7 days of non-use; home-screen
 // installs are exempt. Warn hard when charting data is at risk.
