@@ -867,7 +867,7 @@ body {
       <div class="lv-grid" id="lv-pers-grid"></div>
       <div class="lv-sec-label">FORMATION</div>
       <div class="lv-grid" id="lv-form-grid"></div>
-      <div class="lv-sec-label">MOTION</div>
+      <div class="lv-sec-label">MOTION <span class="lv-dir-chips" id="lv-motletter-chips"></span></div>
       <div class="lv-grid" id="lv-motion-grid"></div>
       <div class="lv-sec-label">RUN PLAYS <span class="lv-dir-chips" id="lv-dir-chips"></span></div>
       <div class="lv-grid" id="lv-runplay-grid"></div>
@@ -3314,7 +3314,7 @@ function lvSaveConfig() {
 }
 
 let lvGameId = localStorage.getItem('rd_live_active') || null;
-let lvSel = { down: 1, pers: null, form: null, motion: null, code: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
+let lvSel = { down: 1, pers: null, form: null, motion: null, motLetter: null, code: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
 let lvEditIndex = null;
 
 function startLiveChart() {
@@ -3391,6 +3391,8 @@ function lvRenderGrids() {
   document.getElementById('lv-down-row').innerHTML = [1, 2, 3, 4].map(d => chip(String(d), 'down', d)).join('');
   document.getElementById('lv-pers-grid').innerHTML = cfg.personnel.map(p => chip(p, 'pers', p)).join('');
   document.getElementById('lv-form-grid').innerHTML = cfg.formations.map(f => chip(f, 'form', f)).join('');
+  document.getElementById('lv-motletter-chips').innerHTML = ['X', 'H', 'Y', 'Z'].map(l =>
+    `<button class="lv-chip${lvSel.motLetter === l ? ' sel' : ''}" style="min-height:34px;font-size:12px" onclick="lvPick('motLetter',lvSel.motLetter==='${l}'?null:'${l}')">${l}</button>`).join('');
   document.getElementById('lv-motion-grid').innerHTML = chip('NONE', 'motion', '') + cfg.motions.map(m => chip(m, 'motion', m)).join('');
   const callChip = (c, kind) => `<button class="lv-chip${lvSel.call === c && lvSel.callKind === kind ? ' sel' : ''}" onclick="lvPickCall('${dbEscapeHTML(c)}','${kind}')">${dbEscapeHTML(c)}</button>`;
   document.getElementById('lv-runplay-grid').innerHTML = cfg.runPlays.map(c => callChip(c, 'run')).join('');
@@ -3456,7 +3458,7 @@ function lvBuildRow() {
   else protection = '90';
   return {
     down: lvSel.down, dist: isNaN(dist) ? null : dist, yardLn: isNaN(yardLn) ? null : yardLn,
-    offForm: lvSel.form || '', motion: lvSel.motion || '',
+    offForm: lvSel.form || '', motion: lvSel.motion ? ((lvSel.motLetter ? lvSel.motLetter + ' ' : '') + lvSel.motion) : '',
     playType: isRun ? 'Run' : 'Pass',
     protection,
     offPlay,
@@ -3495,7 +3497,7 @@ function lvSubmit() {
     }
   }
   saveSSData(data); // instant local write — the play is safe now
-  lvSel = { ...lvSel, form: lvSel.form, pers: lvSel.pers, motion: '', code: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
+  lvSel = { ...lvSel, form: lvSel.form, pers: lvSel.pers, motion: '', motLetter: null, code: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
   document.getElementById('lv-tag-custom').value = '';
   document.getElementById('lv-yards').value = 0;
   document.getElementById('lv-submit').textContent = '✓ SUBMIT PLAY';
@@ -3510,7 +3512,10 @@ function lvEditPlay(i) {
   lvEditIndex = i;
   const isRunRow = String(r.playType).startsWith('R');
   const base = String(r.offPlay || '').replace(/\b(PRO|CON)\b/, '').trim();
-  lvSel = { down: r.down || 1, pers: r.personnel || null, form: r.offForm || null, motion: r.motion || '', code: r.liveCode || null, tag: r.passTag || '',
+  const motParts = String(r.motion || '').split(' ');
+  const motLetter = motParts.length > 1 && ['X', 'H', 'Y', 'Z'].includes(motParts[0]) ? motParts[0] : null;
+  const motBase = motLetter ? motParts.slice(1).join(' ') : (r.motion || '');
+  lvSel = { down: r.down || 1, pers: r.personnel || null, form: r.offForm || null, motion: motBase, motLetter, code: r.liveCode || null, tag: r.passTag || '',
     call: base || null, callKind: base ? (isRunRow ? 'run' : 'pass') : null,
     dir: /\bPRO\b/.test(r.offPlay || '') ? 'PRO' : /\bCON\b/.test(r.offPlay || '') ? 'CON' : null,
     jersey: r.target || '',
