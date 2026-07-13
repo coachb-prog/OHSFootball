@@ -844,7 +844,8 @@ body {
   <div id="lv-game" class="lv-wrap" style="display:none">
     <div class="lv-tabs">
       <button class="lv-tab active" id="lv-tab-entry" onclick="lvShowTab('entry')">⚡ ENTRY</button>
-      <button class="lv-tab" id="lv-tab-dash" onclick="lvShowTab('dash')">📊 LIVE DASH</button>
+      <button class="lv-tab" id="lv-tab-dash" onclick="lvShowTab('dash')">📊 DASH</button>
+      <button class="lv-tab" id="lv-tab-drives" onclick="lvShowTab('drives')">🏈 DRIVES</button>
       <button class="lv-tab" onclick="lvEndGame()">■ END</button>
     </div>
     <div id="lv-entry">
@@ -910,6 +911,7 @@ body {
       <div id="lv-log"></div>
     </div>
     <div id="lv-dash" style="display:none"></div>
+    <div id="lv-drives" style="display:none"></div>
   </div>
 </div>
 
@@ -3401,7 +3403,7 @@ function lvStartGame() {
   if (!opp) { alert('Enter the opponent.'); return; }
   const week = parseInt(document.getElementById('lv-week').value, 10) || null;
   const data = getSSData();
-  const g = { id: 'g' + Date.now(), weekId: week, opponent: opp, live: true,
+  const g = { id: 'g' + Date.now(), weekId: week, opponent: opp, live: true, currentDrive: 1,
     label: (week ? 'WK ' + week + ' ' : '') + 'VS ' + opp + ' (LIVE)',
     gameDate: new Date().toISOString().slice(0, 10), rows: [], savedAt: Date.now() };
   data.games.push(g);
@@ -3428,9 +3430,12 @@ function lvEnterGame() {
 function lvShowTab(tab) {
   document.getElementById('lv-entry').style.display = tab === 'entry' ? 'block' : 'none';
   document.getElementById('lv-dash').style.display = tab === 'dash' ? 'block' : 'none';
+  document.getElementById('lv-drives').style.display = tab === 'drives' ? 'block' : 'none';
   document.getElementById('lv-tab-entry').classList.toggle('active', tab === 'entry');
   document.getElementById('lv-tab-dash').classList.toggle('active', tab === 'dash');
+  document.getElementById('lv-tab-drives').classList.toggle('active', tab === 'drives');
   if (tab === 'dash') lvRenderDash();
+  if (tab === 'drives') lvRenderDrives();
 }
 
 function lvRenderGrids() {
@@ -3478,6 +3483,15 @@ function lvNewDrive() {
   lvSel.down = 1;
   const distEl = document.getElementById('lv-dist');
   if (distEl) { distEl.value = 10; }
+  const data = getSSData();
+  const game = data.games.find(g => g.id === lvGameId);
+  if (game) {
+    const cur = game.currentDrive || 1;
+    if (game.rows.some(r => (r.drive || 1) === cur)) {
+      game.currentDrive = cur + 1;
+      saveSSData(data);
+    }
+  }
   lvRenderGrids();
 }
 
@@ -3527,9 +3541,11 @@ function lvSubmit() {
   if (!game) { alert('Game not found — restart from setup.'); return; }
   const row = lvBuildRow();
   if (lvEditIndex != null) {
+    row.drive = game.rows[lvEditIndex].drive;
     game.rows[lvEditIndex] = row;
     lvEditIndex = null;
   } else {
+    row.drive = game.currentDrive || 1;
     game.rows.push(row);
     // auto-advance drive state for the next snap
     if (row.result === 'Penalty' || row.gainLoss < (row.dist || 10)) {
@@ -3648,6 +3664,59 @@ function lvRenderDash() {
       <div><div class="lv-sec-label">TOUCHES</div>${carriers.map(c => `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(c.label)}</strong><span class="lv-log-badge">x${c.count}</span></div>`).join('') || '<div class="db-empty">no #s tagged</div>'}</div>
       <div><div class="lv-sec-label">TOP FORMATIONS</div>${forms.map(f => `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(f.label)}</strong><span class="lv-log-badge">${f.pct}%</span></div>`).join('')}</div>
     </div>`;
+}
+
+// Drive chart: every drive as a card with all its plays. Plays are stamped
+// with a drive number at submit; older rows without one are grouped by
+// scoring/turnover boundaries as a best effort.
+function lvFmtYL(y) {
+  if (y == null || isNaN(y)) return '?';
+  return y < 0 ? 'OWN ' + (-y) : y === 50 ? '50' : 'OPP ' + y;
+}
+function lvDriveGroups(rows) {
+  const groups = [];
+  let cur = null, inferred = 1, lastDrive = null;
+  rows.forEach((r, i) => {
+    let d = r.drive;
+    if (d == null) {
+      // legacy rows: break on scores/turnovers
+      const prev = rows[i - 1];
+      if (prev && /TD|Interception|Fumble/i.test(String(prev.result))) inferred++;
+      d = 'est' + inferred;
+    }
+    if (!cur || d !== lastDrive) { cur = { drive: d, plays: [] }; groups.push(cur); lastDrive = d; }
+    cur.plays.push({ r, i });
+  });
+  return groups;
+}
+function lvDriveResult(plays) {
+  const last = plays[plays.length - 1].r;
+  const res = String(last.result || '');
+  if (res.includes('TD')) return ['TOUCHDOWN', '#7fdc7f'];
+  if (res.includes('Interception') || res.includes('Fumble')) return ['TURNOVER', '#ff8888'];
+  if (last.down === 4) return ['DOWNS/PUNT/FG', 'var(--gray)'];
+  return ['', ''];
+}
+function lvRenderDrives() {
+  const game = lvActiveGame();
+  const el = document.getElementById('lv-drives');
+  if (!game || !game.rows.length) { el.innerHTML = '<div class="db-empty">No plays yet.</div>'; return; }
+  const groups = lvDriveGroups(game.rows);
+  el.innerHTML = groups.map((g, gi) => {
+    const live = g.plays.filter(p => p.r.result !== 'Penalty');
+    const yds = live.reduce((s, p) => s + (p.r.gainLoss || 0), 0);
+    const start = g.plays[0].r.yardLn;
+    const [resLabel, resColor] = lvDriveResult(g.plays);
+    return `<div class="db-section" style="margin-bottom:12px"><div class="db-section-title">DRIVE ${gi + 1} — START ${lvFmtYL(start)} · ${g.plays.length} PLAY${g.plays.length === 1 ? '' : 'S'} · ${yds > 0 ? '+' : ''}${yds} YDS ${resLabel ? `<span style="color:${resColor};margin-left:8px">${resLabel}</span>` : ''}</div>
+      ${g.plays.map(({ r, i }) => `<div class="lv-log-row" onclick="lvEditPlay(${i});lvShowTab('entry')">
+        <span class="lv-log-num">${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</span>
+        <span style="color:var(--gray);min-width:64px">${lvFmtYL(r.yardLn)}</span>
+        <span>${dbEscapeHTML(r.offForm || '')}${r.motion ? ' · ' + dbEscapeHTML(r.motion) : ''}</span>
+        <span><strong>${dbEscapeHTML(r.offPlay || (String(r.playType).startsWith('R') ? 'RUN' : 'PASS'))}</strong>${r.passTag ? ' · ' + dbEscapeHTML(r.passTag) : ''}${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</span>
+        <span class="lv-log-badge">${r.result === 'Penalty' ? '🚩 FLAG' : (r.gainLoss > 0 ? '+' : '') + r.gainLoss}${r.explosive ? ' 💥' : ''}${String(r.result).includes('TD') ? ' TD' : ''}${/Interception|Fumble/.test(String(r.result)) ? ' ❌' : ''}</span>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
 }
 
 // Halftime/postgame report from the live data — printable (AirPrint) or just
