@@ -3550,12 +3550,16 @@ function lvBuildRow() {
 }
 let lvSubmitLock = false;
 function lvSubmit() {
-  // double-tap guard: swallow the second tap silently (the form clears on
-  // submit, so a dupe can't log — this just stops the validation alert)
-  if (lvSubmitLock) return;
-  if (!lvSel.call && !lvSel.type) { alert('Pick a play (or at least RUN or PASS).'); return; }
+  // double-tap guard: the form clears on submit so a dupe can't log — a
+  // second tap just fails validation. Silence that alert briefly so the
+  // charter never sees a pop-up from a double-tap; valid plays are never
+  // blocked, no matter how fast.
+  if (!lvSel.call && !lvSel.type) {
+    if (!lvSubmitLock) alert('Pick a play (or at least RUN or PASS).');
+    return;
+  }
   lvSubmitLock = true;
-  setTimeout(() => { lvSubmitLock = false; }, 300);
+  setTimeout(() => { lvSubmitLock = false; }, 1200);
   const data = getSSData();
   const game = data.games.find(g => g.id === lvGameId);
   if (!game) { alert('Game not found — restart from setup.'); return; }
