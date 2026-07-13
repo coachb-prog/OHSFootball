@@ -934,11 +934,21 @@ function rdRenderBackupNag() {
   const fp = rdBackupFingerprint();
   const lastFp = localStorage.getItem('rd_backup_fp');
   const lastAt = parseInt(localStorage.getItem('rd_backup_at'), 10);
-  if (!hasData || fp === lastFp) { el.innerHTML = ''; return; }
+  const iosTab = rdIOSTabWarnHTML();
+  if (!hasData || fp === lastFp) { el.innerHTML = iosTab; return; }
   const ago = lastAt ? Math.round((Date.now() - lastAt) / 86400000) : null;
-  el.innerHTML = `<div class="rd-nag">⚠️ Scouting data has changed since your last backup${ago != null ? ' (' + ago + ' day' + (ago === 1 ? '' : 's') + ' ago)' : ' — no backup on record'}. All data lives in this browser only.
+  el.innerHTML = iosTab + `<div class="rd-nag">⚠️ Scouting data has changed since your last backup${ago != null ? ' (' + ago + ' day' + (ago === 1 ? '' : 's') + ' ago)' : ' — no backup on record'}. All data lives in this browser only.
     <button onclick="rdBackupAll()">⬇️ BACKUP NOW</button>
-    <label for="rd-restore-input" class="rd-nag-restore">restore from file<input type="file" id="rd-restore-input" accept=".json" onchange="rdHandleRestoreFile(this)" style="display:none"></label></div>`;
+    <label for="rd-merge-input" class="rd-nag-restore">merge from backup file<input type="file" id="rd-merge-input" accept=".json" onchange="rdHandleRestoreFile(this)" style="display:none"></label>
+    <label for="rd-replace-input" class="rd-nag-restore" style="opacity:0.6">full replace (recovery only)<input type="file" id="rd-replace-input" accept=".json" onchange="rdHandleRestoreFile(this, true)" style="display:none"></label></div>`;
+}
+// iOS deletes browser-tab storage after ~7 days of non-use; home-screen
+// installs are exempt. Warn hard when charting data is at risk.
+function rdIOSTabWarnHTML() {
+  const isIOS = /iPad|iPhone/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  if (!isIOS || standalone) return '';
+  return `<div class="rd-nag" style="border-color:var(--red);background:#2a1111;color:#f0b0b0">📱 You're in a browser tab. iPhone/iPad can ERASE this app's saved data after ~7 days unopened. Use Safari's Share → <strong>Add to Home Screen</strong> and always open it from that icon — installed apps are protected.</div>`;
 }
 function rdBackupAll() {
   const payload = {
@@ -957,22 +967,53 @@ function rdBackupAll() {
   localStorage.setItem('rd_backup_at', String(Date.now()));
   rdRenderBackupNag();
 }
-function rdHandleRestoreFile(input) {
+// Default import is a MERGE: add games/opponents this device doesn't have,
+// never delete anything. Full replace exists only as a labeled recovery path —
+// a partial backup restored with "replace" would silently wipe a fuller season.
+function rdMergeGamesArray(curGames, incGames) {
+  const ids = new Set(curGames.map(g => g.id));
+  let added = 0;
+  (incGames || []).forEach(g => { if (g && g.id && !ids.has(g.id)) { curGames.push(g); added++; } });
+  return added;
+}
+function rdMergeOppStore(key, incoming) {
+  const cur = JSON.parse(localStorage.getItem(key) || '{}');
+  let added = 0;
+  Object.entries(incoming || {}).forEach(([opp, entry]) => {
+    if (!cur[opp]) cur[opp] = { games: [] };
+    added += rdMergeGamesArray(cur[opp].games, entry.games);
+  });
+  localStorage.setItem(key, JSON.stringify(cur));
+  return added;
+}
+function rdHandleRestoreFile(input, replace) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
     try {
       const data = JSON.parse(e.target.result);
-      if (!data.defbreak && !data.selfscout) { alert('Not a combined backup file — use the per-tool IMPORT DATA buttons for old exports.'); return; }
-      if (!confirm('Restore will REPLACE all current scouting data with this backup. Continue?')) return;
-      if (data.defbreak) localStorage.setItem('rd_defbreak', JSON.stringify(data.defbreak));
-      if (data.selfscout) localStorage.setItem('rd_selfscout', JSON.stringify(data.selfscout));
-      if (data.defscout) localStorage.setItem('rd_defscout', JSON.stringify(data.defscout));
+      if (!data.defbreak && !data.selfscout && !data.defscout) { alert('Not a combined backup file — use the per-tool IMPORT DATA buttons for old exports.'); return; }
+      if (replace) {
+        if (!confirm('FULL REPLACE will DELETE everything on this device and use only what is in this file. If this backup came from another device it may hold LESS than this one does. Merge (the other button) is almost always what you want.\n\nReplace everything?')) return;
+        if (data.defbreak) localStorage.setItem('rd_defbreak', JSON.stringify(data.defbreak));
+        if (data.selfscout) localStorage.setItem('rd_selfscout', JSON.stringify(data.selfscout));
+        if (data.defscout) localStorage.setItem('rd_defscout', JSON.stringify(data.defscout));
+        alert('Backup restored (full replace).');
+      } else {
+        let added = 0;
+        if (data.selfscout) {
+          const cur = getSSData();
+          added += rdMergeGamesArray(cur.games, data.selfscout.games);
+          saveSSData(cur);
+        }
+        if (data.defbreak) added += rdMergeOppStore('rd_defbreak', data.defbreak);
+        if (data.defscout) added += rdMergeOppStore('rd_defscout', data.defscout);
+        alert(added ? `Merged: ${added} game(s) added. Nothing was deleted.` : 'Nothing new in that file — every game in it is already on this device.');
+      }
       localStorage.setItem('rd_backup_fp', rdBackupFingerprint());
       localStorage.setItem('rd_backup_at', String(Date.now()));
       rdRenderBackupNag();
-      alert('Backup restored.');
     } catch (err) { alert('Could not read backup: ' + err.message); }
   };
   reader.readAsText(file);
@@ -3583,17 +3624,56 @@ function lvRenderDash() {
     ${bar('1ST DOWN', byDown(1)?.runPct, byDown(1)?.n || 0)}
     ${bar('2ND DOWN', byDown(2)?.runPct, byDown(2)?.n || 0)}
     ${bar('3RD DOWN', byDown(3)?.runPct, byDown(3)?.n || 0)}
-    <div class="lv-sec-label">PLAYS TONIGHT (avg per call)</div>
+    <div class="lv-sec-label">PLAYS TONIGHT (success% · avg)</div>
     ${Object.entries(dbGroupBy(rows.filter(r => r.offPlay), r => String(r.offPlay).replace(/\b(PRO|CON)\b/, '').trim()))
       .sort((a, b) => b[1].length - a[1].length).slice(0, 8)
       .map(([call, rs]) => {
         const a = Math.round(rs.reduce((s, r) => s + (r.gainLoss || 0), 0) / rs.length * 10) / 10;
-        return `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(call)}</strong><span>x${rs.length}</span><span class="lv-log-badge" style="color:${a >= 4 ? '#7fdc7f' : '#ff8888'}">${a} avg${rs.some(r => r.explosive) ? ' 💥' : ''}</span></div>`;
+        const sp = Math.round(rs.filter(dbIsOffenseSuccess).length / rs.length * 100);
+        return `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(call)}</strong><span>x${rs.length}</span><span class="lv-log-badge" style="color:${sp >= 50 ? '#7fdc7f' : '#ff8888'}">${sp}% · ${a} avg${rs.some(r => r.explosive) ? ' 💥' : ''}</span></div>`;
       }).join('') || '<div class="db-empty">no calls tagged yet</div>'}
+    <button class="ss-slides-btn" style="margin-top:10px" onclick="lvHalfReport()">🖨️ HALF / GAME REPORT</button>
     <div class="lv-row2" style="margin-top:12px">
       <div><div class="lv-sec-label">TOUCHES</div>${carriers.map(c => `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(c.label)}</strong><span class="lv-log-badge">x${c.count}</span></div>`).join('') || '<div class="db-empty">no #s tagged</div>'}</div>
       <div><div class="lv-sec-label">TOP FORMATIONS</div>${forms.map(f => `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(f.label)}</strong><span class="lv-log-badge">${f.pct}%</span></div>`).join('')}</div>
     </div>`;
+}
+
+// Halftime/postgame report from the live data — printable (AirPrint) or just
+// shown full screen in the locker room. Same success math as the season tools.
+function lvHalfReport() {
+  const game = lvActiveGame();
+  if (!game || !game.rows.length) { alert('No plays charted yet.'); return; }
+  const rows = game.rows.filter(r => r.result !== 'Penalty');
+  const pens = game.rows.length - rows.length;
+  const runs = rows.filter(r => String(r.playType).startsWith('R'));
+  const succ = rs => rs.length ? Math.round(rs.filter(dbIsOffenseSuccess).length / rs.length * 100) : 0;
+  const avg = rs => rs.length ? Math.round(rs.reduce((s, r) => s + (r.gainLoss || 0), 0) / rs.length * 10) / 10 : 0;
+  const downRow = d => {
+    const rs = rows.filter(r => r.down === d);
+    if (!rs.length) return '';
+    const rp = Math.round(rs.filter(r => String(r.playType).startsWith('R')).length / rs.length * 100);
+    return `<tr><td>${d === 1 ? '1ST' : d === 2 ? '2ND' : d === 3 ? '3RD' : '4TH'} DOWN</td><td>${rs.length}</td><td>${rp}% / ${100 - rp}%</td><td>${succ(rs)}%</td><td>${avg(rs)}</td></tr>`;
+  };
+  const calls = Object.entries(dbGroupBy(rows.filter(r => r.offPlay), r => String(r.offPlay).replace(/\b(PRO|CON)\b/, '').trim()))
+    .sort((a, b) => b[1].length - a[1].length);
+  const touches = dbTop(dbFreqByFn(rows.filter(r => r.target), r => '#' + r.target), 8);
+  const expl = rows.filter(r => r.explosive);
+  const card = document.getElementById('db-print-card');
+  card.innerHTML = `
+    <div class="pc-title">LIVE OFFENSE REPORT — ${dbEscapeHTML(game.label)}</div>
+    <div class="pc-sub">${rows.length} plays (${pens} penalties excluded) · RUN ${rows.length ? Math.round(runs.length / rows.length * 100) : 0}% · SUCCESS ${succ(rows)}% · AVG ${avg(rows)} · ${expl.length} EXPLOSIVE</div>
+    <div class="pc-section"><div class="pc-section-title">BY DOWN</div>
+      <table><tr><th>DOWN</th><th>N</th><th>RUN/PASS</th><th>SUCCESS</th><th>AVG</th></tr>${[1, 2, 3, 4].map(downRow).join('')}</table></div>
+    <div class="pc-section"><div class="pc-section-title">BY CALL</div>
+      <table><tr><th>CALL</th><th>N</th><th>SUCCESS</th><th>AVG</th><th>EXPL</th></tr>
+      ${calls.map(([call, rs]) => `<tr><td>${dbEscapeHTML(call)}</td><td>${rs.length}</td><td>${succ(rs)}%</td><td>${avg(rs)}</td><td>${rs.filter(r => r.explosive).length}</td></tr>`).join('')}</table></div>
+    <div class="pc-section"><div class="pc-section-title">TOUCHES</div>
+      <table><tr><th>PLAYER</th><th>TOUCHES</th></tr>${touches.map(t => `<tr><td>${dbEscapeHTML(t.label)}</td><td>${t.count}</td></tr>`).join('') || '<tr><td colspan="2">no #s tagged</td></tr>'}</table></div>
+    ${expl.length ? `<div class="pc-section"><div class="pc-section-title">EXPLOSIVES</div>
+      <table><tr><th>CALL</th><th>YDS</th><th>D&amp;D</th></tr>${expl.map(r => `<tr><td>${dbEscapeHTML(r.offPlay || r.liveCode || '?')}${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</td><td>+${r.gainLoss}</td><td>${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</td></tr>`).join('')}</table></div>` : ''}
+  `;
+  window.print();
 }
 
 // offline app shell — after the first online visit, the whole toolkit opens with no signal
