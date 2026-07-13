@@ -3588,7 +3588,7 @@ function lvSubmit() {
     }
   }
   saveSSData(data); // instant local write — the play is safe now
-  lvSel = { ...lvSel, form: lvSel.form, pers: lvSel.pers, motion: '', motLetter: null, type: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
+  lvSel = { ...lvSel, form: null, pers: null, motion: null, motLetter: null, type: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
   document.getElementById('lv-tag-custom').value = '';
   document.getElementById('lv-yards').value = 0;
   document.getElementById('lv-submit').textContent = '✓ SUBMIT PLAY';
