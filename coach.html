@@ -879,9 +879,8 @@ body {
       <div class="lv-sec-label">TAG (tap or type)</div>
       <div class="lv-grid" id="lv-tag-grid"></div>
       <input class="db-input" id="lv-tag-custom" placeholder="TYPE A TAG…" maxlength="24" style="margin-bottom:4px" oninput="lvSel.tag='';lvRenderGrids()">
-      <div class="lv-sec-label">TYPE (OPTIONAL — sharpens categories)</div>
-      <div class="lv-grid" id="lv-run-grid"></div>
-      <div class="lv-grid" id="lv-pass-grid"></div>
+      <div class="lv-sec-label">RUN OR PASS (auto-fills when you pick a play — change it if an RPO got thrown)</div>
+      <div class="lv-chip-row" id="lv-type-row" style="margin-bottom:6px"></div>
       <div class="lv-row2">
         <div>
           <div class="lv-sec-label">BALL CARRIER / TARGET #</div>
@@ -3363,7 +3362,7 @@ function lvSaveConfig() {
 }
 
 let lvGameId = localStorage.getItem('rd_live_active') || null;
-let lvSel = { down: 1, side: 'OWN', pers: null, form: null, motion: null, motLetter: null, code: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
+let lvSel = { down: 1, side: 'OWN', pers: null, form: null, motion: null, motLetter: null, type: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
 let lvEditIndex = null;
 
 function startLiveChart() {
@@ -3451,8 +3450,8 @@ function lvRenderGrids() {
     `<button class="lv-chip${lvSel.dir === d ? ' sel' : ''}" style="min-height:34px;font-size:12px" onclick="lvPick('dir',lvSel.dir==='${d}'?null:'${d}')">${d}</button>`).join('');
   document.getElementById('lv-tag-grid').innerHTML = cfg.tags.map(t =>
     `<button class="lv-chip${lvSel.tag === t ? ' sel' : ''}" onclick="lvSel.tag=lvSel.tag==='${t.replace(/'/g, "\\'")}'?'':'${t.replace(/'/g, "\\'")}';document.getElementById('lv-tag-custom').value='';lvRenderGrids()">${dbEscapeHTML(t)}</button>`).join('');
-  document.getElementById('lv-run-grid').innerHTML = LV_RUN_CODES.map(c => chip(c === 'MIX' ? 'MIX (RPO)' : c, 'code', c)).join('');
-  document.getElementById('lv-pass-grid').innerHTML = LV_PASS_CODES.map(c => chip(c, 'code', c)).join('');
+  document.getElementById('lv-type-row').innerHTML = [['RUN', '🏃 RUN'], ['PASS', '🎯 PASS']].map(([v, label]) =>
+    `<button class="lv-chip${lvSel.type === v ? ' sel' : ''}" style="min-width:120px" onclick="lvPick('type','${v}')">${label}</button>`).join('');
   document.getElementById('lv-numpad').innerHTML =
     [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map(n => `<button class="lv-chip" onclick="lvJersey('${n}')">${n}</button>`).join('')
     + '<button class="lv-chip" onclick="lvJersey(null)" style="grid-column:span 2">CLEAR</button>';
@@ -3461,8 +3460,8 @@ function lvRenderGrids() {
 }
 function lvPick(key, val) { lvSel[key] = val; lvRenderGrids(); }
 function lvPickCall(call, kind) {
-  if (lvSel.call === call && lvSel.callKind === kind) { lvSel.call = null; lvSel.callKind = null; }
-  else { lvSel.call = call; lvSel.callKind = kind; }
+  if (lvSel.call === call && lvSel.callKind === kind) { lvSel.call = null; lvSel.callKind = null; lvSel.type = null; }
+  else { lvSel.call = call; lvSel.callKind = kind; lvSel.type = kind === 'run' ? 'RUN' : 'PASS'; }
   lvRenderGrids();
 }
 function lvToggle(key) { lvSel[key] = !lvSel[key]; lvRenderGrids(); }
@@ -3487,12 +3486,11 @@ function lvBuildRow() {
   const ylAbs = Math.abs(parseFloat(document.getElementById('lv-yardln').value));
   const yardLn = isNaN(ylAbs) ? NaN : (lvSel.side === 'OWN' ? -ylAbs : ylAbs);
   const yards = parseInt(document.getElementById('lv-yards').value, 10) || 0;
-  const code = lvSel.code;
-  const isRun = lvSel.callKind === 'run' || (!lvSel.call && LV_RUN_CODES.includes(code) && code !== 'MIX');
+  const isRun = (lvSel.type || (lvSel.callKind === 'run' ? 'RUN' : 'PASS')) === 'RUN';
   let result;
   if (lvSel.flag) result = 'Penalty';
   else if (lvSel.to) result = isRun ? 'Fumble' : 'Interception';
-  else if (isRun || (!lvSel.call && code === 'MIX')) result = 'Rush' + (lvSel.td ? ', TD' : '');
+  else if (isRun) result = 'Rush' + (lvSel.td ? ', TD' : '');
   else if (yards < 0) result = 'Sack';
   else if (yards === 0 && !lvSel.td) result = 'Incomplete';
   else result = 'Complete' + (lvSel.td ? ', TD' : '');
@@ -3502,9 +3500,10 @@ function lvBuildRow() {
   // when a call lives in two families.
   const call = lvSel.call || '';
   const offPlay = call ? call + (isRun && lvSel.dir ? ' ' + lvSel.dir : '') : '';
+  // run-grid call thrown (RPO pulled) charts as the RPO family; plain runs
+  // carry no protection word
   let protection;
-  if (isRun) protection = code === 'MIX' ? 'RUN' : '';
-  else if (code && LV_CODE_PROTECTION[code]) protection = LV_CODE_PROTECTION[code];
+  if (isRun) protection = '';
   else if (call) protection = lvCallProtection(call);
   else protection = '90';
   return {
@@ -3513,8 +3512,8 @@ function lvBuildRow() {
     playType: isRun ? 'Run' : 'Pass',
     protection,
     offPlay,
-    concept: isRun ? (call || code || '') : '',
-    liveCode: code || '', target: lvSel.jersey,
+    concept: isRun ? call : '',
+    target: lvSel.jersey,
     passTag: (lvSel.tag || document.getElementById('lv-tag-custom').value.trim().toUpperCase()) || '',
     personnel: lvSel.pers || '',
     gainLoss: yards, explosive: lvSel.explosive, result,
@@ -3522,7 +3521,7 @@ function lvBuildRow() {
   };
 }
 function lvSubmit() {
-  if (!lvSel.call && !lvSel.code) { alert('Pick a play (or at least a type code).'); return; }
+  if (!lvSel.call && !lvSel.type) { alert('Pick a play (or at least RUN or PASS).'); return; }
   const data = getSSData();
   const game = data.games.find(g => g.id === lvGameId);
   if (!game) { alert('Game not found — restart from setup.'); return; }
@@ -3549,7 +3548,7 @@ function lvSubmit() {
     }
   }
   saveSSData(data); // instant local write — the play is safe now
-  lvSel = { ...lvSel, form: lvSel.form, pers: lvSel.pers, motion: '', motLetter: null, code: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
+  lvSel = { ...lvSel, form: lvSel.form, pers: lvSel.pers, motion: '', motLetter: null, type: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
   document.getElementById('lv-tag-custom').value = '';
   document.getElementById('lv-yards').value = 0;
   document.getElementById('lv-submit').textContent = '✓ SUBMIT PLAY';
@@ -3567,7 +3566,7 @@ function lvEditPlay(i) {
   const motParts = String(r.motion || '').split(' ');
   const motLetter = motParts.length > 1 && ['X', 'H', 'Y', 'Z'].includes(motParts[0]) ? motParts[0] : null;
   const motBase = motLetter ? motParts.slice(1).join(' ') : (r.motion || '');
-  lvSel = { down: r.down || 1, pers: r.personnel || null, form: r.offForm || null, motion: motBase, motLetter, code: r.liveCode || null, tag: r.passTag || '',
+  lvSel = { down: r.down || 1, pers: r.personnel || null, form: r.offForm || null, motion: motBase, motLetter, type: String(r.playType).startsWith('R') ? 'RUN' : 'PASS', tag: r.passTag || '',
     call: base || null, callKind: base ? (isRunRow ? 'run' : 'pass') : null,
     dir: /\bPRO\b/.test(r.offPlay || '') ? 'PRO' : /\bCON\b/.test(r.offPlay || '') ? 'CON' : null,
     jersey: r.target || '',
@@ -3601,7 +3600,7 @@ function lvRenderLog() {
       <span class="lv-log-num">#${i + 1}</span>
       <span>${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</span>
       <span>${dbEscapeHTML(r.offForm || '—')}${r.motion ? ' · ' + dbEscapeHTML(r.motion) : ''}</span>
-      <span><strong>${dbEscapeHTML(r.offPlay || r.liveCode || '?')}</strong>${r.passTag ? ' · ' + dbEscapeHTML(r.passTag) : ''}${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</span>
+      <span><strong>${dbEscapeHTML(r.offPlay || r.liveCode || (String(r.playType).startsWith('R') ? 'RUN' : 'PASS'))}</strong>${r.passTag ? ' · ' + dbEscapeHTML(r.passTag) : ''}${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</span>
       <span class="lv-log-badge">${r.gainLoss > 0 ? '+' : ''}${r.gainLoss}${r.explosive ? ' 💥' : ''}${String(r.result).includes('TD') ? ' TD' : ''}${r.result === 'Penalty' ? ' 🚩' : ''}</span>
     </div>`).join('');
 }
@@ -3683,7 +3682,7 @@ function lvHalfReport() {
     <div class="pc-section"><div class="pc-section-title">TOUCHES</div>
       <table><tr><th>PLAYER</th><th>TOUCHES</th></tr>${touches.map(t => `<tr><td>${dbEscapeHTML(t.label)}</td><td>${t.count}</td></tr>`).join('') || '<tr><td colspan="2">no #s tagged</td></tr>'}</table></div>
     ${expl.length ? `<div class="pc-section"><div class="pc-section-title">EXPLOSIVES</div>
-      <table><tr><th>CALL</th><th>YDS</th><th>D&amp;D</th></tr>${expl.map(r => `<tr><td>${dbEscapeHTML(r.offPlay || r.liveCode || '?')}${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</td><td>+${r.gainLoss}</td><td>${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</td></tr>`).join('')}</table></div>` : ''}
+      <table><tr><th>CALL</th><th>YDS</th><th>D&amp;D</th></tr>${expl.map(r => `<tr><td>${dbEscapeHTML(r.offPlay || r.liveCode || (String(r.playType).startsWith('R') ? 'RUN' : 'PASS'))}${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</td><td>+${r.gainLoss}</td><td>${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</td></tr>`).join('')}</table></div>` : ''}
   `;
   window.print();
 }
