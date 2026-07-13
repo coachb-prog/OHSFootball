@@ -851,6 +851,10 @@ body {
     <div id="lv-entry">
       <div class="lv-situation">
         <div class="lv-sit-group">
+          <span class="lv-sit-label">QTR</span>
+          <div class="lv-chip-row" id="lv-qtr-row"></div>
+        </div>
+        <div class="lv-sit-group">
           <span class="lv-sit-label">DN</span>
           <div class="lv-chip-row" id="lv-down-row"></div>
         </div>
@@ -905,6 +909,7 @@ body {
           </div>
           <button class="lv-submit" id="lv-submit" onclick="lvSubmit()">✓ SUBMIT PLAY</button>
           <button class="lv-cancel" id="lv-cancel-edit" onclick="lvCancelEdit()" style="display:none">✕ CANCEL EDIT</button>
+          <button class="lv-cancel" id="lv-delete-play" onclick="lvDeleteEditingPlay()" style="display:none;color:#ff8888;border-color:#663333">🗑 DELETE THIS PLAY</button>
         </div>
       </div>
       <div class="lv-sec-label">LAST PLAYS (tap to fix)</div>
@@ -1946,6 +1951,13 @@ async function handleSSFile(input) {
     document.getElementById('ss-game-result').value = '';
     statusEl.textContent = '✅ Loaded ' + rows.length + ' plays';
     statusEl.className = 'db-upload-status ok';
+    // duplicate guard: a live-charted version of this same game doubles every season stat
+    const dupLive = getSSData().games.find(g => g.live && g.id !== newGameId &&
+      ((meta.weekId && g.weekId === meta.weekId) || (meta.opponent && g.opponent === meta.opponent.toUpperCase())));
+    if (dupLive) {
+      statusEl.textContent += ` — ⚠️ "${dupLive.label}" is the live-charted version of this game. Delete it (✕ in the games list) or its plays count TWICE in every stat.`;
+      statusEl.className = 'db-upload-status';
+    }
     ssSelectedGameIds = new Set();
     renderSSGamesList();
     renderSSDashboardFromState();
@@ -3364,7 +3376,7 @@ function lvSaveConfig() {
 }
 
 let lvGameId = localStorage.getItem('rd_live_active') || null;
-let lvSel = { down: 1, side: 'OWN', pers: null, form: null, motion: null, motLetter: null, type: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
+let lvSel = { down: 1, qtr: 1, side: 'OWN', pers: null, form: null, motion: null, motLetter: null, type: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
 let lvEditIndex = null;
 
 function startLiveChart() {
@@ -3441,6 +3453,7 @@ function lvShowTab(tab) {
 function lvRenderGrids() {
   const cfg = lvGetConfig();
   const chip = (label, key, val, extra) => `<button class="lv-chip${lvSel[key] === val ? ' sel' : ''}${extra || ''}" onclick="lvPick('${key}',${JSON.stringify(val).replace(/"/g, '&quot;')})">${dbEscapeHTML(label)}</button>`;
+  document.getElementById('lv-qtr-row').innerHTML = [1, 2, 3, 4].map(q => chip(String(q), 'qtr', q)).join('');
   document.getElementById('lv-down-row').innerHTML = [1, 2, 3, 4].map(d => chip(String(d), 'down', d)).join('');
   document.getElementById('lv-side-row').innerHTML = ['OWN', 'OPP'].map(s => chip(s, 'side', s)).join('');
   document.getElementById('lv-pers-grid').innerHTML = cfg.personnel.map(p => chip(p, 'pers', p)).join('');
@@ -3521,6 +3534,7 @@ function lvBuildRow() {
   else if (call) protection = lvCallProtection(call);
   else protection = '90';
   return {
+    qtr: lvSel.qtr || null,
     down: lvSel.down, dist: isNaN(dist) ? null : dist, yardLn: isNaN(yardLn) ? null : yardLn,
     offForm: lvSel.form || '', motion: lvSel.motion ? ((lvSel.motLetter ? lvSel.motLetter + ' ' : '') + lvSel.motion) : '',
     playType: isRun ? 'Run' : 'Pass',
@@ -3534,8 +3548,14 @@ function lvBuildRow() {
     live: true,
   };
 }
+let lvSubmitLock = false;
 function lvSubmit() {
+  // double-tap guard: swallow the second tap silently (the form clears on
+  // submit, so a dupe can't log — this just stops the validation alert)
+  if (lvSubmitLock) return;
   if (!lvSel.call && !lvSel.type) { alert('Pick a play (or at least RUN or PASS).'); return; }
+  lvSubmitLock = true;
+  setTimeout(() => { lvSubmitLock = false; }, 300);
   const data = getSSData();
   const game = data.games.find(g => g.id === lvGameId);
   if (!game) { alert('Game not found — restart from setup.'); return; }
@@ -3570,7 +3590,18 @@ function lvSubmit() {
   document.getElementById('lv-submit').textContent = '✓ SUBMIT PLAY';
   document.getElementById('lv-submit').classList.remove('lv-editing');
   document.getElementById('lv-cancel-edit').style.display = 'none';
+  document.getElementById('lv-delete-play').style.display = 'none';
   lvRenderGrids();
+  lvRenderLog();
+}
+function lvDeleteEditingPlay() {
+  if (lvEditIndex == null) return;
+  if (!confirm('Delete this play from the game? This cannot be undone.')) return;
+  const data = getSSData();
+  const game = data.games.find(g => g.id === lvGameId);
+  game.rows.splice(lvEditIndex, 1);
+  saveSSData(data);
+  lvCancelEdit();
   lvRenderLog();
 }
 function lvEditPlay(i) {
@@ -3582,7 +3613,7 @@ function lvEditPlay(i) {
   const motParts = String(r.motion || '').split(' ');
   const motLetter = motParts.length > 1 && ['X', 'H', 'Y', 'Z'].includes(motParts[0]) ? motParts[0] : null;
   const motBase = motLetter ? motParts.slice(1).join(' ') : (r.motion || '');
-  lvSel = { down: r.down || 1, pers: r.personnel || null, form: r.offForm || null, motion: motBase, motLetter, type: String(r.playType).startsWith('R') ? 'RUN' : 'PASS', tag: r.passTag || '',
+  lvSel = { down: r.down || 1, qtr: r.qtr || lvSel.qtr, pers: r.personnel || null, form: r.offForm || null, motion: motBase, motLetter, type: String(r.playType).startsWith('R') ? 'RUN' : 'PASS', tag: r.passTag || '',
     call: base || null, callKind: base ? (isRunRow ? 'run' : 'pass') : null,
     dir: /\bPRO\b/.test(r.offPlay || '') ? 'PRO' : /\bCON\b/.test(r.offPlay || '') ? 'CON' : null,
     jersey: r.target || '',
@@ -3595,6 +3626,7 @@ function lvEditPlay(i) {
   btn.textContent = '✓ SAVE FIX (PLAY ' + (i + 1) + ')';
   btn.classList.add('lv-editing');
   document.getElementById('lv-cancel-edit').style.display = 'block';
+  document.getElementById('lv-delete-play').style.display = 'block';
   lvShowTab('entry');
   lvRenderGrids();
   lvRenderLog();
@@ -3605,6 +3637,7 @@ function lvCancelEdit() {
   document.getElementById('lv-submit').textContent = '✓ SUBMIT PLAY';
   document.getElementById('lv-submit').classList.remove('lv-editing');
   document.getElementById('lv-cancel-edit').style.display = 'none';
+  document.getElementById('lv-delete-play').style.display = 'none';
   lvRenderLog();
 }
 function lvRenderLog() {
@@ -3771,7 +3804,10 @@ function lvHalfReport() {
   const card = document.getElementById('db-print-card');
   card.innerHTML = `
     <div class="pc-title">LIVE OFFENSE REPORT — ${dbEscapeHTML(game.label)}</div>
-    <div class="pc-sub">${rows.length} plays (${pens} penalties excluded) · RUN ${rows.length ? Math.round(runs.length / rows.length * 100) : 0}% · SUCCESS ${succ(rows)}% · AVG ${avg(rows)} · ${expl.length} EXPLOSIVE</div>
+    <div class="pc-sub">${rows.length} plays (${pens} penalties excluded) · RUN ${rows.length ? Math.round(runs.length / rows.length * 100) : 0}% · SUCCESS ${succ(rows)}% · AVG ${avg(rows)} · ${expl.length} EXPLOSIVE${(() => {
+      const h1 = rows.filter(r => r.qtr === 1 || r.qtr === 2), h2 = rows.filter(r => r.qtr === 3 || r.qtr === 4);
+      return h1.length && h2.length ? `<br>1ST HALF: ${h1.length} plays, ${succ(h1)}% success, ${avg(h1)} avg &nbsp;·&nbsp; 2ND HALF: ${h2.length} plays, ${succ(h2)}% success, ${avg(h2)} avg` : '';
+    })()}</div>
     <div class="pc-section"><div class="pc-section-title">BY DOWN</div>
       <table><tr><th>DOWN</th><th>N</th><th>RUN/PASS</th><th>SUCCESS</th><th>AVG</th></tr>${[1, 2, 3, 4].map(downRow).join('')}</table></div>
     <div class="pc-section"><div class="pc-section-title">BY CALL</div>
