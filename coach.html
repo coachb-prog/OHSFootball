@@ -3697,12 +3697,41 @@ function lvDriveResult(plays) {
   if (last.down === 4) return ['DOWNS/PUNT/FG', 'var(--gray)'];
   return ['', ''];
 }
+// CSV in Hudl's export column layout so a film import maps without retagging.
+// HASH/QTR/etc aren't captured live and export blank; DRIVE + TARGET ride as
+// extra columns Hudl can map to custom fields or skip.
+function lvExportCSV() {
+  const game = lvActiveGame();
+  if (!game || !game.rows.length) { alert('No plays to export.'); return; }
+  const HEADER = ['PLAY #', 'ODK', 'QTR', 'HASH', 'DN', 'DIST', 'YARD LN', 'GN/LS', 'PLAY TYPE', 'RESULT', 'CONCEPT', 'PERSONNEL', 'OFF FORM', 'SHIFT', 'MOTION', 'OFF PLAY', 'PASS TAG', 'RUN TAG', 'PROTECTION', 'DEF FRONT', 'STUNT', 'BLITZ', 'BLITZ #', 'COVERAGE', 'NOTES', 'DRIVE', 'TARGET'];
+  const esc = v => {
+    const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [HEADER.join(',')];
+  game.rows.forEach((r, i) => {
+    lines.push([
+      i + 1, 'O', r.qtr || '', '', r.down == null ? '' : r.down, r.dist == null ? '' : r.dist,
+      r.yardLn == null ? '' : r.yardLn, r.gainLoss == null ? '' : r.gainLoss,
+      r.playType || '', r.result || '', r.concept || '', r.personnel || '', r.offForm || '',
+      '', r.motion || '', r.offPlay || '', r.passTag || '', '', r.protection || '',
+      '', '', '', '', '', r.explosive ? 'EXPLOSIVE' : '', r.drive || '', r.target || '',
+    ].map(esc).join(','));
+  });
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (game.opponent || 'game').replace(/[^a-zA-Z0-9]/g, '_') + (game.weekId ? '_WK' + game.weekId : '') + '_live.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function lvRenderDrives() {
   const game = lvActiveGame();
   const el = document.getElementById('lv-drives');
   if (!game || !game.rows.length) { el.innerHTML = '<div class="db-empty">No plays yet.</div>'; return; }
   const groups = lvDriveGroups(game.rows);
-  el.innerHTML = groups.map((g, gi) => {
+  el.innerHTML = `<button class="ss-slides-btn" style="margin-bottom:12px" onclick="lvExportCSV()">⬇️ EXPORT CSV (FOR HUDL IMPORT)</button>` + groups.map((g, gi) => {
     const live = g.plays.filter(p => p.r.result !== 'Penalty');
     const yds = live.reduce((s, p) => s + (p.r.gainLoss || 0), 0);
     const start = g.plays[0].r.yardLn;
