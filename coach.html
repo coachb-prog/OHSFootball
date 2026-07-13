@@ -858,8 +858,11 @@ body {
           <input class="lv-num" id="lv-dist" type="number" min="0" max="40" inputmode="numeric">
         </div>
         <div class="lv-sit-group">
-          <span class="lv-sit-label">YD LN (− = own)</span>
-          <input class="lv-num" id="lv-yardln" type="number" min="-49" max="50" inputmode="numeric">
+          <span class="lv-sit-label">YARD LINE</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <div class="lv-chip-row" id="lv-side-row"></div>
+            <input class="lv-num" id="lv-yardln" type="number" min="1" max="50" inputmode="numeric">
+          </div>
         </div>
         <button class="lv-chip lv-newdrive" onclick="lvNewDrive()">NEW DRIVE</button>
       </div>
@@ -3360,7 +3363,7 @@ function lvSaveConfig() {
 }
 
 let lvGameId = localStorage.getItem('rd_live_active') || null;
-let lvSel = { down: 1, pers: null, form: null, motion: null, motLetter: null, code: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
+let lvSel = { down: 1, side: 'OWN', pers: null, form: null, motion: null, motLetter: null, code: null, call: null, callKind: null, dir: null, tag: '', jersey: '', explosive: false, td: false, flag: false, to: false };
 let lvEditIndex = null;
 
 function startLiveChart() {
@@ -3435,6 +3438,7 @@ function lvRenderGrids() {
   const cfg = lvGetConfig();
   const chip = (label, key, val, extra) => `<button class="lv-chip${lvSel[key] === val ? ' sel' : ''}${extra || ''}" onclick="lvPick('${key}',${JSON.stringify(val).replace(/"/g, '&quot;')})">${dbEscapeHTML(label)}</button>`;
   document.getElementById('lv-down-row').innerHTML = [1, 2, 3, 4].map(d => chip(String(d), 'down', d)).join('');
+  document.getElementById('lv-side-row').innerHTML = ['OWN', 'OPP'].map(s => chip(s, 'side', s)).join('');
   document.getElementById('lv-pers-grid').innerHTML = cfg.personnel.map(p => chip(p, 'pers', p)).join('');
   document.getElementById('lv-form-grid').innerHTML = cfg.formations.map(f => chip(f, 'form', f)).join('');
   document.getElementById('lv-motletter-chips').innerHTML = ['X', 'H', 'Y', 'Z'].map(l =>
@@ -3480,7 +3484,8 @@ function lvNewDrive() {
 
 function lvBuildRow() {
   const dist = parseFloat(document.getElementById('lv-dist').value);
-  const yardLn = parseFloat(document.getElementById('lv-yardln').value);
+  const ylAbs = Math.abs(parseFloat(document.getElementById('lv-yardln').value));
+  const yardLn = isNaN(ylAbs) ? NaN : (lvSel.side === 'OWN' ? -ylAbs : ylAbs);
   const yards = parseInt(document.getElementById('lv-yards').value, 10) || 0;
   const code = lvSel.code;
   const isRun = lvSel.callKind === 'run' || (!lvSel.call && LV_RUN_CODES.includes(code) && code !== 'MIX');
@@ -3539,7 +3544,8 @@ function lvSubmit() {
       // add the gain, convert back (own 44 + 9 yds = opponent 47).
       const a = (row.yardLn < 0 ? -row.yardLn : 100 - row.yardLn) + row.gainLoss;
       const clamped = Math.max(1, Math.min(99, Math.round(a)));
-      document.getElementById('lv-yardln').value = clamped < 50 ? -clamped : 100 - clamped;
+      lvSel.side = clamped < 50 ? 'OWN' : 'OPP';
+      document.getElementById('lv-yardln').value = clamped < 50 ? clamped : 100 - clamped;
     }
   }
   saveSSData(data); // instant local write — the play is safe now
@@ -3567,7 +3573,8 @@ function lvEditPlay(i) {
     jersey: r.target || '',
     explosive: !!r.explosive, td: String(r.result).includes('TD'), flag: String(r.result) === 'Penalty', to: /Fumble|Interception/.test(String(r.result)) };
   document.getElementById('lv-dist').value = r.dist == null ? '' : r.dist;
-  document.getElementById('lv-yardln').value = r.yardLn == null ? '' : r.yardLn;
+  lvSel.side = r.yardLn != null && r.yardLn > 0 ? 'OPP' : 'OWN';
+  document.getElementById('lv-yardln').value = r.yardLn == null ? '' : Math.abs(r.yardLn);
   document.getElementById('lv-yards').value = r.gainLoss || 0;
   const btn = document.getElementById('lv-submit');
   btn.textContent = '✓ SAVE FIX (PLAY ' + (i + 1) + ')';
