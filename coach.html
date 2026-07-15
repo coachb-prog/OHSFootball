@@ -471,6 +471,7 @@ body {
 .lv-numpad .lv-chip { min-height: 52px; font-size: 19px; }
 .lv-yards-row { display: flex; gap: 6px; align-items: center; }
 .lv-yards { flex: 1; font-size: 24px; }
+.lv-play-summary { margin-top: 12px; padding: 10px 12px; background: var(--black3); border: 1px dashed #444; border-radius: 10px; font-size: 14px; font-weight: 900; color: var(--gold); text-align: center; min-height: 20px; letter-spacing: 0.5px; }
 .lv-submit { width: 100%; margin-top: 12px; padding: 18px 0; background: #2A7A2A; border: none; border-radius: 12px; color: var(--white); font-size: 18px; font-weight: 900; letter-spacing: 2px; cursor: pointer; }
 .lv-submit.lv-editing { background: var(--gold); color: var(--black); }
 .lv-cancel { width: 100%; margin-top: 6px; padding: 10px 0; background: var(--black3); border: 1px solid #444; border-radius: 10px; color: var(--gray); font-size: 13px; font-weight: 800; cursor: pointer; }
@@ -907,6 +908,7 @@ body {
             <button class="lv-chip lv-toggle" id="lv-flag" onclick="lvToggle('flag')">🚩 FLAG</button>
             <button class="lv-chip lv-toggle" id="lv-to" onclick="lvToggle('to')">TO</button>
           </div>
+          <div class="lv-play-summary" id="lv-play-summary"></div>
           <button class="lv-submit" id="lv-submit" onclick="lvSubmit()">✓ SUBMIT PLAY</button>
           <button class="lv-cancel" id="lv-cancel-edit" onclick="lvCancelEdit()" style="display:none">✕ CANCEL EDIT</button>
           <button class="lv-cancel" id="lv-delete-play" onclick="lvDeleteEditingPlay()" style="display:none;color:#ff8888;border-color:#663333">🗑 DELETE THIS PLAY</button>
@@ -3475,6 +3477,15 @@ function lvRenderGrids() {
     + '<button class="lv-chip" onclick="lvJersey(null)" style="grid-column:span 2">CLEAR</button>';
   ['explosive', 'td', 'flag', 'to'].forEach(k => document.getElementById('lv-' + k).classList.toggle('sel', lvSel[k]));
   document.getElementById('lv-jersey').textContent = lvSel.jersey || '—';
+  const parts = [
+    lvSel.pers, lvSel.form,
+    lvSel.motion ? (lvSel.motLetter ? lvSel.motLetter + ' ' : '') + lvSel.motion : '',
+    lvSel.call ? lvSel.call + (lvSel.callKind === 'run' && lvSel.dir ? ' ' + lvSel.dir : '') : (lvSel.type || ''),
+    lvSel.tag, lvSel.jersey ? '#' + lvSel.jersey : '',
+    lvSel.explosive ? '💥' : '', lvSel.td ? 'TD' : '', lvSel.flag ? '🚩' : '', lvSel.to ? 'TO' : '',
+  ].filter(Boolean);
+  const sumEl = document.getElementById('lv-play-summary');
+  if (sumEl) sumEl.textContent = parts.length ? parts.join(' · ') : 'tap the play as it happens…';
 }
 function lvPick(key, val) { lvSel[key] = val; lvRenderGrids(); }
 function lvPickCall(call, kind) {
@@ -3597,6 +3608,7 @@ function lvSubmit() {
   document.getElementById('lv-delete-play').style.display = 'none';
   lvRenderGrids();
   lvRenderLog();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function lvDeleteEditingPlay() {
   if (lvEditIndex == null) return;
