@@ -620,6 +620,14 @@ body {
         </div>
         <div class="mode-badge">▶</div>
       </button>
+      <button class="mode-btn mode-btn-featured" onclick="startGamePlan()">
+        <div class="mode-icon">🎯</div>
+        <div class="mode-info">
+          <div class="mode-name">GAME PLAN COMPILER</div>
+          <div class="mode-desc">What works for us vs what they show → ranked calls</div>
+        </div>
+        <div class="mode-badge">▶</div>
+      </button>
     </div>
   </div>
 </div>
@@ -919,6 +927,24 @@ body {
     </div>
     <div id="lv-dash" style="display:none"></div>
     <div id="lv-drives" style="display:none"></div>
+  </div>
+</div>
+
+<!-- GAME PLAN COMPILER -->
+<div id="gameplan-screen" class="screen">
+  <div class="header">
+    <button class="back-btn" onclick="goHome()">← HOME</button>
+    <div class="header-title">GAME PLAN COMPILER</div>
+    <div class="header-xp"></div>
+  </div>
+  <div class="db-wrap">
+    <div class="db-card">
+      <div class="db-card-title">THIS WEEK</div>
+      <select class="db-input" id="gp-opponent"></select>
+      <button class="ss-slides-btn" onclick="gpGenerate()">🎯 COMPILE GAME PLAN</button>
+      <div class="db-upload-status" id="gp-status">Ranks your concepts by expected success against the looks this opponent actually shows — your coverage colors on both sides. Needs coverage-tagged Self Scout games and an opponent breakdown.</div>
+    </div>
+    <div id="gp-dashboard"><div class="db-empty">Pick the opponent and hit COMPILE. Concepts you've never run against their top looks are flagged UNTESTED, never silently buried.</div></div>
   </div>
 </div>
 
@@ -3835,6 +3861,193 @@ function lvHalfReport() {
       <table><tr><th>CALL</th><th>YDS</th><th>D&amp;D</th></tr>${expl.map(r => `<tr><td>${dbEscapeHTML(r.offPlay || r.liveCode || (String(r.playType).startsWith('R') ? 'RUN' : 'PASS'))}${r.target ? ' → #' + dbEscapeHTML(r.target) : ''}</td><td>+${r.gainLoss}</td><td>${r.down || '?'}&amp;${r.dist == null ? '?' : r.dist}</td></tr>`).join('')}</table></div>` : ''}
   `;
   window.print();
+}
+
+// ==================== GAME PLAN COMPILER ====================
+// Ranks our concepts by expected success against the looks the opponent
+// actually shows. Canonical language is OUR coverage colors: opponent
+// scout-speak is translated into shells (COVER 2 -> Blue). A generic
+// "Cover 3" tag can't tell strong/weak/cloud rotation apart, so it matches
+// Green+Yellow+Shark pooled; a specific tag matches its one shell.
+// Score(c) = sum over looks [ oppFreq(look) * shrunkSuccess(c, look) ]
+// with shrinkage (n*s_look + 3*s_season)/(n+3) so a 2-for-2 never outranks
+// an 8-for-12. Untested concepts are surfaced, never silently ranked low.
+const GP_C3_POOL = ['Green', 'Yellow', 'Shark'];
+const GP_SHRINK_K = 3;
+
+// opponent coverage label -> our shell (or 'C3GEN' = generic cover 3 pool)
+function gpNormalizeOppCoverage(label) {
+  const v = String(label || '').trim().toUpperCase();
+  if (!v) return null;
+  if (/CLOUD|SHARK/.test(v)) return 'Shark';
+  if (/2\s*-?\s*MAN|SILVER|MAN\s*2/.test(v)) return 'Silver';
+  if (/QUARTERS|\b4\b|COVER\s*4|C4|GOLD/.test(v)) return 'Gold';
+  if (/\b0\b|COVER\s*0|C0|RED/.test(v)) return 'Red';
+  if (/\b1\b|COVER\s*1|C1|BLACK/.test(v)) return 'Black';
+  if (/\b3\b|COVER\s*3|C3/.test(v)) return /STR|SKY|STRONG/.test(v) ? 'Green' : /WK|WEAK/.test(v) ? 'Yellow' : 'C3GEN';
+  if (/\b2\b|COVER\s*2|C2|BLUE/.test(v)) return 'Blue';
+  if (/GREEN/.test(v)) return 'Green';
+  if (/YELLOW/.test(v)) return 'Yellow';
+  if (/\bMAN\b/.test(v)) return 'Black';
+  return 'UNMAPPED:' + v;
+}
+function gpShellChipHTML(shell) {
+  if (shell === 'C3GEN') return `<span class="ss-cov-chip" style="background:#2e7d32;color:#fff">C3 (G/Y/SHK)</span>`;
+  const sh = SS_COVERAGE_SHELLS.find(s => s.label === shell);
+  return sh ? `<span class="ss-cov-chip" style="background:${sh.bg};color:${sh.fg}">${sh.label.toUpperCase()}</span>` : dbEscapeHTML(shell);
+}
+function gpShellsMatch(playShell, oppShell) {
+  if (oppShell === 'C3GEN') return GP_C3_POOL.includes(playShell);
+  return playShell === oppShell;
+}
+
+function gpGenerate() {
+  const opp = document.getElementById('gp-opponent').value;
+  if (!opp) { alert('Pick an opponent (needs a Defense Breakdown scout).'); return; }
+  const ssRows = getSSData().games.reduce((a, g) => a.concat(g.rows), []).filter(r => !dbIsDeadPlay(r));
+  if (!ssRows.length) { alert('No Self Scout data loaded.'); return; }
+  const entry = getDefOpponents()[opp];
+  let oppRows = entry.games.reduce((a, g) => a.concat(g.rows), []);
+  const dRows = oppRows.filter(r => String(r.odk == null ? '' : r.odk).trim().toUpperCase().charAt(0) === 'D');
+  if (dRows.length) oppRows = dRows;
+
+  // --- opponent look profile (their coverage translated to our colors) ---
+  const unmapped = {};
+  const lookCounts = {};
+  let taggedOppN = 0;
+  oppRows.forEach(r => {
+    const shell = gpNormalizeOppCoverage(r.coverage);
+    if (!shell) return;
+    if (shell.startsWith('UNMAPPED:')) { unmapped[shell.slice(9)] = (unmapped[shell.slice(9)] || 0) + 1; return; }
+    taggedOppN++;
+    if (!lookCounts[shell]) lookCounts[shell] = { n: 0, fronts: {} };
+    lookCounts[shell].n++;
+    const f = String(r.defFront || '').trim().toUpperCase();
+    if (f) lookCounts[shell].fronts[f] = (lookCounts[shell].fronts[f] || 0) + 1;
+  });
+  if (!taggedOppN) {
+    document.getElementById('gp-dashboard').innerHTML = '<div class="db-empty">No coverage tags found in this opponent\'s breakdown data — the compiler needs their COVERAGE column tagged.</div>';
+    return;
+  }
+  const looks = Object.entries(lookCounts).map(([shell, o]) => ({
+    shell, freq: o.n / taggedOppN, n: o.n,
+    topFront: Object.entries(o.fronts).sort((a, b) => b[1] - a[1])[0]?.[0] || null,
+  })).sort((a, b) => b.n - a.n);
+
+  // --- our success per concept per shell (coverage-tagged plays only) ---
+  const verdicts = pgComputeVerdicts(ssRows);
+  const concepts = {};
+  [[ssRows.filter(r => ssIsPass(r)), ssPassConceptBucket, 'pass'], [ssRows.filter(r => ssIsRun(r) && ssIsRunHandoff(r)), ssRunConceptBucket, 'run']].forEach(([rs, bucketFn, kind]) => {
+    Object.entries(dbGroupBy(rs, bucketFn)).forEach(([concept, crs]) => {
+      if (crs.length < 4) return;
+      const v = verdicts[concept + '|' + kind];
+      const tagged = crs.filter(r => ssGetCoverageShell(r));
+      const seasonSucc = crs.filter(dbIsOffenseSuccess).length / crs.length;
+      const byShell = {};
+      tagged.forEach(r => {
+        const sh = ssGetCoverageShell(r);
+        if (!byShell[sh]) byShell[sh] = { n: 0, succ: 0, expl: 0 };
+        byShell[sh].n++;
+        if (dbIsOffenseSuccess(r)) byShell[sh].succ++;
+        if ((parseFloat(r.gainLoss) || 0) >= 15) byShell[sh].expl++;
+      });
+      concepts[concept + '|' + kind] = { concept, kind, n: crs.length, taggedN: tagged.length, seasonSucc,
+        explPct: Math.round(crs.filter(r => (parseFloat(r.gainLoss) || 0) >= 15).length / crs.length * 100),
+        byShell, verdict: v ? v.verdict : 'INCONCLUSIVE' };
+    });
+  });
+
+  // --- score: expected success vs their look distribution ---
+  const scoreShell = (c, oppShell) => {
+    // pool matching shells (generic C3 pools Green/Yellow/Shark)
+    let n = 0, s = 0;
+    Object.entries(c.byShell).forEach(([sh, o]) => {
+      if (gpShellsMatch(sh, oppShell)) { n += o.n; s += o.succ; }
+    });
+    if (!n) return null;
+    return { n, adj: (s + GP_SHRINK_K * c.seasonSucc) / (n + GP_SHRINK_K) };
+  };
+  const teamAvg = ssRows.length ? ssRows.filter(dbIsOffenseSuccess).length / ssRows.length : 0.5;
+  const ranked = [], untested = [], excluded = [];
+  Object.values(concepts).forEach(c => {
+    if (c.verdict === 'BAD CONCEPT') { excluded.push(c); return; }
+    let score = 0, matchedFreq = 0, matchedN = 0;
+    const detail = [];
+    looks.forEach(l => {
+      const m = scoreShell(c, l.shell);
+      if (m) {
+        score += l.freq * m.adj;
+        matchedFreq += l.freq;
+        matchedN += m.n;
+        detail.push({ shell: l.shell, freq: l.freq, succ: Math.round(m.adj * 100), n: m.n, topFront: l.topFront });
+      } else {
+        detail.push({ shell: l.shell, freq: l.freq, succ: null, n: 0, topFront: l.topFront });
+      }
+    });
+    if (!matchedN) { untested.push(c); return; }
+    // unmatched share of their snaps: no coverage-specific evidence, so fall
+    // back to season success shrunk toward the team average — a hot 5-play
+    // concept can't ride its raw average through the untested share
+    const seasonAdj = (c.seasonSucc * c.n + GP_SHRINK_K * teamAvg) / (c.n + GP_SHRINK_K);
+    score += (1 - matchedFreq) * seasonAdj;
+    const conf = matchedN >= 6 && matchedFreq >= 0.5 ? 'TESTED' : 'PARTIAL';
+    ranked.push({ ...c, score: Math.round(score * 100), conf, matchedFreq: Math.round(matchedFreq * 100), matchedN, detail });
+  });
+  // proven-against-most-of-their-snaps outranks a small-sample flier
+  ranked.sort((a, b) => (b.conf === 'TESTED') - (a.conf === 'TESTED') || b.score - a.score);
+
+  const result = { generatedAt: new Date().toISOString(), opponent: opp, looks, ranked, untested, excluded,
+    taggedOppN, oppN: oppRows.length, ssTagged: ssRows.filter(r => ssGetCoverageShell(r)).length, ssN: ssRows.length,
+    unmapped };
+  localStorage.setItem('rd_gameplan', JSON.stringify(result));
+  gpRender(result);
+}
+
+function gpRender(res) {
+  const dash = document.getElementById('gp-dashboard');
+  const lookBar = res.looks.map(l =>
+    `${gpShellChipHTML(l.shell)} <strong>${Math.round(l.freq * 100)}%</strong>${l.topFront ? ' <span style="color:var(--gray);font-size:11px">w/ ' + dbEscapeHTML(l.topFront) + '</span>' : ''}`).join(' &nbsp;·&nbsp; ');
+  const confChip = c => c === 'TESTED' ? '<span class="ss-cov-chip" style="background:#2e7d32;color:#fff">TESTED</span>'
+    : '<span class="ss-cov-chip" style="background:#f9a825;color:#111">PARTIAL</span>';
+  const vChip = v => v === 'BAD USAGE' ? ' <span class="ss-cov-chip" style="background:#e65100;color:#fff">WINDOW ONLY</span>' : '';
+  const rows = res.ranked.map((c, i) => {
+    const ctx = c.detail.filter(d => d.succ != null).slice(0, 3)
+      .map(d => `${gpShellChipHTML(d.shell)} ${d.succ}% <span style="color:var(--gray)">(n${d.n})</span>`).join(' · ');
+    const gaps = c.detail.filter(d => d.succ == null && d.freq >= 0.15).map(d => gpShellChipHTML(d.shell)).join(' ');
+    return `<tr${c.conf === 'PARTIAL' ? '' : ''}>
+      <td style="width:26px;color:var(--gray)">${i + 1}</td>
+      <td><strong>${dbEscapeHTML(c.concept)}</strong> <span style="color:var(--gray);font-size:11px">${c.kind}</span>${vChip(c.verdict)}<br>
+        <span style="font-size:11px">${ctx}</span>${gaps ? `<br><span style="font-size:10px;color:var(--gray)">no reps yet vs ${gaps}</span>` : ''}</td>
+      <td style="text-align:center"><strong style="color:${c.score >= 50 ? '#7fdc7f' : '#ff8888'};font-size:17px">${c.score}%</strong><br><span style="color:var(--gray);font-size:10px">expected</span></td>
+      <td style="text-align:center">${c.explPct}%</td>
+      <td>${confChip(c.conf)}<br><span style="color:var(--gray);font-size:10px">${c.matchedN} reps · ${c.matchedFreq}% of their snaps</span></td>
+    </tr>`;
+  }).join('');
+  dash.innerHTML = `
+    <div class="db-section"><div class="db-section-title">WHAT ${dbEscapeHTML(res.opponent)} SHOWS <span style="color:var(--gray);font-weight:400">(${res.taggedOppN}/${res.oppN} snaps coverage-tagged)</span></div>
+      <div class="db-section-body" style="padding:10px 0">${lookBar}</div></div>
+    ${Object.keys(res.unmapped).length ? `<div class="pg-cut-note">⚠️ Opponent coverage tags I couldn't translate to a shell (excluded): ${Object.entries(res.unmapped).map(([l, n]) => `"${dbEscapeHTML(l)}" x${n}`).join(', ')}. Rename these in the breakdown data or tell me the mapping.</div>` : ''}
+    <div class="db-note" style="margin-bottom:10px">Self scout: ${res.ssTagged}/${res.ssN} plays coverage-tagged — rankings are built from the tagged share. Expected % = your success rate weighted by how often they show each look (small samples shrunk toward season average).</div>
+    <div class="db-section"><div class="db-section-title">RANKED CALLS</div>
+      ${res.ranked.length ? `<table class="db-table"><tr><th>#</th><th>CONCEPT — vs their looks</th><th>EXPECTED</th><th>EXPL</th><th>CONFIDENCE</th></tr>${rows}</table>` : '<div class="db-empty">No concepts have coverage-tagged reps against this opponent\'s looks yet — tag coverage on your Self Scout uploads to power the ranking.</div>'}
+    </div>
+    ${res.untested.length ? `<div class="db-section"><div class="db-section-title">UNTESTED VS THEIR LOOKS <span style="color:var(--gray);font-weight:400">(no coverage-tagged reps — not ranked, not buried)</span></div>
+      <table class="db-table"><tr><th>CONCEPT</th><th>SEASON SUCCESS</th><th>PLAYS (TAGGED)</th></tr>
+      ${res.untested.map(c => `<tr><td><strong>${dbEscapeHTML(c.concept)}</strong> <span style="color:var(--gray);font-size:11px">${c.kind}</span></td><td>${Math.round(c.seasonSucc * 100)}%</td><td>${c.n} (${c.taggedN})</td></tr>`).join('')}</table></div>` : ''}
+    ${res.excluded.length ? `<div class="pg-cut-note"><strong>EXCLUDED (bad-concept verdicts):</strong> ${res.excluded.map(c => dbEscapeHTML(c.concept)).join(' · ')} — type them back in later via the override layer if you disagree.</div>` : ''}
+  `;
+}
+
+function startGamePlan() {
+  showScreen('gameplan-screen');
+  const sel = document.getElementById('gp-opponent');
+  const opps = Object.keys(getDefOpponents());
+  sel.innerHTML = opps.length
+    ? opps.map(o => `<option value="${dbEscapeHTML(o)}">${dbEscapeHTML(o)}</option>`).join('')
+    : '<option value="">— no opponent breakdowns loaded —</option>';
+  if (opps.length) sel.value = opps[opps.length - 1];
+  const saved = JSON.parse(localStorage.getItem('rd_gameplan') || 'null');
+  if (saved && saved.opponent && opps.includes(saved.opponent)) { sel.value = saved.opponent; gpRender(saved); }
 }
 
 // offline app shell — after the first online visit, the whole toolkit opens with no signal
