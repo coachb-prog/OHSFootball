@@ -940,9 +940,21 @@ body {
   <div class="db-wrap">
     <div class="db-card">
       <div class="db-card-title">THIS WEEK</div>
-      <select class="db-input" id="gp-opponent"></select>
+      <select class="db-input" id="gp-opponent" onchange="startGamePlan()"></select>
       <button class="ss-slides-btn" onclick="gpGenerate()">🎯 COMPILE GAME PLAN</button>
-      <div class="db-upload-status" id="gp-status">Ranks your concepts by expected success against the looks this opponent actually shows — your coverage colors on both sides. Needs coverage-tagged Self Scout games and an opponent breakdown.</div>
+      <div class="pg-cfg-title">STAFF ADD (coach's eye, not data)</div>
+      <div class="ss-meta-row">
+        <input class="db-input ss-meta-grow" id="gp-add-name" placeholder="CONCEPT (e.g. MICHIGAN)" maxlength="24">
+        <button class="db-backup-btn" onclick="gpStaffAdd()">＋ ADD</button>
+      </div>
+      <div class="pg-cfg-title">PLAYER FILM NOTES (jersey # + what you saw)</div>
+      <div class="ss-meta-row">
+        <input class="db-input ss-meta-short" id="gp-note-num" placeholder="#" maxlength="3">
+        <input class="db-input ss-meta-grow" id="gp-note-text" placeholder="CB #4 bites on double moves…" maxlength="90">
+      </div>
+      <button class="db-backup-btn" style="width:100%" onclick="gpAddNote()">＋ SAVE NOTE</button>
+      <div id="gp-notes-list"></div>
+      <div class="db-upload-status" id="gp-status">Ranks your concepts by expected success against the looks this opponent shows — your coverage colors on both sides. ▲/▼ on any row is a coach override; everything here feeds the practice script and call sheet automatically.</div>
     </div>
     <div id="gp-dashboard"><div class="db-empty">Pick the opponent and hit COMPILE. Concepts you've never run against their top looks are flagged UNTESTED, never silently buried.</div></div>
   </div>
@@ -4005,32 +4017,47 @@ function gpGenerate() {
 
 function gpRender(res) {
   const dash = document.getElementById('gp-dashboard');
+  const over = gpGetOver(res.opponent);
   const lookBar = res.looks.map(l =>
     `${gpShellChipHTML(l.shell)} <strong>${Math.round(l.freq * 100)}%</strong>${l.topFront ? ' <span style="color:var(--gray);font-size:11px">w/ ' + dbEscapeHTML(l.topFront) + '</span>' : ''}`).join(' &nbsp;·&nbsp; ');
   const confChip = c => c === 'TESTED' ? '<span class="ss-cov-chip" style="background:#2e7d32;color:#fff">TESTED</span>'
     : '<span class="ss-cov-chip" style="background:#f9a825;color:#111">PARTIAL</span>';
   const vChip = v => v === 'BAD USAGE' ? ' <span class="ss-cov-chip" style="background:#e65100;color:#fff">WINDOW ONLY</span>' : '';
-  const rows = res.ranked.map((c, i) => {
+  const boostChip = c => over.boost[c.concept] === 1 ? ' <span class="ss-cov-chip" style="background:#1565c0;color:#fff">COACH ▲</span>'
+    : over.boost[c.concept] === -1 ? ' <span class="ss-cov-chip" style="background:#616161;color:#fff">COACH ▼</span>' : '';
+  const arrows = c => `<div style="display:flex;gap:4px;flex-direction:column">
+    <button class="ds-chip" style="min-height:26px;min-width:32px;padding:0;font-size:12px;${over.boost[c.concept] === 1 ? 'background:#1565c0;border-color:#1565c0' : ''}" onclick="gpBoost('${dbEscapeHTML(c.concept)}',1)">▲</button>
+    <button class="ds-chip" style="min-height:26px;min-width:32px;padding:0;font-size:12px;${over.boost[c.concept] === -1 ? 'background:#616161;border-color:#616161' : ''}" onclick="gpBoost('${dbEscapeHTML(c.concept)}',-1)">▼</button></div>`;
+  // display order = merged plan order (staff adds first, boosts applied)
+  const plan = gpGetPlanFor(res.opponent);
+  const displayRanked = plan ? plan.order.filter(c => !c.staffAdd) : res.ranked;
+  const rows = displayRanked.map((c, i) => {
     const ctx = c.detail.filter(d => d.succ != null).slice(0, 3)
       .map(d => `${gpShellChipHTML(d.shell)} ${d.succ}% <span style="color:var(--gray)">(n${d.n})</span>`).join(' · ');
     const gaps = c.detail.filter(d => d.succ == null && d.freq >= 0.15).map(d => gpShellChipHTML(d.shell)).join(' ');
-    return `<tr${c.conf === 'PARTIAL' ? '' : ''}>
+    return `<tr>
       <td style="width:26px;color:var(--gray)">${i + 1}</td>
-      <td><strong>${dbEscapeHTML(c.concept)}</strong> <span style="color:var(--gray);font-size:11px">${c.kind}</span>${vChip(c.verdict)}<br>
+      <td><strong>${dbEscapeHTML(c.concept)}</strong> <span style="color:var(--gray);font-size:11px">${c.kind}</span>${vChip(c.verdict)}${boostChip(c)}<br>
         <span style="font-size:11px">${ctx}</span>${gaps ? `<br><span style="font-size:10px;color:var(--gray)">no reps yet vs ${gaps}</span>` : ''}</td>
       <td style="text-align:center"><strong style="color:${c.score >= 50 ? '#7fdc7f' : '#ff8888'};font-size:17px">${c.score}%</strong><br><span style="color:var(--gray);font-size:10px">expected</span></td>
       <td style="text-align:center">${c.explPct}%</td>
       <td>${confChip(c.conf)}<br><span style="color:var(--gray);font-size:10px">${c.matchedN} reps · ${c.matchedFreq}% of their snaps</span></td>
+      <td>${arrows(c)}</td>
     </tr>`;
   }).join('');
+  const addRows = (plan ? plan.over.adds : []).map(a =>
+    `<tr><td style="color:var(--gray)">＋</td><td><strong>${dbEscapeHTML(a)}</strong> <span class="ss-cov-chip" style="background:#7030A0;color:#fff">STAFF ADD</span></td>
+     <td style="text-align:center;color:var(--gray)">—</td><td style="text-align:center;color:var(--gray)">—</td><td><span style="color:var(--gray);font-size:10px">coach's eye</span></td>
+     <td><button class="ds-chip" style="min-height:26px;min-width:32px;padding:0;font-size:12px" onclick="gpRemoveAdd('${dbEscapeHTML(a)}')">✕</button></td></tr>`).join('');
   dash.innerHTML = `
     <div class="db-section"><div class="db-section-title">WHAT ${dbEscapeHTML(res.opponent)} SHOWS <span style="color:var(--gray);font-weight:400">(${res.taggedOppN}/${res.oppN} snaps coverage-tagged)</span></div>
       <div class="db-section-body" style="padding:10px 0">${lookBar}</div></div>
     ${Object.keys(res.unmapped).length ? `<div class="pg-cut-note">⚠️ Opponent coverage tags I couldn't translate to a shell (excluded): ${Object.entries(res.unmapped).map(([l, n]) => `"${dbEscapeHTML(l)}" x${n}`).join(', ')}. Rename these in the breakdown data or tell me the mapping.</div>` : ''}
     <div class="db-note" style="margin-bottom:10px">Self scout: ${res.ssTagged}/${res.ssN} plays coverage-tagged — rankings are built from the tagged share. Expected % = your success rate weighted by how often they show each look (small samples shrunk toward season average).</div>
-    <div class="db-section"><div class="db-section-title">RANKED CALLS</div>
-      ${res.ranked.length ? `<table class="db-table"><tr><th>#</th><th>CONCEPT — vs their looks</th><th>EXPECTED</th><th>EXPL</th><th>CONFIDENCE</th></tr>${rows}</table>` : '<div class="db-empty">No concepts have coverage-tagged reps against this opponent\'s looks yet — tag coverage on your Self Scout uploads to power the ranking.</div>'}
+    <div class="db-section"><div class="db-section-title">RANKED CALLS <span style="color:var(--gray);font-weight:400">— staff adds first, then data rank with coach ▲/▼ applied</span></div>
+      ${(rows || addRows) ? `<table class="db-table"><tr><th>#</th><th>CONCEPT — vs their looks</th><th>EXPECTED</th><th>EXPL</th><th>CONFIDENCE</th><th></th></tr>${addRows}${rows}</table>` : '<div class="db-empty">No concepts have coverage-tagged reps against this opponent\'s looks yet — tag coverage on your Self Scout uploads to power the ranking.</div>'}
     </div>
+    ${gpGetOver(res.opponent).notes.length ? `<div class="db-section"><div class="db-section-title">PLAYER FILM NOTES</div><div class="db-section-body"><ul class="db-insights">${gpGetOver(res.opponent).notes.map(n => `<li>${n.num ? '<strong>#' + dbEscapeHTML(n.num) + '</strong> — ' : ''}${dbEscapeHTML(n.text)}</li>`).join('')}</ul></div></div>` : ''}
     ${res.untested.length ? `<div class="db-section"><div class="db-section-title">UNTESTED VS THEIR LOOKS <span style="color:var(--gray);font-weight:400">(no coverage-tagged reps — not ranked, not buried)</span></div>
       <table class="db-table"><tr><th>CONCEPT</th><th>SEASON SUCCESS</th><th>PLAYS (TAGGED)</th></tr>
       ${res.untested.map(c => `<tr><td><strong>${dbEscapeHTML(c.concept)}</strong> <span style="color:var(--gray);font-size:11px">${c.kind}</span></td><td>${Math.round(c.seasonSucc * 100)}%</td><td>${c.n} (${c.taggedN})</td></tr>`).join('')}</table></div>` : ''}
@@ -4038,16 +4065,106 @@ function gpRender(res) {
   `;
 }
 
+// ---- Step 9: human input layer (persists per opponent, survives recompiles) ----
+function gpGetOver(opp) {
+  const all = JSON.parse(localStorage.getItem('rd_gameplan_over') || '{}');
+  return all[opp] || { adds: [], boost: {}, notes: [] };
+}
+function gpSaveOver(opp, over) {
+  const all = JSON.parse(localStorage.getItem('rd_gameplan_over') || '{}');
+  all[opp] = over;
+  localStorage.setItem('rd_gameplan_over', JSON.stringify(all));
+}
+function gpStaffAdd() {
+  const opp = document.getElementById('gp-opponent').value;
+  const name = document.getElementById('gp-add-name').value.trim().toUpperCase();
+  if (!opp || !name) return;
+  const over = gpGetOver(opp);
+  if (!over.adds.includes(name)) over.adds.push(name);
+  gpSaveOver(opp, over);
+  document.getElementById('gp-add-name').value = '';
+  gpRefresh();
+}
+function gpRemoveAdd(name) {
+  const opp = document.getElementById('gp-opponent').value;
+  const over = gpGetOver(opp);
+  over.adds = over.adds.filter(a => a !== name);
+  gpSaveOver(opp, over);
+  gpRefresh();
+}
+function gpBoost(key, dir) {
+  const opp = document.getElementById('gp-opponent').value;
+  const over = gpGetOver(opp);
+  over.boost[key] = over.boost[key] === dir ? 0 : dir; // tap again to clear
+  if (!over.boost[key]) delete over.boost[key];
+  gpSaveOver(opp, over);
+  gpRefresh();
+}
+function gpAddNote() {
+  const opp = document.getElementById('gp-opponent').value;
+  const num = document.getElementById('gp-note-num').value.trim().replace('#', '');
+  const text = document.getElementById('gp-note-text').value.trim();
+  if (!opp || !text) return;
+  const over = gpGetOver(opp);
+  over.notes.push({ num, text, at: Date.now() });
+  gpSaveOver(opp, over);
+  document.getElementById('gp-note-num').value = '';
+  document.getElementById('gp-note-text').value = '';
+  gpRenderNotes();
+  gpRefresh();
+}
+function gpDeleteNote(i) {
+  const opp = document.getElementById('gp-opponent').value;
+  const over = gpGetOver(opp);
+  over.notes.splice(i, 1);
+  gpSaveOver(opp, over);
+  gpRenderNotes();
+}
+function gpRenderNotes() {
+  const opp = document.getElementById('gp-opponent').value;
+  const el = document.getElementById('gp-notes-list');
+  if (!el) return;
+  const notes = opp ? gpGetOver(opp).notes : [];
+  el.innerHTML = notes.map((n, i) =>
+    `<div class="ss-game-select-row" style="cursor:default">${n.num ? '<strong>#' + dbEscapeHTML(n.num) + '</strong> ' : ''}${dbEscapeHTML(n.text)}<span class="db-game-del" onclick="gpDeleteNote(${i})">✕</span></div>`).join('');
+}
+function gpRefresh() {
+  const saved = JSON.parse(localStorage.getItem('rd_gameplan') || 'null');
+  const opp = document.getElementById('gp-opponent').value;
+  if (saved && saved.opponent === opp) gpRender(saved);
+}
+
+// The merged plan (data ranking + staff adds + coach boosts) — what the
+// practice script and call sheet consume. Rank map: concept -> order index.
+function gpGetPlanFor(opp) {
+  const saved = JSON.parse(localStorage.getItem('rd_gameplan') || 'null');
+  if (!saved || saved.opponent !== opp) return null;
+  const over = gpGetOver(opp);
+  const boosted = [], normal = [], benched = [];
+  saved.ranked.forEach(c => {
+    const b = over.boost[c.concept];
+    (b === 1 ? boosted : b === -1 ? benched : normal).push(c);
+  });
+  const order = [...over.adds.map(a => ({ concept: a, staffAdd: true })), ...boosted, ...normal, ...benched];
+  const rankMap = {};
+  order.forEach((c, i) => { rankMap[c.concept] = i; });
+  return { ...saved, over, order, rankMap };
+}
+
 function startGamePlan() {
   showScreen('gameplan-screen');
   const sel = document.getElementById('gp-opponent');
   const opps = Object.keys(getDefOpponents());
+  const keep = sel.value;
   sel.innerHTML = opps.length
     ? opps.map(o => `<option value="${dbEscapeHTML(o)}">${dbEscapeHTML(o)}</option>`).join('')
     : '<option value="">— no opponent breakdowns loaded —</option>';
-  if (opps.length) sel.value = opps[opps.length - 1];
+  if (opps.includes(keep)) sel.value = keep;
+  else if (opps.length) sel.value = opps[opps.length - 1];
   const saved = JSON.parse(localStorage.getItem('rd_gameplan') || 'null');
-  if (saved && saved.opponent && opps.includes(saved.opponent)) { sel.value = saved.opponent; gpRender(saved); }
+  if (saved && saved.opponent === sel.value) gpRender(saved);
+  else document.getElementById('gp-dashboard').innerHTML = '<div class="db-empty">Pick the opponent and hit COMPILE. Concepts you\'ve never run against their top looks are flagged UNTESTED, never silently buried.</div>';
+  gpRenderNotes();
 }
 
 // offline app shell — after the first online visit, the whole toolkit opens with no signal
@@ -4227,9 +4344,10 @@ function pgCall(concept, kind, meta, i) {
 function pgDD(dn, dist, hash) { return `${dn}${dist}${hash}`; }
 
 // ---- the allocator ----
-function pgBuildScript(profile, verdicts, meta, cfg) {
+function pgBuildScript(profile, verdicts, meta, cfg, rankMap) {
   const V = Object.values(verdicts);
-  const byV = v => V.filter(x => x.verdict === v).sort((a, b) => b.n - a.n);
+  const rankOf = c => rankMap && rankMap[c.concept] != null ? rankMap[c.concept] : 9999;
+  const byV = v => V.filter(x => x.verdict === v).sort((a, b) => rankOf(a) - rankOf(b) || b.n - a.n);
   const keepsRun = byV('KEEP').filter(v => v.kind === 'run');
   const keepsPass = byV('KEEP').filter(v => v.kind === 'pass');
   const badUsage = byV('BAD USAGE');
@@ -4351,7 +4469,9 @@ function pgGenerate() {
     const el = document.querySelector(`[data-pg-reps="${s.key}"]`);
     cfg[s.key] = Math.max(4, Math.min(24, parseInt(el && el.value, 10) || s.reps));
   });
-  const built = pgBuildScript(profile, verdicts, meta, cfg);
+  const plan = typeof gpGetPlanFor === 'function' ? gpGetPlanFor(opp) : null;
+  const built = pgBuildScript(profile, verdicts, meta, cfg, plan ? plan.rankMap : null);
+  if (plan) built.planApplied = plan.generatedAt;
   window.pgLast = { generatedAt: new Date().toISOString(), opponent: opp || 'GENERIC', cfg, built, profile,
     verdicts: Object.values(verdicts) };
   // remember what got practiced so the call sheet can cross-check coverage
@@ -4374,6 +4494,7 @@ function pgRender(built, profile, opp) {
   if (built.cuts.length) {
     html += `<div class="pg-cut-note"><strong>CUT THIS WEEK (bad-concept verdicts — do not script):</strong> ${built.cuts.map(c => `${dbEscapeHTML(c.concept)} (${c.succ}% on ${c.n})`).join(' · ')}</div>`;
   }
+  if (built.planApplied) html += `<div class="db-note" style="margin-bottom:10px">🎯 Rep order driven by the Game Plan Compiler ranking for this opponent (compiled ${dbEscapeHTML(built.planApplied.slice(0, 10))}) — staff adds and coach ▲/▼ included.</div>`;
   html += pgVerdictMovement(built);
   html += `<div class="db-note" style="margin-bottom:12px">CALL and LOOK cells are editable — click and retype before printing. Edits carry into print and JSON export.</div>`;
   PG_SECTIONS.forEach(s => {
@@ -4501,8 +4622,10 @@ function csGenerate() {
   const verdicts = pgComputeVerdicts(ssRows);
   const meta = pgConceptMeta(ssRows);
   const V = Object.values(verdicts);
-  const keepsPass = V.filter(v => v.verdict === 'KEEP' && v.kind === 'pass').sort((a, b) => b.succ - a.succ);
-  const keepsRun = V.filter(v => v.verdict === 'KEEP' && v.kind === 'run').sort((a, b) => b.succ - a.succ);
+  const csPlan = typeof gpGetPlanFor === 'function' ? gpGetPlanFor(opp) : null;
+  const csRank = c => csPlan && csPlan.rankMap[c.concept] != null ? csPlan.rankMap[c.concept] : 9999;
+  const keepsPass = V.filter(v => v.verdict === 'KEEP' && v.kind === 'pass').sort((a, b) => csRank(a) - csRank(b) || b.succ - a.succ);
+  const keepsRun = V.filter(v => v.verdict === 'KEEP' && v.kind === 'run').sort((a, b) => csRank(a) - csRank(b) || b.succ - a.succ);
   const badUsage = V.filter(v => v.verdict === 'BAD USAGE');
   const cuts = V.filter(v => v.verdict === 'BAD CONCEPT');
   const inconcl = V.filter(v => v.verdict === 'INCONCLUSIVE');
@@ -4641,7 +4764,10 @@ function csGenerate() {
   B('gottahaveit', ['FEED #22, #4, #5']);
   B('backontrack', pick(usable('run'), 1).map(c => c + ' W/ COKES & DEFAULTS'));
   B('shots', fam('DROP BACK').slice(0, 2).map(v => v.concept).join('/ ') ? ['NUTS/ ' + fam('DROP BACK').slice(0, 2).map(v => v.concept).join('/ ')] : ['NUTS']);
-  B('notes', ['', '', '']);
+  // player film notes from the game plan layer seed the NOTES box
+  B('notes', csPlan && csPlan.over.notes.length
+    ? csPlan.over.notes.slice(0, 6).map(n => (n.num ? '#' + n.num + ' — ' : '') + n.text)
+    : ['', '', '']);
 
   // ---- SIDE 2: menu grid ----
   B('run10', topCalls(runRows, r => persOf(r) === '10', 8));
@@ -4682,6 +4808,12 @@ function csGenerate() {
   if (!profile) flags.push('NO OPPONENT DATA — expected-look notes are generic placeholders. Load a breakdown for real looks.');
   // consistency vs the last generated practice script: everything on the
   // call sheet should have gotten practice reps this week
+  if (csPlan) {
+    flags.unshift('🎯 Box order driven by the Game Plan Compiler ranking (staff adds + coach overrides included).');
+    csPlan.over.adds.forEach(a => {
+      if (!V.some(v => v.concept === a)) flags.push(`STAFF ADD "${a}" has no charted data — type its calls into the boxes by hand.`);
+    });
+  }
   const lastScript = JSON.parse(localStorage.getItem('rd_practice_last') || 'null');
   if (lastScript) {
     const onSheet = Object.keys(used).map(k => k.split('|')[0]);
