@@ -73,7 +73,17 @@ body {
   cursor: pointer; transition: all 0.15s;
 }
 .pos-btn.active { background: var(--red); border-color: var(--red); }
-.modes-list { padding: 20px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+.modes-list { padding: 20px 20px 4px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+.modes-section {
+  padding: 16px 20px 4px; border-top: 1px solid #2a2a2a;
+}
+.modes-section:first-of-type { border-top: none; padding-top: 20px; }
+.modes-section-title {
+  font-size: 11px; font-weight: 800; letter-spacing: 2px; color: var(--gray);
+  margin-bottom: 12px; text-transform: uppercase; display: flex; align-items: center; gap: 8px;
+}
+.modes-section-title .ms-line { flex: 1; height: 1px; background: #2a2a2a; }
+.modes-section .modes-list { padding: 0; margin: 0; }
 .mode-btn {
   background: var(--black2); border: 1px solid #333; border-radius: 12px;
   padding: 18px 16px; display: flex; align-items: center; gap: 14px;
@@ -81,6 +91,10 @@ body {
   min-height: 72px;
 }
 .mode-btn:hover, .mode-btn:active { background: var(--black3); border-color: var(--red); transform: scale(0.98); }
+.mode-btn-featured { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(232,201,106,0.3); }
+.mode-btn-featured:hover, .mode-btn-featured:active { border-color: var(--gold); }
+.mode-btn-soon { opacity: 0.5; cursor: default; }
+.mode-btn-soon:hover, .mode-btn-soon:active { background: var(--black2); border-color: #333; transform: none; }
 .mode-icon { font-size: 28px; width: 40px; text-align: center; flex-shrink: 0; }
 .mode-info { flex: 1; }
 .mode-name { font-size: 15px; font-weight: 800; letter-spacing: 0.5px; }
@@ -282,6 +296,7 @@ body {
 .pb-qb-notes ul { padding-left: 16px; display: flex; flex-direction: column; gap: 5px; }
 .pb-qb-notes li { font-size: 13px; color: #ccc; line-height: 1.4; }
 .pb-back-btn { background: var(--black3); border: 1px solid #444; border-radius: 10px; color: var(--white); padding: 14px; font-size: 14px; font-weight: 800; cursor: pointer; }
+
 </style>
 </head>
 <body>
@@ -319,55 +334,58 @@ body {
       <button class="pos-btn" data-pos="OL" onclick="setPosition('OL')">OL</button>
     </div>
   </div>
-  <div class="modes-list">
-    <button class="mode-btn" onclick="startMode('formation')">
-      <div class="mode-icon">🏟️</div>
-      <div class="mode-info">
-        <div class="mode-name">FORMATION ID QUIZ</div>
-        <div class="mode-desc">Identify formations from diagrams</div>
-      </div>
-      <div class="mode-badge" id="badge-formation">▶</div>
-    </button>
-    <button class="mode-btn" onclick="startMode('assignment')">
-      <div class="mode-icon">📋</div>
-      <div class="mode-info">
-        <div class="mode-name">ASSIGNMENT FLASHCARDS</div>
-        <div class="mode-desc">Position-specific play questions</div>
-      </div>
-      <div class="mode-badge" id="badge-assignment">▶</div>
-    </button>
-    <button class="mode-btn" onclick="startMode('coverage')">
-      <div class="mode-icon">🛡️</div>
-      <div class="mode-info">
-        <div class="mode-name">COVERAGE RECOGNITION</div>
-        <div class="mode-desc">ID defensive shells fast</div>
-      </div>
-      <div class="mode-badge" id="badge-coverage">▶</div>
-    </button>
-    <button class="mode-btn" onclick="startMode('builder')">
-      <div class="mode-icon">🎯</div>
-      <div class="mode-info">
-        <div class="mode-name">PLAY CALL BUILDER</div>
-        <div class="mode-desc">Drag tiles into correct order</div>
-      </div>
-      <div class="mode-badge" id="badge-builder">▶</div>
-    </button>
-    <button class="mode-btn" onclick="startMode('motion')">
-      <div class="mode-icon">⚡</div>
-      <div class="mode-info">
-        <div class="mode-name">MOTION ID QUIZ</div>
-        <div class="mode-desc">Name the motion & read coverage</div>
-      </div>
-      <div class="mode-badge" id="badge-motion">▶</div>
-    </button>
-    <button class="mode-btn" onclick="showPlaybook()">
-      <div class="mode-icon">📖</div>
-      <div class="mode-info">
-        <div class="mode-name">PLAY DIAGRAMS</div>
-        <div class="mode-desc">Browse plays with route diagrams</div>
-      </div>
-      <div class="mode-badge">▶</div>
-    </button>
+  <div class="modes-section">
+    <div class="modes-section-title">PLAYBOOK TOOLS<span class="ms-line"></span></div>
+    <div class="modes-list">
+      <button class="mode-btn" onclick="startMode('formation')">
+        <div class="mode-icon">🏟️</div>
+        <div class="mode-info">
+          <div class="mode-name">FORMATION ID QUIZ</div>
+          <div class="mode-desc">Identify formations from diagrams</div>
+        </div>
+        <div class="mode-badge" id="badge-formation">▶</div>
+      </button>
+      <button class="mode-btn" onclick="startMode('assignment')">
+        <div class="mode-icon">📋</div>
+        <div class="mode-info">
+          <div class="mode-name">ASSIGNMENT FLASHCARDS</div>
+          <div class="mode-desc">Position-specific play questions</div>
+        </div>
+        <div class="mode-badge" id="badge-assignment">▶</div>
+      </button>
+      <button class="mode-btn" onclick="startMode('coverage')">
+        <div class="mode-icon">🛡️</div>
+        <div class="mode-info">
+          <div class="mode-name">COVERAGE RECOGNITION</div>
+          <div class="mode-desc">ID defensive shells fast</div>
+        </div>
+        <div class="mode-badge" id="badge-coverage">▶</div>
+      </button>
+      <button class="mode-btn" onclick="startMode('builder')">
+        <div class="mode-icon">🎯</div>
+        <div class="mode-info">
+          <div class="mode-name">PLAY CALL BUILDER</div>
+          <div class="mode-desc">Drag tiles into correct order</div>
+        </div>
+        <div class="mode-badge" id="badge-builder">▶</div>
+      </button>
+      <button class="mode-btn" onclick="startMode('motion')">
+        <div class="mode-icon">⚡</div>
+        <div class="mode-info">
+          <div class="mode-name">MOTION ID QUIZ</div>
+          <div class="mode-desc">Name the motion & read coverage</div>
+        </div>
+        <div class="mode-badge" id="badge-motion">▶</div>
+      </button>
+      <button class="mode-btn" onclick="showPlaybook()">
+        <div class="mode-icon">📖</div>
+        <div class="mode-info">
+          <div class="mode-name">PLAY DIAGRAMS</div>
+          <div class="mode-desc">Browse plays with route diagrams</div>
+        </div>
+        <div class="mode-badge">▶</div>
+      </button>
+    </div>
   </div>
   <button class="lb-btn" onclick="showLeaderboard()">🏆 LEADERBOARD</button>
 </div>
@@ -1689,6 +1707,7 @@ function pbSelectPos(pos) {
   pbSelectedPos = (pbSelectedPos === pos) ? null : pos;
   pbRenderDiagram(p, pbSelectedPos);
 }
+
 </script>
 </body>
 </html>
