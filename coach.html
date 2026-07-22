@@ -1405,7 +1405,9 @@ function dbGroupBy(rows, fn) {
 function dbIsBlitz(r) {
   const v = String(r.blitz == null ? '' : r.blitz).trim().toUpperCase();
   if (!v) return false;
-  return !['N', 'NO', 'NONE', '0'].includes(v);
+  // explicit no-blitz spellings — kept as a fixed list (not a prefix test) so
+  // real blitz tags that start with N (NICKEL, NAM, NOW) still count as blitzes
+  return !['N', 'NO', 'NONE', 'NB', 'NO BLITZ', 'N/A', 'NA', '0', '-', '—', 'FALSE', 'F'].includes(v);
 }
 function dbBlitzLabel(r) {
   const bn = String(r.blitzNum == null ? '' : r.blitzNum).trim().toUpperCase();
@@ -1482,12 +1484,17 @@ function dbHashBucket(r) {
   return v || null;
 }
 function dbZoneBucket(r) {
+  // Hudl convention (matches the offense scout's dsZoneFromYard): negative =
+  // own yard line, positive = opponent yard line. Bucket by field zone so the
+  // GOALLINE/REDZONE/FRINGE bands only capture OPPONENT territory and own-deep
+  // plays are BACKED UP — the old thresholds let GOALLINE swallow own 1-19
+  // and midfield.
   const y = parseFloat(r.yardLn);
   if (isNaN(y)) return null;
-  if (y <= -20) return 'BACKED UP (OWN TERRITORY)';
-  if (y <= 10) return 'GOALLINE (+10 AND IN)';
-  if (y <= 25) return 'REDZONE (+25 TO +11)';
-  if (y <= 35) return 'FRINGE (+35 TO +26)';
+  if (y >= 1 && y <= 10) return 'GOALLINE (+10 AND IN)';
+  if (y >= 11 && y <= 25) return 'REDZONE (+25 TO +11)';
+  if (y >= 26 && y <= 35) return 'FRINGE (+35 TO +26)';
+  if (y < 0 && y >= -20) return 'BACKED UP (OWN TERRITORY)';
   return 'OPEN FIELD (MIDFIELD)';
 }
 function dbFormBucket(r) {
