@@ -5110,6 +5110,7 @@ function dsActiveGame() {
 // negative yard line = own territory (Hudl convention)
 function dsZoneFromYard(y) {
   if (y == null || isNaN(y)) return null;
+  if (y === 0) return 'OF'; // the 50 is midfield, not the goal line
   if (y < 0) return y >= -20 ? 'BU' : 'OF';
   if (y <= 5) return 'GL';
   if (y <= 20) return 'RZ';
