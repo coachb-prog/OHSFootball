@@ -1918,7 +1918,7 @@ function ssAddGame(meta, rows) {
                   : opponent ? 'vs ' + opponent
                   : 'GAME ' + (data.games.length + 1);
   const game = {
-    id: 'sg' + Date.now(),
+    id: 'sg' + Date.now() + Math.random().toString(36).slice(2, 6), // random suffix: two uploads in the same ms can't collide
     weekId,
     opponent,
     gameDate: meta.gameDate || null,
@@ -1941,6 +1941,12 @@ function ssDeleteGame(gameId) {
 }
 function ssGetActiveRows() {
   const data = getSSData();
+  if (!ssSelectedGameIds.size) return data.games.reduce((acc, g) => acc.concat(g.rows), []);
+  // prune selection ids that no longer exist (a restore can swap in new game
+  // ids) — otherwise a stale selection matches nothing and the dashboard shows
+  // empty even though games are loaded; fall back to ALL if it empties out
+  const existing = new Set(data.games.map(g => g.id));
+  [...ssSelectedGameIds].forEach(id => { if (!existing.has(id)) ssSelectedGameIds.delete(id); });
   if (!ssSelectedGameIds.size) return data.games.reduce((acc, g) => acc.concat(g.rows), []);
   return data.games.filter(g => ssSelectedGameIds.has(g.id)).reduce((acc, g) => acc.concat(g.rows), []);
 }
@@ -2270,8 +2276,10 @@ function startSelfScout() {
 }
 
 // ---- offense-specific buckets (reuses dbYards/dbIsTD/dbIsTurnover/dbIsDeadPlay/dbIsOffenseSuccess) ----
-function ssIsRun(r) { return String(r.playType == null ? '' : r.playType).trim().toUpperCase().startsWith('R'); }
-function ssIsPass(r) { return String(r.playType == null ? '' : r.playType).trim().toUpperCase().startsWith('P'); }
+// Match the real PLAY TYPE vocabulary (Run/Rush, Pass) — a bare startsWith('P')
+// counted PUNT/PAT/PENALTY as passes and polluted the passing tables.
+function ssIsRun(r) { return String(r.playType == null ? '' : r.playType).trim().toUpperCase().startsWith('RU'); }
+function ssIsPass(r) { return String(r.playType == null ? '' : r.playType).trim().toUpperCase().startsWith('PASS'); }
 function ssIsComplete(r) { return dbResultStr(r).startsWith('COMPLETE'); }
 function ssIsInterception(r) { return dbResultStr(r).includes('INTERCEPTION'); }
 function ssIsFumble(r) { return dbResultStr(r).includes('FUMBLE'); }
@@ -2847,7 +2855,10 @@ const SS_COV_MIN_N = 3;
 function ssGetCoverageShell(r) {
   const v = String(r.coverage == null ? '' : r.coverage).trim();
   if (!v || v.toUpperCase() === 'UNKNOWN') return null;
-  return SS_COVERAGE_SHELLS.find(s => s.label === v) ? v : null;
+  // case-insensitive match, returning the canonical label so "BLUE"/"blue"/
+  // "Blue" all group as one shell instead of reading as untagged
+  const sh = SS_COVERAGE_SHELLS.find(s => s.label.toUpperCase() === v.toUpperCase());
+  return sh ? sh.label : null;
 }
 
 function ssCovShellChip(label) {
