@@ -3519,13 +3519,13 @@ function lvRenderGrids() {
   document.getElementById('lv-motletter-chips').innerHTML = ['X', 'H', 'Y', 'Z'].map(l =>
     `<button class="lv-chip${lvSel.motLetter === l ? ' sel' : ''}" style="min-height:34px;font-size:12px" onclick="lvPick('motLetter',lvSel.motLetter==='${l}'?null:'${l}')">${l}</button>`).join('');
   document.getElementById('lv-motion-grid').innerHTML = chip('NONE', 'motion', '') + cfg.motions.map(m => chip(m, 'motion', m)).join('');
-  const callChip = (c, kind) => `<button class="lv-chip${lvSel.call === c && lvSel.callKind === kind ? ' sel' : ''}" onclick="lvPickCall('${dbEscapeHTML(c)}','${kind}')">${dbEscapeHTML(c)}</button>`;
+  const callChip = (c, kind) => `<button class="lv-chip${lvSel.call === c && lvSel.callKind === kind ? ' sel' : ''}" onclick="lvPickCall('${gpJs(c)}','${kind}')">${dbEscapeHTML(c)}</button>`;
   document.getElementById('lv-runplay-grid').innerHTML = cfg.runPlays.map(c => callChip(c, 'run')).join('');
   document.getElementById('lv-passplay-grid').innerHTML = cfg.passPlays.map(c => callChip(c, 'pass')).join('');
   document.getElementById('lv-dir-chips').innerHTML = ['PRO', 'CON'].map(d =>
     `<button class="lv-chip${lvSel.dir === d ? ' sel' : ''}" style="min-height:34px;font-size:12px" onclick="lvPick('dir',lvSel.dir==='${d}'?null:'${d}')">${d}</button>`).join('');
   document.getElementById('lv-tag-grid').innerHTML = cfg.tags.map(t =>
-    `<button class="lv-chip${lvSel.tag === t ? ' sel' : ''}" onclick="lvSel.tag=lvSel.tag==='${t.replace(/'/g, "\\'")}'?'':'${t.replace(/'/g, "\\'")}';document.getElementById('lv-tag-custom').value='';lvRenderGrids()">${dbEscapeHTML(t)}</button>`).join('');
+    `<button class="lv-chip${lvSel.tag === t ? ' sel' : ''}" onclick="lvSel.tag=lvSel.tag==='${gpJs(t)}'?'':'${gpJs(t)}';document.getElementById('lv-tag-custom').value='';lvRenderGrids()">${dbEscapeHTML(t)}</button>`).join('');
   document.getElementById('lv-type-row').innerHTML = [['RUN', '🏃 RUN'], ['PASS', '🎯 PASS']].map(([v, label]) =>
     `<button class="lv-chip${lvSel.type === v ? ' sel' : ''}" style="min-width:120px" onclick="lvPick('type','${v}')">${label}</button>`).join('');
   document.getElementById('lv-numpad').innerHTML =
