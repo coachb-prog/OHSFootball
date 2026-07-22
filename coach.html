@@ -3891,6 +3891,9 @@ const GP_SHRINK_K = 3;
 function gpNormalizeOppCoverage(label) {
   const v = String(label || '').trim().toUpperCase();
   if (!v) return null;
+  // digit-dash-digit is defensive-front nomenclature (6-1, 4-3, 3-4), not a
+  // coverage — flag it rather than silently grabbing the stray digit as a shell
+  if (/\d\s*-\s*\d/.test(v)) return 'UNMAPPED:' + v;
   if (/CLOUD|SHARK/.test(v)) return 'Shark';
   if (/2\s*-?\s*MAN|SILVER|MAN\s*2/.test(v)) return 'Silver';
   if (/QUARTERS|\b4\b|COVER\s*4|C4|GOLD/.test(v)) return 'Gold';
@@ -3912,6 +3915,11 @@ function gpShellsMatch(playShell, oppShell) {
   if (oppShell === 'C3GEN') return GP_C3_POOL.includes(playShell);
   return playShell === oppShell;
 }
+// Safe embedding of a name into a single-quoted JS string inside a
+// double-quoted onclick attribute: backslash-escape \ and ' for the JS layer,
+// then dbEscapeHTML handles & < > " for the attribute layer. Without this a
+// staff-add like O'DELL silently breaks its own remove/boost buttons.
+function gpJs(s) { return dbEscapeHTML(String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'")); }
 
 function gpGenerate() {
   const opp = document.getElementById('gp-opponent').value;
@@ -3983,18 +3991,25 @@ function gpGenerate() {
   const ranked = [], untested = [], excluded = [];
   Object.values(concepts).forEach(c => {
     if (c.verdict === 'BAD CONCEPT') { excluded.push(c); return; }
-    let score = 0, matchedFreq = 0, matchedN = 0;
+    let score = 0, matchedFreq = 0;
     const detail = [];
     looks.forEach(l => {
       const m = scoreShell(c, l.shell);
       if (m) {
         score += l.freq * m.adj;
         matchedFreq += l.freq;
-        matchedN += m.n;
         detail.push({ shell: l.shell, freq: l.freq, succ: Math.round(m.adj * 100), n: m.n, topFront: l.topFront });
       } else {
         detail.push({ shell: l.shell, freq: l.freq, succ: null, n: 0, topFront: l.topFront });
       }
+    });
+    // Count each tagged rep once (a Green rep matches both a generic-C3 look
+    // and a strong-C3 look, but it's still one rep of evidence) — the score
+    // above is correct expected-value, but matchedN drives the TESTED gate and
+    // the coach-facing "reps" count, so it must not double-count.
+    let matchedN = 0;
+    Object.entries(c.byShell).forEach(([sh, o]) => {
+      if (looks.some(l => gpShellsMatch(sh, l.shell))) matchedN += o.n;
     });
     if (!matchedN) { untested.push(c); return; }
     // unmatched share of their snaps: no coverage-specific evidence, so fall
@@ -4011,7 +4026,12 @@ function gpGenerate() {
   const result = { generatedAt: new Date().toISOString(), opponent: opp, looks, ranked, untested, excluded,
     taggedOppN, oppN: oppRows.length, ssTagged: ssRows.filter(r => ssGetCoverageShell(r)).length, ssN: ssRows.length,
     unmapped };
-  localStorage.setItem('rd_gameplan', JSON.stringify(result));
+  localStorage.setItem('rd_gameplan', JSON.stringify(result)); // last-shown, for the screen
+  // per-opponent store so switching weeks doesn't orphan another opponent's
+  // plan — the practice script / call sheet read this, keyed by their opponent
+  const all = JSON.parse(localStorage.getItem('rd_gameplan_all') || '{}');
+  all[opp] = result;
+  localStorage.setItem('rd_gameplan_all', JSON.stringify(all));
   gpRender(result);
 }
 
@@ -4026,8 +4046,8 @@ function gpRender(res) {
   const boostChip = c => over.boost[c.concept] === 1 ? ' <span class="ss-cov-chip" style="background:#1565c0;color:#fff">COACH ▲</span>'
     : over.boost[c.concept] === -1 ? ' <span class="ss-cov-chip" style="background:#616161;color:#fff">COACH ▼</span>' : '';
   const arrows = c => `<div style="display:flex;gap:4px;flex-direction:column">
-    <button class="ds-chip" style="min-height:26px;min-width:32px;padding:0;font-size:12px;${over.boost[c.concept] === 1 ? 'background:#1565c0;border-color:#1565c0' : ''}" onclick="gpBoost('${dbEscapeHTML(c.concept)}',1)">▲</button>
-    <button class="ds-chip" style="min-height:26px;min-width:32px;padding:0;font-size:12px;${over.boost[c.concept] === -1 ? 'background:#616161;border-color:#616161' : ''}" onclick="gpBoost('${dbEscapeHTML(c.concept)}',-1)">▼</button></div>`;
+    <button class="ds-chip" style="min-height:26px;min-width:32px;padding:0;font-size:12px;${over.boost[c.concept] === 1 ? 'background:#1565c0;border-color:#1565c0' : ''}" onclick="gpBoost('${gpJs(c.concept)}',1)">▲</button>
+    <button class="ds-chip" style="min-height:26px;min-width:32px;padding:0;font-size:12px;${over.boost[c.concept] === -1 ? 'background:#616161;border-color:#616161' : ''}" onclick="gpBoost('${gpJs(c.concept)}',-1)">▼</button></div>`;
   // display order = merged plan order (staff adds first, boosts applied)
   const plan = gpGetPlanFor(res.opponent);
   const displayRanked = plan ? plan.order.filter(c => !c.staffAdd) : res.ranked;
@@ -4048,7 +4068,7 @@ function gpRender(res) {
   const addRows = (plan ? plan.over.adds : []).map(a =>
     `<tr><td style="color:var(--gray)">＋</td><td><strong>${dbEscapeHTML(a)}</strong> <span class="ss-cov-chip" style="background:#7030A0;color:#fff">STAFF ADD</span></td>
      <td style="text-align:center;color:var(--gray)">—</td><td style="text-align:center;color:var(--gray)">—</td><td><span style="color:var(--gray);font-size:10px">coach's eye</span></td>
-     <td><button class="ds-chip" style="min-height:26px;min-width:32px;padding:0;font-size:12px" onclick="gpRemoveAdd('${dbEscapeHTML(a)}')">✕</button></td></tr>`).join('');
+     <td><button class="ds-chip" style="min-height:26px;min-width:32px;padding:0;font-size:12px" onclick="gpRemoveAdd('${gpJs(a)}')">✕</button></td></tr>`).join('');
   dash.innerHTML = `
     <div class="db-section"><div class="db-section-title">WHAT ${dbEscapeHTML(res.opponent)} SHOWS <span style="color:var(--gray);font-weight:400">(${res.taggedOppN}/${res.oppN} snaps coverage-tagged)</span></div>
       <div class="db-section-body" style="padding:10px 0">${lookBar}</div></div>
@@ -4137,17 +4157,27 @@ function gpRefresh() {
 // The merged plan (data ranking + staff adds + coach boosts) — what the
 // practice script and call sheet consume. Rank map: concept -> order index.
 function gpGetPlanFor(opp) {
-  const saved = JSON.parse(localStorage.getItem('rd_gameplan') || 'null');
-  if (!saved || saved.opponent !== opp) return null;
+  // prefer the per-opponent store; fall back to the last-shown single plan
+  const all = JSON.parse(localStorage.getItem('rd_gameplan_all') || '{}');
+  let saved = all[opp];
+  if (!saved) {
+    const one = JSON.parse(localStorage.getItem('rd_gameplan') || 'null');
+    if (one && one.opponent === opp) saved = one;
+  }
+  if (!saved) return null;
   const over = gpGetOver(opp);
+  // a staff-add that names a data-ranked concept shouldn't appear twice —
+  // the add pulls it to the top, but it's one concept
+  const addSet = new Set(over.adds);
   const boosted = [], normal = [], benched = [];
   saved.ranked.forEach(c => {
+    if (addSet.has(c.concept)) return; // rendered as its STAFF ADD row instead
     const b = over.boost[c.concept];
     (b === 1 ? boosted : b === -1 ? benched : normal).push(c);
   });
   const order = [...over.adds.map(a => ({ concept: a, staffAdd: true })), ...boosted, ...normal, ...benched];
   const rankMap = {};
-  order.forEach((c, i) => { rankMap[c.concept] = i; });
+  order.forEach((c, i) => { if (rankMap[c.concept] == null) rankMap[c.concept] = i; });
   return { ...saved, over, order, rankMap };
 }
 
