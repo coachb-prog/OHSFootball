@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { median, exTop2Avg, top2Concentration } from '../src/stats.js';
+import { median, exTop2Avg, top2Concentration, MIN_REPS } from '../src/stats.js';
 
 const close = (actual, expected, message) =>
   assert.ok(
@@ -37,43 +37,59 @@ test('median: does not mutate the caller array', () => {
 });
 
 test('exTop2Avg: drops the two longest and averages the rest', () => {
-  // sorted desc: 50, 20, 10, 6, 4 -> mean of 10, 6, 4
-  close(exTop2Avg([10, 50, 4, 20, 6]), 20 / 3, 'exTop2Avg');
-  assert.equal(exTop2Avg([100, 100, 5, 5]), 5);
+  // sorted desc: 50, 20, 10, 8, 7, 6, 5, 4, 3, 2
+  // drop 50 and 20 -> mean of the remaining 8 (sum 45)
+  close(exTop2Avg([10, 50, 4, 20, 6, 8, 7, 5, 3, 2]), 45 / 8, 'exTop2Avg');
 });
 
 test('exTop2Avg: drops two entries even when the longest are tied', () => {
-  // both 30s are removed, not just one
-  assert.equal(exTop2Avg([30, 30, 3, 9]), 6);
-});
-
-test('exTop2Avg: needs more than two plays', () => {
-  assert.equal(exTop2Avg([]), null);
-  assert.equal(exTop2Avg([12]), null);
-  assert.equal(exTop2Avg([12, 8]), null);
-  assert.equal(exTop2Avg([12, 8, 1]), 1);
+  // both 30s are removed, not just one — keeping one would average 8.67
+  assert.equal(exTop2Avg([30, 30, 6, 6, 6, 6, 6, 6, 6, 6]), 6);
 });
 
 test('exTop2Avg: sack yardage pulls the average negative', () => {
-  // sorted desc: 8, 3, 0, -4, -7 -> mean of 0, -4, -7
-  close(exTop2Avg([3, -7, 8, 0, -4]), -11 / 3, 'exTop2Avg');
+  // sorted desc: 8, 5, 3, 2, 1, 0, -1, -2, -4, -7 -> drop 8 and 5,
+  // remaining sum -8 over 8 plays
+  close(exTop2Avg([3, -7, 8, 0, -4, 1, 2, -1, 5, -2]), -1, 'exTop2Avg');
+});
+
+test('exTop2Avg: rep gate returns null below MIN_REPS', () => {
+  const nine = [9, 8, 7, 6, 5, 4, 3, 2, 1];
+  assert.equal(nine.length, MIN_REPS - 1);
+  assert.equal(exTop2Avg(nine), null);
+
+  assert.equal(exTop2Avg([]), null);
+  assert.equal(exTop2Avg([12]), null);
+  assert.equal(exTop2Avg([12, 8]), null);
+  assert.equal(exTop2Avg([12, 8, 1]), null);
+
+  // one more rep clears the gate
+  const ten = [...nine, 10];
+  assert.equal(ten.length, MIN_REPS);
+  assert.equal(exTop2Avg(ten), 4.5); // drop 10 and 9 -> mean of 8..1 (36 / 8)
 });
 
 test('top2Concentration: percent of total, baseline, and multiple', () => {
-  // top2 = 60 + 50 = 110 of 200 total, n = 5 -> baseline 40%
-  const result = top2Concentration([60, 40, 50, 30, 20]);
+  // top2 = 60 + 50 = 110 of 200 total, n = 10 -> baseline 20%
+  const result = top2Concentration([60, 50, 20, 15, 15, 10, 10, 8, 7, 5]);
   assert.equal(result.top2, 110);
   assert.equal(result.total, 200);
   close(result.concentration, 55, 'concentration');
-  close(result.baseline, 40, 'baseline');
-  close(result.multiple, 1.375, 'multiple');
+  close(result.baseline, 20, 'baseline');
+  close(result.multiple, 2.75, 'multiple');
 });
 
 test('top2Concentration: an even split scores a multiple of 1', () => {
-  const result = top2Concentration([10, 10, 10, 10, 10, 10, 10, 10]);
-  close(result.concentration, 25, 'concentration');
-  close(result.baseline, 25, 'baseline');
+  const result = top2Concentration([10, 10, 10, 10, 10, 10, 10, 10, 10, 10]);
+  close(result.concentration, 20, 'concentration');
+  close(result.baseline, 20, 'baseline');
   close(result.multiple, 1, 'multiple');
+});
+
+test('top2Concentration: baseline falls as reps climb', () => {
+  const twenty = Array.from({ length: 20 }, () => 5);
+  close(top2Concentration(twenty).baseline, 10, 'baseline');
+  close(top2Concentration(twenty).multiple, 1, 'multiple');
 });
 
 test('top2Concentration: two explosives carrying a quiet day', () => {
@@ -85,40 +101,58 @@ test('top2Concentration: two explosives carrying a quiet day', () => {
   assert.ok(result.multiple > 4, 'top-heavy sample should be well above 1x');
 });
 
-test('top2Concentration: baseline caps at 100 for tiny samples', () => {
-  const one = top2Concentration([25]);
-  assert.equal(one.top2, 25);
-  close(one.concentration, 100, 'concentration');
-  close(one.baseline, 100, 'baseline');
-  close(one.multiple, 1, 'multiple');
+test('top2Concentration: rep gate returns null below MIN_REPS', () => {
+  const nine = [9, 8, 7, 6, 5, 4, 3, 2, 1];
+  assert.equal(nine.length, MIN_REPS - 1);
+  assert.equal(top2Concentration(nine), null);
 
-  const two = top2Concentration([25, 15]);
-  close(two.concentration, 100, 'concentration');
-  close(two.baseline, 100, 'baseline');
-  close(two.multiple, 1, 'multiple');
+  assert.equal(top2Concentration([]), null);
+  assert.equal(top2Concentration([25]), null);
+  assert.equal(top2Concentration([25, 15]), null);
+
+  // one more rep clears the gate
+  const ten = [...nine, 10];
+  assert.equal(ten.length, MIN_REPS);
+  assert.notEqual(top2Concentration(ten), null);
+  assert.equal(top2Concentration(ten).top2, 19);
 });
 
-test('top2Concentration: non-positive total yields null percentages', () => {
-  const zero = top2Concentration([5, -5, 3, -3]);
+test('top2Concentration: zero total yards yields null percentages', () => {
+  // every gain cancelled by a loss — the denominator collapses
+  const zero = top2Concentration([5, -5, 3, -3, 4, -4, 2, -2, 1, -1]);
   assert.equal(zero.total, 0);
   assert.equal(zero.concentration, null);
   assert.equal(zero.multiple, null);
-  close(zero.baseline, 50, 'baseline');
-
-  const negative = top2Concentration([-1, -2, -3]);
-  assert.equal(negative.total, -6);
-  assert.equal(negative.concentration, null);
-  assert.equal(negative.multiple, null);
+  // the countable fields still come back
+  assert.equal(zero.top2, 9);
+  close(zero.baseline, 20, 'baseline');
 });
 
-test('top2Concentration: empty sample returns null', () => {
-  assert.equal(top2Concentration([]), null);
+test('top2Concentration: negative total yards yields null, not a negative percent', () => {
+  // a loaded box: nothing but losses
+  const negative = top2Concentration([-1, -2, -3, -1, -1, -1, -1, -1, -1, -1]);
+  assert.equal(negative.total, -13);
+  assert.equal(negative.concentration, null);
+  assert.equal(negative.multiple, null);
+  assert.equal(negative.top2, -2); // the two "longest" are still the least bad
+});
+
+test('top2Concentration: concentration can exceed 100 when losses drag the total', () => {
+  // two 40s against four sacks: total 44, top2 80. Denominator is positive,
+  // so this is a real reading, not the guard case — the top two really did
+  // out-gain everything the offense netted.
+  const result = top2Concentration([40, 40, -10, -10, -10, -10, 1, 1, 1, 1]);
+  assert.equal(result.total, 44);
+  assert.equal(result.top2, 80);
+  close(result.concentration, (80 / 44) * 100, 'concentration');
+  assert.ok(result.concentration > 100, 'expected concentration above 100');
 });
 
 test('top2Concentration: does not mutate the caller array', () => {
-  const plays = [4, 44, 14];
+  const plays = [4, 44, 14, 9, 9, 9, 9, 9, 9, 9];
+  const copy = [...plays];
   top2Concentration(plays);
-  assert.deepEqual(plays, [4, 44, 14]);
+  assert.deepEqual(plays, copy);
 });
 
 test('all three reject non-array and non-finite input', () => {

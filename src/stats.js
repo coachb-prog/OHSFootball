@@ -25,6 +25,16 @@ function toSample(yards, fnName) {
   });
 }
 
+/**
+ * Rep gate. Below this many plays, the top-two metrics are noise: dropping the
+ * two longest from a 6-play sample throws away a third of the evidence, and a
+ * 3-play sample will always look "top-heavy". Callers should show a needs-more-
+ * reps state rather than a number. Median has no gate — it stays honest small.
+ *
+ * @type {number}
+ */
+export const MIN_REPS = 10;
+
 const ascending = (a, b) => a - b;
 const descending = (a, b) => b - a;
 const sum = (values) => values.reduce((total, value) => total + value, 0);
@@ -51,11 +61,11 @@ export function median(yards) {
  * offense do on a normal snap" number, once the explosives are stripped out.
  *
  * @param {number[]} yards
- * @returns {number|null} null when 2 or fewer plays (nothing left to average)
+ * @returns {number|null} null below MIN_REPS plays
  */
 export function exTop2Avg(yards) {
   const sample = toSample(yards, 'exTop2Avg').sort(descending);
-  if (sample.length <= 2) return null;
+  if (sample.length < MIN_REPS) return null;
 
   const remaining = sample.slice(2);
   return sum(remaining) / remaining.length;
@@ -65,11 +75,14 @@ export function exTop2Avg(yards) {
  * @typedef {object} Top2Concentration
  * @property {number} top2 combined yards of the two longest plays
  * @property {number} total total yards in the sample
- * @property {number|null} concentration top2 as a percent of total; null when
- *   total yards is zero or negative (percent-of-total is meaningless there)
+ * @property {number|null} concentration top2 as a percent of total. Null when
+ *   total yards is zero or negative — a percent-of-total is meaningless once
+ *   the denominator collapses, and sack-heavy or loaded-box concepts get there
+ *   regularly. Note it can still exceed 100 when the sample mixes negatives
+ *   (two 40s alongside enough sacks), which is real, not a bug.
  * @property {number} baseline the even-split share for two plays, 2/n as a
- *   percent — what the top two would hold if every play gained the same.
- *   Capped at 100 so a 1- or 2-play sample reports 100, not 200.
+ *   percent — what the top two would hold if every play gained the same. At
+ *   the MIN_REPS floor of 10 plays this is 20, and it falls as reps climb.
  * @property {number|null} multiple concentration ÷ baseline; 1 means perfectly
  *   even, 3 means the top two carry three times their fair share. null
  *   whenever concentration is null.
@@ -80,16 +93,16 @@ export function exTop2Avg(yards) {
  * plays account for, measured against an even split.
  *
  * @param {number[]} yards
- * @returns {Top2Concentration|null} null for an empty sample
+ * @returns {Top2Concentration|null} null below MIN_REPS plays
  */
 export function top2Concentration(yards) {
   const sample = toSample(yards, 'top2Concentration').sort(descending);
   const n = sample.length;
-  if (n === 0) return null;
+  if (n < MIN_REPS) return null;
 
   const top2 = sum(sample.slice(0, 2));
   const total = sum(sample);
-  const baseline = Math.min(100, (2 / n) * 100);
+  const baseline = (2 / n) * 100;
 
   if (total <= 0) {
     return { top2, total, concentration: null, baseline, multiple: null };
