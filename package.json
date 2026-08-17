@@ -5,6 +5,11 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "scout": "node scripts/scout.js"
+    "scout": "node scripts/scout.js",
+    "build:self-scout": "node scripts/build-self-scout.js",
+    "shot": "node scripts/screenshot.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
   }
 }

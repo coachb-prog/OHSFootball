@@ -1,5 +1,4 @@
 node_modules/
-package.json
-package-lock.json
+dist/
 sample_*.csv
 test_*.js
