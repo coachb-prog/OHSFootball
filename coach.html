@@ -1709,19 +1709,24 @@ function dbRenderStats(overall) {
 // comparison between concepts charted a similar number of times (where it is
 // shown, next to each row's rep count) and a misleading one against a whole
 // season of defensive snaps. The raw share is n-honest, so the tile shows that.
-function dbShapeTilesHTML(st) {
+// `verb` is the direction the yardage runs: the Defense Breakdown charts what a
+// defense ALLOWED, the Opponent Offense Scout charts what their offense GAINED.
+// Same math, and the tiles must not claim we allowed an opponent's own film.
+function dbShapeTilesHTML(st, opts) {
+  const verb = (opts && opts.verb) || 'ALLOWED';
+  const unit = (opts && opts.unit) || 'SNAPS';
   const tile = (num, label) => `<div class="db-stat"><div class="db-stat-num">${num}</div><div class="db-stat-label">${label}</div></div>`;
-  if (!st) return tile('—', 'MEDIAN YDS ALLOWED') + tile('—', 'EX-TOP-2 ALLOWED') + tile('—', 'TOP-2 CONC.');
-  const medTile = tile(st.median === null ? '—' : dbYds1(st.median), 'MEDIAN YDS ALLOWED');
+  if (!st) return tile('—', `MEDIAN YDS ${verb}`) + tile('—', `EX-TOP-2 ${verb}`) + tile('—', 'TOP-2 CONC.');
+  const medTile = tile(st.median === null ? '—' : dbYds1(st.median), `MEDIAN YDS ${verb}`);
   if (st.exTop2Avg === null) {
-    const need = `NEEDS ${DB_MIN_REPS} SNAPS (${st.n})`;
-    return medTile + tile('—', 'EX-TOP-2 ALLOWED<br>' + need) + tile('—', 'TOP-2 CONC.<br>' + need);
+    const need = `NEEDS ${DB_MIN_REPS} ${unit} (${st.n})`;
+    return medTile + tile('—', `EX-TOP-2 ${verb}<br>` + need) + tile('—', 'TOP-2 CONC.<br>' + need);
   }
   const c = st.conc;
   const concTile = (!c || c.concentration === null)
     ? tile('—', `TOP-2 CONC.<br>${c ? c.total : 0} YDS TOTAL`)
-    : tile(`${Math.round(c.concentration)}%`, `TOP-2 CONC. OF ${st.n} SNAPS`);
-  return medTile + tile(dbYds1(st.exTop2Avg), 'EX-TOP-2 ALLOWED') + concTile;
+    : tile(`${Math.round(c.concentration)}%`, `TOP-2 CONC. OF ${st.n} ${unit}`);
+  return medTile + tile(dbYds1(st.exTop2Avg), `EX-TOP-2 ${verb}`) + concTile;
 }
 
 function dbSectionWrap(title, bodyHtml) {
@@ -5421,6 +5426,33 @@ function dsSplitHTML(rows) {
 function dsAvg(rows) {
   return rows.length ? Math.round(rows.reduce((s, r) => s + (r.gainLoss || 0), 0) / rows.length * 10) / 10 : 0;
 }
+// Single-line shape read for the formation cards, which have no table to hang a
+// column on. Same numbers and same gates as dbShapeCellHTML — only the layout
+// differs, so the two tools stay readable side by side.
+function dsShapeInlineHTML(rows) {
+  const st = dbSuccessStats(rows);
+  if (!st) return '<span class="db-gate-dash">—</span>';
+  const gate = (note, label) =>
+    `<span role="img" aria-label="${dbEscapeHTML(label)}"><span class="db-gate-dash" aria-hidden="true">—</span> `
+    + `<span class="db-shape-note" aria-hidden="true">${dbEscapeHTML(note)}</span></span>`;
+  const parts = [`<span style="color:var(--gray)">MED</span> ${st.median === null ? '—' : dbYds1(st.median)}`];
+  if (st.exTop2Avg === null) {
+    parts.push(gate(`${st.n} / ${DB_MIN_REPS} reps for top-two`,
+      `Not enough reps for the top-two metrics: ${st.n} of ${DB_MIN_REPS} charted`));
+    return parts.join(' &nbsp;·&nbsp; ');
+  }
+  parts.push(`<span style="color:var(--gray)">EX-TOP-2</span> ${dbYds1(st.exTop2Avg)}`);
+  const c = st.conc;
+  if (!c || c.concentration === null) {
+    parts.push(gate(`${c ? c.total : 0} yds total`,
+      `No positive yardage to divide: ${c ? c.total : 0} total yards across ${st.n} reps`));
+  } else {
+    const mult = Math.round(c.multiple * 10) / 10;
+    parts.push(`<span style="color:var(--gray)">TOP-2</span> <span${mult >= DB_TOP_HEAVY_MULT ? ' class="db-shape-hot"' : ''}>${Math.round(c.concentration)}% (${mult.toFixed(1)}x)</span>`);
+  }
+  return parts.join(' &nbsp;·&nbsp; ');
+}
+
 function dsTopPlays(rows, n) {
   return dbTop(dbFreqByFn(rows, r => r.offPlay || null), n).map(t => `${dbEscapeHTML(t.label)} <span style="color:var(--gold)">x${t.count}</span>`).join(', ') || '—';
 }
@@ -5432,13 +5464,14 @@ function dsTendRows(rows, keyFn, opts) {
     <td>${dsSplitHTML(rs)}</td>
     <td>${dsAvg(rs)}</td>
     <td>${rs.filter(r => r.explosive).length}</td>
+    <td>${dbShapeCellHTML(rs)}</td>
     ${opts && opts.plays ? `<td style="font-size:11px">${dsTopPlays(rs, 2)}</td>` : ''}
   </tr>`).join('');
 }
 function dsTendTable(rows, keyFn, col1, opts) {
   const trs = dsTendRows(rows, keyFn, opts);
   if (!trs) return '<div class="db-empty">No data in this cut.</div>';
-  return `<table class="db-table"><tr><th>${col1}</th><th>RUN/PASS</th><th>AVG</th><th>EXPL</th>${opts && opts.plays ? '<th>TOP PLAYS</th>' : ''}</tr>${trs}</table>`;
+  return `<table class="db-table"><tr><th>${col1}</th><th>RUN/PASS</th><th>AVG</th><th>EXPL</th><th>SHAPE</th>${opts && opts.plays ? '<th>TOP PLAYS</th>' : ''}</tr>${trs}</table>`;
 }
 
 function dsGenerateInsights(rows) {
@@ -5496,6 +5529,7 @@ const DS_TABS = [
       const notes = [...new Set(rs.map(r => r.notes).filter(Boolean))].slice(0, 2);
       return dbPanelWrap(`${dbEscapeHTML(form)} — ${rs.length} PLAYS (${Math.round(rs.length / rows.length * 100)}%)${dbLowSampleTag(rs.length)}`,
         `<div style="margin-bottom:8px">${dsSplitHTML(rs)} &nbsp;·&nbsp; AVG ${dsAvg(rs)} &nbsp;·&nbsp; ${rs.filter(r => r.explosive).length} EXPLOSIVE</div>
+        <div style="margin-bottom:8px;font-size:11px">${dsShapeInlineHTML(rs)}</div>
         <div style="font-size:11px;color:var(--gray);margin-bottom:8px">VARIANTS: ${variants} &nbsp;·&nbsp; WHEN: ${dd}</div>
         <div class="db-bar-grid">
           <div><div class="db-bar-group-title">TOP RUNS</div><ul class="db-insights" style="font-size:12px">${list(rs, 'RUN', 4)}</ul></div>
@@ -5517,11 +5551,12 @@ const DS_TABS = [
           <td><strong>${dbEscapeHTML(play)}</strong>${code}<br><span style="color:var(--gray);font-size:11px">${prs.length} plays (${Math.round(prs.length / rs.length * 100)}%)${dbLowSampleTag(prs.length)}</span></td>
           <td>${dsAvg(prs)}</td>
           <td>${prs.filter(r => r.explosive).length}</td>
+          <td>${dbShapeCellHTML(prs)}</td>
           <td style="font-size:11px">${dd}</td>
           <td style="font-size:11px">${form ? dbEscapeHTML(form.label) + ' <span style="color:var(--gold)">x' + form.count + '</span>' : '—'}</td>
         </tr>`;
       }).join('');
-      return dbPanelWrap(title, `<table class="db-table"><tr><th>PLAY (CODE)</th><th>AVG</th><th>EXPL</th><th>WHEN</th><th>TOP LOOK</th></tr>${trs}</table>`);
+      return dbPanelWrap(title, `<table class="db-table"><tr><th>PLAY (CODE)</th><th>AVG</th><th>EXPL</th><th>SHAPE</th><th>WHEN</th><th>TOP LOOK</th></tr>${trs}</table>`);
     };
     return table(rows.filter(r => dsCat(r) === 'RUN'), 'TOP RUNS')
       + table(rows.filter(r => dsCat(r) === 'PASS'), 'TOP PASSES')
@@ -5581,13 +5616,38 @@ function dsRenderDashboard() {
       <div class="db-stat"><div class="db-stat-num">${topForm ? dbEscapeHTML(topForm.label) : '—'}</div><div class="db-stat-label">TOP FORMATION</div></div>
       <div class="db-stat"><div class="db-stat-num">${topBack ? dbEscapeHTML(topBack.label) : '—'}</div><div class="db-stat-label">TOP BACKFIELD</div></div>
       <div class="db-stat"><div class="db-stat-num">${rows.filter(r => r.explosive).length}</div><div class="db-stat-label">EXPLOSIVES (15+)</div></div>
+      ${dbShapeTilesHTML(dbSuccessStats(rows), { verb: 'GAINED', unit: 'PLAYS' })}
     </div>
+    ${dsShapeReadNote(rows)}
     ${filterBar}
     ${insights.length ? `<div class="db-section"><div class="db-section-title">KEY TENDENCIES</div><div class="db-section-body"><ul class="db-insights">${insights.map(i => `<li>${i}</li>`).join('')}</ul></div></div>` : ''}
     <div class="db-tabs" style="margin-bottom:10px">${DS_TABS.map(t => `<div class="db-tab${dsActiveTab === t.id ? ' active' : ''}" data-ds-tab="${t.id}">${t.label}</div>`).join('')}</div>
     ${(DS_TABS.find(t => t.id === dsActiveTab) || DS_TABS[0]).render(rows)}
   `;
   el.querySelectorAll('[data-ds-tab]').forEach(t => t.addEventListener('click', () => { dsActiveTab = t.dataset.dsTab; dsRenderDashboard(); }));
+}
+
+// The shape numbers are identical to the ones on the Self Scout sheet, but this
+// tool is pointed the other way: these are an opponent offense's gains, charted
+// off their film. Read on the self-scout sheet, a high top-two share means our
+// concept is carried by two plays. Read here it means the defense on that film
+// gave up two chunk plays — the offense was held on everything else, not beaten
+// snap after snap. A defensive staff that reads it the first way will game-plan
+// for a offense that does not exist.
+function dsShapeReadNote(rows) {
+  const st = dbSuccessStats(rows);
+  if (!st) return '';
+  const c = st.conc;
+  const lead = (c && c.concentration !== null && c.multiple >= DB_TOP_HEAVY_MULT)
+    ? `Top-heavy: ${Math.round(c.concentration)}% of their yardage came on two plays. `
+    : '';
+  return `<div class="db-note">${lead}<strong>Reading SHAPE here:</strong> a high top-two share means the defense on this film `
+    + `gave up two chunk plays, not that it was soft across the board. MED is what they gained on a normal snap; `
+    + `EX-TOP-2 is that same average with their two longest plays taken out. Cells below ${DB_MIN_REPS} reps stay blank rather than guess — `
+    + `formation families clear that bar long before individual play calls do. `
+    + `The <strong>(x)</strong> multiple only compares rows charted a similar number of times: two plays out of 60 are `
+    + `always a bigger multiple of an even split than two out of 12, so read it down a column of like-sized rows, `
+    + `never against a row covering the whole film.</div>`;
 }
 
 // ---- exports: formation-card report as slides (.pptx) or print/PDF ----
