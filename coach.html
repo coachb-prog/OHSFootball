@@ -434,6 +434,14 @@ body {
 .db-table tr:hover td { background: var(--black3); }
 .db-table tr.db-low-sample td { opacity: 0.55; }
 .db-low-tag { display: inline-block; color: var(--gold); border: 1px solid var(--gold); border-radius: 4px; padding: 0 4px; font-size: 9px; letter-spacing: 0.5px; margin-left: 4px; white-space: nowrap; }
+/* distribution shape: median / ex-top-2 / top-2 concentration */
+.db-shape-line { display: block; font-size: 11px; white-space: nowrap; line-height: 1.5; }
+.db-shape-line em { display: inline-block; min-width: 30px; color: var(--gray); font-style: normal; font-size: 9px; letter-spacing: 0.5px; }
+/* a gated cell must never read as a zero — the dash carries its reason inline */
+.db-gate-dash { color: #666; }
+.db-shape-note { color: var(--gray); font-size: 9px; letter-spacing: 0.3px; }
+.db-shape-note.gate-no-yards { color: var(--gold); }
+.db-shape-hot { color: var(--gold); }
 .db-bar-row.db-low-sample { opacity: 0.55; }
 .db-empty { text-align: center; color: var(--gray); padding: 24px; font-size: 13px; }
 .db-bar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -1457,15 +1465,73 @@ function dbIsOffenseSuccess(r) {
   else needed = dist;
   return yards >= needed;
 }
+// ---- DISTRIBUTION SHAPE ----------------------------------------------------
+// An average hides how it got there. Two concepts can both read 8.6 yds/play:
+// one grinds out 8 every snap, the other is 12 incompletions and two 45-yard
+// shots. These three numbers separate them, and they are shared by Self Scout,
+// the Defense Breakdown, and live charting off the same dbSuccessStats object.
+//
+// Mirrors src/stats.js, which is the tested reference — test/coachParity.test.js
+// pulls these functions back out of this file and checks them against it, so the
+// two cannot drift. Change one, change both.
+
+// Below this many reps the top-two metrics are noise: dropping the two longest
+// from a 6-play sample throws away a third of the evidence, and a 3-play sample
+// always looks top-heavy. Median has no gate — it stays honest on small samples.
+const DB_MIN_REPS = 10;
+
+function dbSampleYards(rows) {
+  return rows.map(dbYards).filter(Number.isFinite);
+}
+
+// Middle value. Even counts average the two middle values. Less sensitive than
+// the mean to one busted coverage or one house call.
+function dbMedian(yards) {
+  if (!yards.length) return null;
+  const s = yards.slice().sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 === 1 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+// Average with the two longest plays removed — what this concept does on a
+// normal snap, once the explosives are stripped out.
+function dbExTop2Avg(yards) {
+  if (yards.length < DB_MIN_REPS) return null;
+  const rest = yards.slice().sort((a, b) => b - a).slice(2);
+  return rest.reduce((s, v) => s + v, 0) / rest.length;
+}
+
+// How top-heavy the sample is: the share of total yardage the two longest plays
+// carry, measured against the even split (2/n). A multiple of 1 means every play
+// pulls its weight; 5x means two plays are the concept.
+function dbTop2Concentration(yards) {
+  const n = yards.length;
+  if (n < DB_MIN_REPS) return null;
+  const s = yards.slice().sort((a, b) => b - a);
+  const top2 = s[0] + s[1];
+  const total = s.reduce((acc, v) => acc + v, 0);
+  const baseline = (2 / n) * 100;
+  // A non-positive total has no share to divide — sack-heavy and loaded-box
+  // concepts get there regularly, and a negative percent would be nonsense.
+  if (total <= 0) return { top2, total, concentration: null, baseline, multiple: null };
+  const concentration = (top2 / total) * 100;
+  return { top2, total, concentration, baseline, multiple: concentration / baseline };
+}
+
 function dbSuccessStats(rows) {
   const chartable = rows.filter(r => !dbIsDeadPlay(r));
   if (!chartable.length) return null;
   const successCount = chartable.filter(dbIsOffenseSuccess).length;
-  const totalYards = chartable.reduce((s, r) => s + dbYards(r), 0);
+  const yards = dbSampleYards(chartable);
+  const totalYards = yards.reduce((s, v) => s + v, 0);
   return {
     successPct: Math.round(successCount / chartable.length * 100),
     avgYards: Math.round(totalYards / chartable.length * 10) / 10,
-    n: chartable.length
+    n: chartable.length,
+    // shape — same sample the average above is built from
+    median: dbMedian(yards),
+    exTop2Avg: dbExTop2Avg(yards),
+    conc: dbTop2Concentration(yards)
   };
 }
 function dbFreqByFn(rows, fn) {
@@ -1627,7 +1693,35 @@ function dbRenderStats(overall) {
     <div class="db-stat"><div class="db-stat-num">${overall.blitzPct}%</div><div class="db-stat-label">BLITZ RATE</div></div>
     <div class="db-stat"><div class="db-stat-num">${overall.successStats ? overall.successStats.successPct + '%' : '—'}</div><div class="db-stat-label">OFF SUCCESS% ALLOWED</div></div>
     <div class="db-stat"><div class="db-stat-num">${overall.successStats ? overall.successStats.avgYards : '—'}</div><div class="db-stat-label">AVG YDS ALLOWED</div></div>
+    ${dbShapeTilesHTML(overall.successStats)}
   </div>`;
+}
+
+// The shape tiles next to AVG YDS ALLOWED. An average allowed of 6 reads very
+// differently when the median is 3: that defense is sound and gave up two
+// chunks, not gashed every snap. A gated tile says what it is waiting for
+// rather than showing a bare dash that could be misread as zero.
+//
+// The top-two MULTIPLE is deliberately left off this tile. It divides the top-two
+// share by an even split of 2/n, and the top two plays of a big sample are always
+// a larger multiple of that split than the top two of a small one — the same
+// distribution reads ~2.5x over 10 snaps and ~5x over 150. That makes it a fair
+// comparison between concepts charted a similar number of times (where it is
+// shown, next to each row's rep count) and a misleading one against a whole
+// season of defensive snaps. The raw share is n-honest, so the tile shows that.
+function dbShapeTilesHTML(st) {
+  const tile = (num, label) => `<div class="db-stat"><div class="db-stat-num">${num}</div><div class="db-stat-label">${label}</div></div>`;
+  if (!st) return tile('—', 'MEDIAN YDS ALLOWED') + tile('—', 'EX-TOP-2 ALLOWED') + tile('—', 'TOP-2 CONC.');
+  const medTile = tile(st.median === null ? '—' : dbYds1(st.median), 'MEDIAN YDS ALLOWED');
+  if (st.exTop2Avg === null) {
+    const need = `NEEDS ${DB_MIN_REPS} SNAPS (${st.n})`;
+    return medTile + tile('—', 'EX-TOP-2 ALLOWED<br>' + need) + tile('—', 'TOP-2 CONC.<br>' + need);
+  }
+  const c = st.conc;
+  const concTile = (!c || c.concentration === null)
+    ? tile('—', `TOP-2 CONC.<br>${c ? c.total : 0} YDS TOTAL`)
+    : tile(`${Math.round(c.concentration)}%`, `TOP-2 CONC. OF ${st.n} SNAPS`);
+  return medTile + tile(dbYds1(st.exTop2Avg), 'EX-TOP-2 ALLOWED') + concTile;
 }
 
 function dbSectionWrap(title, bodyHtml) {
@@ -1664,6 +1758,58 @@ function dbSuccessCellHTML(rs) {
   return `${stats.successPct}%<br><span style="color:var(--gray);font-size:11px">${stats.avgYards} yds/play</span>`;
 }
 
+// ---- SHAPE CELL ------------------------------------------------------------
+// Renders median / ex-top-2 / top-2 concentration for one group of plays.
+// The rule this exists to enforce: a cell that declined to answer must never
+// read as a zero. Every dash carries the reason it is a dash, on the sheet
+// rather than behind a hover, and the two gate reasons stay distinct — a thin
+// sample is "come back later", a negative total is a finding of its own.
+const DB_TOP_HEAVY_MULT = 3;
+function dbYds1(v) { return (Math.round(v * 10) / 10).toFixed(1); }
+
+function dbGateLineHTML(note, reason) {
+  return `<span class="db-shape-line" role="img" aria-label="${dbEscapeHTML(reason)}">`
+    + `<em>&nbsp;</em><span class="db-gate-dash" aria-hidden="true">—</span> `
+    + `<span class="db-shape-note gate-${note.gate}" aria-hidden="true">${dbEscapeHTML(note.text)}</span></span>`;
+}
+
+function dbShapeCellHTML(rs) {
+  const st = dbSuccessStats(rs);
+  if (!st) return '<span class="db-gate-dash">—</span>';
+
+  // Median is ungated by design: it is the one number that stays honest on a
+  // thin sample, and a genuine 0.0 median is a finding, not a missing value.
+  const lines = [st.median === null
+    ? dbGateLineHTML({ gate: 'reps', text: 'no plays' }, 'No chartable plays')
+    : `<span class="db-shape-line"><em>MED</em>${dbYds1(st.median)}</span>`];
+
+  if (st.exTop2Avg === null) {
+    // Both top-two metrics gate on the same rep count — say it once.
+    lines.push(dbGateLineHTML(
+      { gate: 'reps', text: `${st.n} / ${DB_MIN_REPS} reps` },
+      `Not enough reps for the top-two metrics: ${st.n} of ${DB_MIN_REPS} charted`
+    ));
+    return lines.join('');
+  }
+
+  lines.push(`<span class="db-shape-line"><em>EX2</em>${dbYds1(st.exTop2Avg)}</span>`);
+
+  const c = st.conc;
+  if (!c || c.concentration === null) {
+    // Enough reps, but nothing to divide. Blaming the rep count here would be
+    // wrong — this concept lost yardage, which is the finding.
+    lines.push(dbGateLineHTML(
+      { gate: 'no-yards', text: `${c ? c.total : 0} yds total` },
+      `No positive yardage to divide: ${c ? c.total : 0} total yards across ${st.n} reps`
+    ));
+  } else {
+    const mult = Math.round(c.multiple * 10) / 10;
+    const hot = mult >= DB_TOP_HEAVY_MULT ? ' db-shape-hot' : '';
+    lines.push(`<span class="db-shape-line${hot}"><em>TOP2</em>${Math.round(c.concentration)}% (${mult.toFixed(1)}x)</span>`);
+  }
+  return lines.join('');
+}
+
 function dbRenderGroupTable(rows, groupFn, title) {
   const groups = dbGroupBy(rows, groupFn);
   const buckets = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
@@ -1678,9 +1824,10 @@ function dbRenderGroupTable(rows, groupFn, title) {
       <td>${blitzPct}%</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
       <td>${dbSuccessCellHTML(rs)}</td>
+      <td>${dbShapeCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
+  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th><th>SHAPE ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderComboTable(rows, title) {
@@ -2503,9 +2650,10 @@ function ssRenderCategoryTable(rows) {
       <td>${td}</td>
       <td>${to}</td>
       <td>${ssSuccessCellHTML(rs)}</td>
+      <td>${dbShapeCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap('BY PASS CONCEPT CATEGORY (PASS RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>CATEGORY</th><th>COMP/ATT</th><th>YARDS</th><th>TD</th><th>INT</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('BY PASS CONCEPT CATEGORY (PASS RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>CATEGORY</th><th>COMP/ATT</th><th>YARDS</th><th>TD</th><th>INT</th><th>SUCCESS% / AVG YDS</th><th>SHAPE</th></tr>${trs}</table></div>`);
 }
 
 function ssIsRPORow(r) { return ssCategoryBucket(r) === 'RPO'; }
@@ -2529,9 +2677,10 @@ function ssRenderPassConceptTable(rows) {
       <td>${td}</td>
       <td>${ints}</td>
       <td>${ssSuccessCellHTML(rs)}</td>
+      <td>${dbShapeCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap('BEST PASSING CONCEPTS (PASS RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT</th><th>COMP/ATT</th><th>YARDS</th><th>TD</th><th>INT</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('BEST PASSING CONCEPTS (PASS RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT</th><th>COMP/ATT</th><th>YARDS</th><th>TD</th><th>INT</th><th>SUCCESS% / AVG YDS</th><th>SHAPE</th></tr>${trs}</table></div>`);
 }
 
 // PRO/CON is the run's strong/weak direction (right/left) — same field ssOffPlayBase
@@ -2557,6 +2706,7 @@ function ssRunDirectionRowHTML(label, rs, indent) {
     <td>${td}</td>
     <td>${fum}</td>
     <td>${ssSuccessCellHTML(rs)}</td>
+    <td>${dbShapeCellHTML(rs)}</td>
   </tr>`;
 }
 // Shared by the season-wide direction table and the per-concept breakdown below: an OVERALL row
@@ -2578,7 +2728,7 @@ function ssRenderRunDirectionTable(rows) {
   const leftRows = runRows.filter(r => ssRunDirection(r) === 'LEFT (CON)');
   if (!rightRows.length && !leftRows.length) return '';
   const trs = ssRunDirectionRowsHTML('OVERALL', runRows);
-  return dbPanelWrap('RUN GAME BY DIRECTION (RUN RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>DIRECTION</th><th>YARDS</th><th>Y/CARRY</th><th>TD</th><th>FUM</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('RUN GAME BY DIRECTION (RUN RESULTS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>DIRECTION</th><th>YARDS</th><th>Y/CARRY</th><th>TD</th><th>FUM</th><th>SUCCESS% / AVG YDS</th><th>SHAPE</th></tr>${trs}</table></div>`);
 }
 
 function ssRenderRunConceptTable(rows) {
@@ -2589,7 +2739,7 @@ function ssRenderRunConceptTable(rows) {
   const entries = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
   if (!entries.length) return '<div class="db-empty">No run plays with a CONCEPT found yet.</div>';
   const trs = entries.map(([tag, rs]) => ssRunDirectionRowsHTML(tag, rs)).join('');
-  return dbPanelWrap('BEST RUN CONCEPTS BY DIRECTION (HANDOFFS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT</th><th>YARDS</th><th>Y/CARRY</th><th>TD</th><th>FUM</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('BEST RUN CONCEPTS BY DIRECTION (HANDOFFS ONLY)', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT</th><th>YARDS</th><th>Y/CARRY</th><th>TD</th><th>FUM</th><th>SUCCESS% / AVG YDS</th><th>SHAPE</th></tr>${trs}</table></div>`);
 }
 
 function ssRenderRPOTable(rows) {
@@ -3767,13 +3917,21 @@ function lvRenderDash() {
     ${bar('1ST DOWN', byDown(1)?.runPct, byDown(1)?.n || 0)}
     ${bar('2ND DOWN', byDown(2)?.runPct, byDown(2)?.n || 0)}
     ${bar('3RD DOWN', byDown(3)?.runPct, byDown(3)?.n || 0)}
-    <div class="lv-sec-label">PLAYS TONIGHT (success% · avg)</div>
+    <div class="lv-sec-label">PLAYS TONIGHT (success% · avg · median)</div>
     ${Object.entries(dbGroupBy(rows.filter(r => r.offPlay), r => String(r.offPlay).replace(/\b(PRO|CON)\b/, '').trim()))
       .sort((a, b) => b[1].length - a[1].length).slice(0, 8)
       .map(([call, rs]) => {
         const a = Math.round(rs.reduce((s, r) => s + (r.gainLoss || 0), 0) / rs.length * 10) / 10;
         const sp = Math.round(rs.filter(dbIsOffenseSuccess).length / rs.length * 100);
-        return `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(call)}</strong><span>x${rs.length}</span><span class="lv-log-badge" style="color:${sp >= 50 ? '#7fdc7f' : '#ff8888'}">${sp}% · ${a} avg${rs.some(r => r.explosive) ? ' 💥' : ''}</span></div>`;
+        // Median is the shape number that works in-game: a call rarely clears
+        // DB_MIN_REPS in one night, and this is where an average of 8 built on
+        // one 40-yard rep shows itself as a median of 1 while you can still
+        // change the call sheet.
+        const ys = rs.map(dbYards);
+        const med = dbMedian(ys);
+        const conc = dbTop2Concentration(ys);
+        const topHeavy = conc && conc.multiple !== null && conc.multiple >= DB_TOP_HEAVY_MULT;
+        return `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(call)}</strong><span>x${rs.length}</span><span class="lv-log-badge" style="color:${sp >= 50 ? '#7fdc7f' : '#ff8888'}">${sp}% · ${a} avg · med ${dbYds1(med)}${rs.some(r => r.explosive) ? ' 💥' : ''}${topHeavy ? ' <span class="db-low-tag">2 PLAYS</span>' : ''}</span></div>`;
       }).join('') || '<div class="db-empty">no calls tagged yet</div>'}
     <button class="ss-slides-btn" style="margin-top:10px" onclick="lvHalfReport()">🖨️ HALF / GAME REPORT</button>
     <div class="lv-row2" style="margin-top:12px">
@@ -3874,11 +4032,18 @@ function lvHalfReport() {
   const runs = rows.filter(r => String(r.playType).startsWith('R'));
   const succ = rs => rs.length ? Math.round(rs.filter(dbIsOffenseSuccess).length / rs.length * 100) : 0;
   const avg = rs => rs.length ? Math.round(rs.reduce((s, r) => s + (r.gainLoss || 0), 0) / rs.length * 10) / 10 : 0;
+  const med = rs => rs.length ? dbYds1(dbMedian(rs.map(dbYards))) : '—';
+  // Ex-top-2 needs DB_MIN_REPS, which a single call rarely reaches in one game —
+  // print the rep count it is waiting on rather than a bare dash.
+  const ex = rs => {
+    const v = dbExTop2Avg(rs.map(dbYards));
+    return v === null ? `— <span style="font-size:9px">${rs.length}/${DB_MIN_REPS}</span>` : dbYds1(v);
+  };
   const downRow = d => {
     const rs = rows.filter(r => r.down === d);
     if (!rs.length) return '';
     const rp = Math.round(rs.filter(r => String(r.playType).startsWith('R')).length / rs.length * 100);
-    return `<tr><td>${d === 1 ? '1ST' : d === 2 ? '2ND' : d === 3 ? '3RD' : '4TH'} DOWN</td><td>${rs.length}</td><td>${rp}% / ${100 - rp}%</td><td>${succ(rs)}%</td><td>${avg(rs)}</td></tr>`;
+    return `<tr><td>${d === 1 ? '1ST' : d === 2 ? '2ND' : d === 3 ? '3RD' : '4TH'} DOWN</td><td>${rs.length}</td><td>${rp}% / ${100 - rp}%</td><td>${succ(rs)}%</td><td>${avg(rs)}</td><td>${med(rs)}</td><td>${ex(rs)}</td></tr>`;
   };
   const calls = Object.entries(dbGroupBy(rows.filter(r => r.offPlay), r => String(r.offPlay).replace(/\b(PRO|CON)\b/, '').trim()))
     .sort((a, b) => b[1].length - a[1].length);
@@ -3892,10 +4057,10 @@ function lvHalfReport() {
       return h1.length && h2.length ? `<br>1ST HALF: ${h1.length} plays, ${succ(h1)}% success, ${avg(h1)} avg &nbsp;·&nbsp; 2ND HALF: ${h2.length} plays, ${succ(h2)}% success, ${avg(h2)} avg` : '';
     })()}</div>
     <div class="pc-section"><div class="pc-section-title">BY DOWN</div>
-      <table><tr><th>DOWN</th><th>N</th><th>RUN/PASS</th><th>SUCCESS</th><th>AVG</th></tr>${[1, 2, 3, 4].map(downRow).join('')}</table></div>
+      <table><tr><th>DOWN</th><th>N</th><th>RUN/PASS</th><th>SUCCESS</th><th>AVG</th><th>MED</th><th>EX-TOP-2</th></tr>${[1, 2, 3, 4].map(downRow).join('')}</table></div>
     <div class="pc-section"><div class="pc-section-title">BY CALL</div>
-      <table><tr><th>CALL</th><th>N</th><th>SUCCESS</th><th>AVG</th><th>EXPL</th></tr>
-      ${calls.map(([call, rs]) => `<tr><td>${dbEscapeHTML(call)}</td><td>${rs.length}</td><td>${succ(rs)}%</td><td>${avg(rs)}</td><td>${rs.filter(r => r.explosive).length}</td></tr>`).join('')}</table></div>
+      <table><tr><th>CALL</th><th>N</th><th>SUCCESS</th><th>AVG</th><th>MED</th><th>EXPL</th></tr>
+      ${calls.map(([call, rs]) => `<tr><td>${dbEscapeHTML(call)}</td><td>${rs.length}</td><td>${succ(rs)}%</td><td>${avg(rs)}</td><td>${med(rs)}</td><td>${rs.filter(r => r.explosive).length}</td></tr>`).join('')}</table></div>
     <div class="pc-section"><div class="pc-section-title">TOUCHES</div>
       <table><tr><th>PLAYER</th><th>TOUCHES</th></tr>${touches.map(t => `<tr><td>${dbEscapeHTML(t.label)}</td><td>${t.count}</td></tr>`).join('') || '<tr><td colspan="2">no #s tagged</td></tr>'}</table></div>
     ${expl.length ? `<div class="pc-section"><div class="pc-section-title">EXPLOSIVES</div>

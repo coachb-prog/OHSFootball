@@ -155,6 +155,39 @@ test('top2Concentration: does not mutate the caller array', () => {
   assert.deepEqual(plays, copy);
 });
 
+test('the multiple is n-dependent — it must not be compared across sample sizes', () => {
+  // Characterization test, not a wish. The baseline is an even split of 2/n, but
+  // the top two plays of a large sample are always a bigger multiple of that
+  // split than the top two of a small one, even when the underlying distribution
+  // is identical. So `multiple` compares concepts charted a similar number of
+  // times, and nothing else — in particular not a concept against a season
+  // aggregate. If this ever stops holding, the presenters that rely on it
+  // (coach.html's shape column and its deliberately multiple-free season tile)
+  // need to be revisited.
+  let seed = 42;
+  const rng = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648;
+  };
+  const meanMultiple = (n, trials = 2000) => {
+    let total = 0;
+    for (let i = 0; i < trials; i += 1) {
+      const plays = Array.from({ length: n }, () => Math.round(-8 * Math.log(1 - rng())));
+      total += top2Concentration(plays).multiple;
+    }
+    return total / trials;
+  };
+
+  const small = meanMultiple(10);
+  const large = meanMultiple(150);
+  assert.ok(small < 3, `expected ~2.5x over 10 reps, got ${small}`);
+  assert.ok(large > 4.5, `expected ~5x over 150 reps, got ${large}`);
+  assert.ok(
+    large - small > 1.5,
+    `the same distribution should drift by more than 1.5x across n (${small} -> ${large})`,
+  );
+});
+
 test('all three reject non-array and non-finite input', () => {
   for (const fn of [median, exTop2Avg, top2Concentration]) {
     assert.throws(() => fn(null), TypeError);
