@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { renderSelfScoutTable } from '../src/ui/selfScoutTable.js';
-import { MIN_REPS } from '../src/stats.js';
+import { MIN_REPS_EX_TOP2 } from '../src/stats.js';
 import { CONCEPTS } from '../test/fixtures/concepts.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -124,7 +124,7 @@ const html = `<!doctype html>
 <main>
   <h1>Self-Scout</h1>
   <div class="sheet">
-    ${renderSelfScoutTable(CONCEPTS, { caption: `Rep gate at ${MIN_REPS}.` })}
+    ${renderSelfScoutTable(CONCEPTS, { caption: `Ex-top-2 floor at ${MIN_REPS_EX_TOP2} reps.` })}
   </div>
   <p class="legend">
     <b>&mdash;</b> means the sheet declined to answer, and says why underneath.

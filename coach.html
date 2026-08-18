@@ -1475,10 +1475,22 @@ function dbIsOffenseSuccess(r) {
 // pulls these functions back out of this file and checks them against it, so the
 // two cannot drift. Change one, change both.
 
-// Below this many reps the top-two metrics are noise: dropping the two longest
-// from a 6-play sample throws away a third of the evidence, and a 3-play sample
-// always looks top-heavy. Median has no gate — it stays honest on small samples.
-const DB_MIN_REPS = 10;
+// Rep floor for ex-top-2: enough plays left to average once the two longest are
+// gone. This is a floor on "is there anything here", NOT a reliability threshold
+// — ex-top-2's spread is essentially flat across sample size (±1.5 yds at 4 reps,
+// ±1.1 at 60). The old floor of 10 blanked the concept level for no gain.
+const DB_MIN_REPS_EX_TOP2 = 6;
+
+// Rep floor for the top-two share. Below this the top two plays ARE most of the
+// sample by construction — "2 of 5 plays were 70% of our yards" is arithmetic,
+// not a scouting finding.
+const DB_MIN_REPS_SHARE = 10;
+
+// Top-heaviness cut, in yards of mean-over-median. Measured, not eyeballed: at
+// 5.0 it flags 9% of ordinary concepts and catches 62% of genuinely boom-or-bust
+// ones. This replaced a "3x the even split" flag that fired on 77% of ordinary
+// concepts at 10 reps and 100% at 60 — a flag on everything is a flag on nothing.
+const DB_TOP_HEAVY_YDS = 5;
 
 function dbSampleYards(rows) {
   return rows.map(dbYards).filter(Number.isFinite);
@@ -1496,26 +1508,34 @@ function dbMedian(yards) {
 // Average with the two longest plays removed — what this concept does on a
 // normal snap, once the explosives are stripped out.
 function dbExTop2Avg(yards) {
-  if (yards.length < DB_MIN_REPS) return null;
+  if (yards.length < DB_MIN_REPS_EX_TOP2) return null;
   const rest = yards.slice().sort((a, b) => b - a).slice(2);
   return rest.reduce((s, v) => s + v, 0) / rest.length;
 }
 
-// How top-heavy the sample is: the share of total yardage the two longest plays
-// carry, measured against the even split (2/n). A multiple of 1 means every play
-// pulls its weight; 5x means two plays are the concept.
+// How top-heavy a sample is, in yards: mean minus median. Both are stable
+// estimators, so their gap holds its meaning at 6 reps and at 60 — roughly
+// 2.3 yds for an ordinary concept and 6.6 for a boom-or-bust one at every
+// sample size. Anything built on a fixed count of longest plays drifts instead.
+function dbTopHeaviness(yards) {
+  if (!yards.length) return null;
+  return yards.reduce((s, v) => s + v, 0) / yards.length - dbMedian(yards);
+}
+
+// What share of total yardage the two longest plays carry. DESCRIPTIVE ONLY:
+// the share falls as reps climb no matter how the offense plays, so read it as
+// "two plays were this much of that film" and never compare it between cuts of
+// different size. dbTopHeaviness is the comparable number.
 function dbTop2Concentration(yards) {
   const n = yards.length;
-  if (n < DB_MIN_REPS) return null;
+  if (n < DB_MIN_REPS_SHARE) return null;
   const s = yards.slice().sort((a, b) => b - a);
   const top2 = s[0] + s[1];
   const total = s.reduce((acc, v) => acc + v, 0);
-  const baseline = (2 / n) * 100;
   // A non-positive total has no share to divide — sack-heavy and loaded-box
   // concepts get there regularly, and a negative percent would be nonsense.
-  if (total <= 0) return { top2, total, concentration: null, baseline, multiple: null };
-  const concentration = (top2 / total) * 100;
-  return { top2, total, concentration, baseline, multiple: concentration / baseline };
+  if (total <= 0) return { top2, total, concentration: null };
+  return { top2, total, concentration: (top2 / total) * 100 };
 }
 
 function dbSuccessStats(rows) {
@@ -1531,6 +1551,7 @@ function dbSuccessStats(rows) {
     // shape — same sample the average above is built from
     median: dbMedian(yards),
     exTop2Avg: dbExTop2Avg(yards),
+    topHeavy: dbTopHeaviness(yards),
     conc: dbTop2Concentration(yards)
   };
 }
@@ -1719,14 +1740,18 @@ function dbShapeTilesHTML(st, opts) {
   if (!st) return tile('—', `MEDIAN YDS ${verb}`) + tile('—', `EX-TOP-2 ${verb}`) + tile('—', 'TOP-2 CONC.');
   const medTile = tile(st.median === null ? '—' : dbYds1(st.median), `MEDIAN YDS ${verb}`);
   if (st.exTop2Avg === null) {
-    const need = `NEEDS ${DB_MIN_REPS} ${unit} (${st.n})`;
+    const need = `NEEDS ${DB_MIN_REPS_EX_TOP2} ${unit} (${st.n})`;
     return medTile + tile('—', `EX-TOP-2 ${verb}<br>` + need) + tile('—', 'TOP-2 CONC.<br>' + need);
   }
   const c = st.conc;
-  const concTile = (!c || c.concentration === null)
-    ? tile('—', `TOP-2 CONC.<br>${c ? c.total : 0} YDS TOTAL`)
-    : tile(`${Math.round(c.concentration)}%`, `TOP-2 CONC. OF ${st.n} ${unit}`);
-  return medTile + tile(dbYds1(st.exTop2Avg), `EX-TOP-2 ${verb}`) + concTile;
+  const concTile = !c
+    ? tile('—', `TOP-2 SHARE<br>NEEDS ${DB_MIN_REPS_SHARE} ${unit} (${st.n})`)
+    : c.concentration === null
+      ? tile('—', `TOP-2 SHARE<br>${c.total} YDS TOTAL`)
+      : tile(`${Math.round(c.concentration)}%`, `TOP-2 SHARE OF ${st.n} ${unit}`);
+  const gapTile = tile(st.topHeavy === null ? '—' : dbGap1(st.topHeavy),
+    `MEAN OVER MEDIAN${st.topHeavy !== null && st.topHeavy >= DB_TOP_HEAVY_YDS ? ' — TOP-HEAVY' : ''}`);
+  return medTile + tile(dbYds1(st.exTop2Avg), `EX-TOP-2 ${verb}`) + gapTile + concTile;
 }
 
 function dbSectionWrap(title, bodyHtml) {
@@ -1769,8 +1794,8 @@ function dbSuccessCellHTML(rs) {
 // read as a zero. Every dash carries the reason it is a dash, on the sheet
 // rather than behind a hover, and the two gate reasons stay distinct — a thin
 // sample is "come back later", a negative total is a finding of its own.
-const DB_TOP_HEAVY_MULT = 3;
 function dbYds1(v) { return (Math.round(v * 10) / 10).toFixed(1); }
+function dbGap1(v) { return (v >= 0 ? '+' : '') + dbYds1(v); }
 
 function dbGateLineHTML(note, reason) {
   return `<span class="db-shape-line" role="img" aria-label="${dbEscapeHTML(reason)}">`
@@ -1789,28 +1814,34 @@ function dbShapeCellHTML(rs) {
     : `<span class="db-shape-line"><em>MED</em>${dbYds1(st.median)}</span>`];
 
   if (st.exTop2Avg === null) {
-    // Both top-two metrics gate on the same rep count — say it once.
     lines.push(dbGateLineHTML(
-      { gate: 'reps', text: `${st.n} / ${DB_MIN_REPS} reps` },
-      `Not enough reps for the top-two metrics: ${st.n} of ${DB_MIN_REPS} charted`
-    ));
-    return lines.join('');
-  }
-
-  lines.push(`<span class="db-shape-line"><em>EX2</em>${dbYds1(st.exTop2Avg)}</span>`);
-
-  const c = st.conc;
-  if (!c || c.concentration === null) {
-    // Enough reps, but nothing to divide. Blaming the rep count here would be
-    // wrong — this concept lost yardage, which is the finding.
-    lines.push(dbGateLineHTML(
-      { gate: 'no-yards', text: `${c ? c.total : 0} yds total` },
-      `No positive yardage to divide: ${c ? c.total : 0} total yards across ${st.n} reps`
+      { gate: 'reps', text: `${st.n} / ${DB_MIN_REPS_EX_TOP2} reps` },
+      `Not enough plays left after dropping the two longest: ${st.n} of ${DB_MIN_REPS_EX_TOP2} charted`
     ));
   } else {
-    const mult = Math.round(c.multiple * 10) / 10;
-    const hot = mult >= DB_TOP_HEAVY_MULT ? ' db-shape-hot' : '';
-    lines.push(`<span class="db-shape-line${hot}"><em>TOP2</em>${Math.round(c.concentration)}% (${mult.toFixed(1)}x)</span>`);
+    lines.push(`<span class="db-shape-line"><em>EX2</em>${dbYds1(st.exTop2Avg)}</span>`);
+  }
+
+  // Mean-over-median: the one number that means the same thing at 6 reps and 60,
+  // so it is the only one carrying a flag.
+  if (st.topHeavy !== null) {
+    const hot = st.topHeavy >= DB_TOP_HEAVY_YDS ? ' db-shape-hot' : '';
+    lines.push(`<span class="db-shape-line${hot}"><em>M-MED</em>${dbGap1(st.topHeavy)}</span>`);
+  }
+
+  const c = st.conc;
+  if (!c) {
+    lines.push(dbGateLineHTML(
+      { gate: 'reps', text: `${st.n} / ${DB_MIN_REPS_SHARE} for share` },
+      `Too few reps for a top-two share: ${st.n} of ${DB_MIN_REPS_SHARE} charted`
+    ));
+  } else if (c.concentration === null) {
+    lines.push(dbGateLineHTML(
+      { gate: 'no-yards', text: `${c.total} yds total` },
+      `No positive yardage to divide: ${c.total} total yards across ${st.n} reps`
+    ));
+  } else {
+    lines.push(`<span class="db-shape-line"><em>TOP2</em>${Math.round(c.concentration)}%</span>`);
   }
   return lines.join('');
 }
@@ -3938,13 +3969,13 @@ function lvRenderDash() {
         const a = Math.round(rs.reduce((s, r) => s + (r.gainLoss || 0), 0) / rs.length * 10) / 10;
         const sp = Math.round(rs.filter(dbIsOffenseSuccess).length / rs.length * 100);
         // Median is the shape number that works in-game: a call rarely clears
-        // DB_MIN_REPS in one night, and this is where an average of 8 built on
+        // the share floor in one night, and this is where an average of 8 built on
         // one 40-yard rep shows itself as a median of 1 while you can still
         // change the call sheet.
         const ys = rs.map(dbYards);
         const med = dbMedian(ys);
-        const conc = dbTop2Concentration(ys);
-        const topHeavy = conc && conc.multiple !== null && conc.multiple >= DB_TOP_HEAVY_MULT;
+        const gap = dbTopHeaviness(ys);
+        const topHeavy = gap !== null && gap >= DB_TOP_HEAVY_YDS;
         return `<div class="lv-log-row" style="cursor:default"><strong>${dbEscapeHTML(call)}</strong><span>x${rs.length}</span><span class="lv-log-badge" style="color:${sp >= 50 ? '#7fdc7f' : '#ff8888'}">${sp}% · ${a} avg · med ${dbYds1(med)}${rs.some(r => r.explosive) ? ' 💥' : ''}${topHeavy ? ' <span class="db-low-tag">2 PLAYS</span>' : ''}</span></div>`;
       }).join('') || '<div class="db-empty">no calls tagged yet</div>'}
     <button class="ss-slides-btn" style="margin-top:10px" onclick="lvHalfReport()">🖨️ HALF / GAME REPORT</button>
@@ -4047,11 +4078,11 @@ function lvHalfReport() {
   const succ = rs => rs.length ? Math.round(rs.filter(dbIsOffenseSuccess).length / rs.length * 100) : 0;
   const avg = rs => rs.length ? Math.round(rs.reduce((s, r) => s + (r.gainLoss || 0), 0) / rs.length * 10) / 10 : 0;
   const med = rs => rs.length ? dbYds1(dbMedian(rs.map(dbYards))) : '—';
-  // Ex-top-2 needs DB_MIN_REPS, which a single call rarely reaches in one game —
+  // Ex-top-2 needs DB_MIN_REPS_EX_TOP2, which some calls miss in a single game —
   // print the rep count it is waiting on rather than a bare dash.
   const ex = rs => {
     const v = dbExTop2Avg(rs.map(dbYards));
-    return v === null ? `— <span style="font-size:9px">${rs.length}/${DB_MIN_REPS}</span>` : dbYds1(v);
+    return v === null ? `— <span style="font-size:9px">${rs.length}/${DB_MIN_REPS_EX_TOP2}</span>` : dbYds1(v);
   };
   const downRow = d => {
     const rs = rows.filter(r => r.down === d);
@@ -5444,20 +5475,28 @@ function dsShapeInlineHTML(rows) {
   const gate = (note, label) =>
     `<span role="img" aria-label="${dbEscapeHTML(label)}"><span class="db-gate-dash" aria-hidden="true">—</span> `
     + `<span class="db-shape-note" aria-hidden="true">${dbEscapeHTML(note)}</span></span>`;
+
   const parts = [`<span style="color:var(--gray)">MED</span> ${st.median === null ? '—' : dbYds1(st.median)}`];
-  if (st.exTop2Avg === null) {
-    parts.push(gate(`${st.n} / ${DB_MIN_REPS} reps for top-two`,
-      `Not enough reps for the top-two metrics: ${st.n} of ${DB_MIN_REPS} charted`));
-    return parts.join(' &nbsp;·&nbsp; ');
+
+  parts.push(st.exTop2Avg === null
+    ? gate(`${st.n} / ${DB_MIN_REPS_EX_TOP2} for ex-top-2`,
+        `Not enough plays left after dropping the two longest: ${st.n} of ${DB_MIN_REPS_EX_TOP2} charted`)
+    : `<span style="color:var(--gray)">EX-TOP-2</span> ${dbYds1(st.exTop2Avg)}`);
+
+  if (st.topHeavy !== null) {
+    const hot = st.topHeavy >= DB_TOP_HEAVY_YDS;
+    parts.push(`<span style="color:var(--gray)">MEAN-MED</span> <span${hot ? ' class="db-shape-hot"' : ''}>${dbGap1(st.topHeavy)}</span>`);
   }
-  parts.push(`<span style="color:var(--gray)">EX-TOP-2</span> ${dbYds1(st.exTop2Avg)}`);
+
   const c = st.conc;
-  if (!c || c.concentration === null) {
-    parts.push(gate(`${c ? c.total : 0} yds total`,
-      `No positive yardage to divide: ${c ? c.total : 0} total yards across ${st.n} reps`));
+  if (!c) {
+    parts.push(gate(`${st.n} / ${DB_MIN_REPS_SHARE} for share`,
+      `Too few reps for a top-two share: ${st.n} of ${DB_MIN_REPS_SHARE} charted`));
+  } else if (c.concentration === null) {
+    parts.push(gate(`${c.total} yds total`,
+      `No positive yardage to divide: ${c.total} total yards across ${st.n} reps`));
   } else {
-    const mult = Math.round(c.multiple * 10) / 10;
-    parts.push(`<span style="color:var(--gray)">TOP-2</span> <span${mult >= DB_TOP_HEAVY_MULT ? ' class="db-shape-hot"' : ''}>${Math.round(c.concentration)}% (${mult.toFixed(1)}x)</span>`);
+    parts.push(`<span style="color:var(--gray)">TOP-2</span> ${Math.round(c.concentration)}%`);
   }
   return parts.join(' &nbsp;·&nbsp; ');
 }
@@ -5646,17 +5685,16 @@ function dsRenderDashboard() {
 function dsShapeReadNote(rows) {
   const st = dbSuccessStats(rows);
   if (!st) return '';
-  const c = st.conc;
-  const lead = (c && c.concentration !== null && c.multiple >= DB_TOP_HEAVY_MULT)
-    ? `Top-heavy: ${Math.round(c.concentration)}% of their yardage came on two plays. `
+  const lead = (st.topHeavy !== null && st.topHeavy >= DB_TOP_HEAVY_YDS)
+    ? `Top-heavy: their mean runs ${dbYds1(st.topHeavy)} yds above their median. `
     : '';
   return `<div class="db-note">${lead}<strong>Reading SHAPE here:</strong> a high top-two share means the defense on this film `
     + `gave up two chunk plays, not that it was soft across the board. MED is what they gained on a normal snap; `
-    + `EX-TOP-2 is that same average with their two longest plays taken out. Cells below ${DB_MIN_REPS} reps stay blank rather than guess — `
-    + `formation families clear that bar long before individual play calls do. `
-    + `The <strong>(x)</strong> multiple only compares rows charted a similar number of times: two plays out of 60 are `
-    + `always a bigger multiple of an even split than two out of 12, so read it down a column of like-sized rows, `
-    + `never against a row covering the whole film.</div>`;
+    + `EX-TOP-2 is that same average with their two longest plays taken out. `
+    + `<strong>MEAN-MED</strong> is the one to compare between cuts — it means the same thing on a 6-rep call as on a `
+    + `60-rep formation, and anything at or above +${DB_TOP_HEAVY_YDS} is carried by its explosives. `
+    + `The top-two share is descriptive only: it falls as reps climb no matter how they play, so read it as `
+    + `"two plays were this much of that film" rather than comparing it row to row.</div>`;
 }
 
 // ---- exports: formation-card report as slides (.pptx) or print/PDF ----

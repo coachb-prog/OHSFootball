@@ -4,7 +4,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { median, exTop2Avg, top2Concentration, MIN_REPS } from '../src/stats.js';
+import {
+  median, exTop2Avg, top2Concentration, topHeaviness,
+  MIN_REPS_EX_TOP2, MIN_REPS_SHARE, TOP_HEAVY_YDS,
+} from '../src/stats.js';
 import { CONCEPTS } from './fixtures/concepts.js';
 
 /**
@@ -27,19 +30,20 @@ const html = readFileSync(join(root, 'coach.html'), 'utf8');
 
 /** Lift the ported block out of the inline script and evaluate it. */
 function loadPortedStats() {
-  const start = html.indexOf('const DB_MIN_REPS');
+  const start = html.indexOf('const DB_MIN_REPS_EX_TOP2');
   const end = html.indexOf('function dbSuccessStats(');
-  assert.ok(start > -1, 'coach.html should define DB_MIN_REPS');
+  assert.ok(start > -1, 'coach.html should define DB_MIN_REPS_EX_TOP2');
   assert.ok(end > start, 'coach.html should define dbSuccessStats after the shape math');
 
   const source = html.slice(start, end);
-  for (const name of ['dbMedian', 'dbExTop2Avg', 'dbTop2Concentration']) {
+  for (const name of ['dbMedian', 'dbExTop2Avg', 'dbTop2Concentration', 'dbTopHeaviness']) {
     assert.ok(source.includes(`function ${name}(`), `coach.html should define ${name}`);
   }
 
   // eslint-disable-next-line no-new-func
   return new Function(`${source}
-    return { DB_MIN_REPS, dbMedian, dbExTop2Avg, dbTop2Concentration };`)();
+    return { DB_MIN_REPS_EX_TOP2, DB_MIN_REPS_SHARE, DB_TOP_HEAVY_YDS,
+             dbMedian, dbExTop2Avg, dbTop2Concentration, dbTopHeaviness };`)();
 }
 
 const ported = loadPortedStats();
@@ -49,21 +53,35 @@ const SAMPLES = [
   [],
   [5],
   [5, 9],
-  [9, 8, 7, 6, 5, 4, 3, 2, 1],                       // MIN_REPS - 1
-  [9, 8, 7, 6, 5, 4, 3, 2, 1, 10],                   // exactly MIN_REPS
+  [9, 8, 7, 6, 5, 4, 3, 2, 1],                       // one below the share floor
+  [9, 8, 7, 6, 5, 4, 3, 2, 1, 10],                   // exactly the share floor
   [10, 10, 10, 10, 10, 10, 10, 10, 10, 10],          // perfectly even
   [75, 65, 2, 2, 1, 1, 1, 1, 1, 1],                  // two explosives
   [30, 30, 6, 6, 6, 6, 6, 6, 6, 6],                  // tied longest
   [5, -5, 3, -3, 4, -4, 2, -2, 1, -1],               // total exactly zero
   [-1, -2, -3, -1, -1, -1, -1, -1, -1, -1],          // all losses
   [40, 40, -10, -10, -10, -10, 1, 1, 1, 1],          // concentration over 100
-  [1, 2, 3, 4],                                       // even count, below gate
+  [1, 2, 3, 4],                                       // even count, below both floors
   [2.5, 3.5, -1.5, 0, 7.25, 4, 6, 1, 9, 12],         // fractional yardage
   ...CONCEPTS.map((c) => c.plays),
 ];
 
-test('the rep gate matches', () => {
-  assert.equal(ported.DB_MIN_REPS, MIN_REPS);
+test('every threshold matches', () => {
+  assert.equal(ported.DB_MIN_REPS_EX_TOP2, MIN_REPS_EX_TOP2);
+  assert.equal(ported.DB_MIN_REPS_SHARE, MIN_REPS_SHARE);
+  assert.equal(ported.DB_TOP_HEAVY_YDS, TOP_HEAVY_YDS);
+});
+
+test('dbTopHeaviness matches topHeaviness on every sample', () => {
+  for (const sample of SAMPLES) {
+    const a = ported.dbTopHeaviness(sample);
+    const b = topHeaviness(sample);
+    if (a === null || b === null) {
+      assert.equal(a, b, `topHeaviness null-ness disagreed on [${sample}]`);
+      continue;
+    }
+    assert.ok(Math.abs(a - b) < 1e-9, `topHeaviness disagreed on [${sample}]: ${a} vs ${b}`);
+  }
 });
 
 test('dbMedian matches median on every sample', () => {
@@ -96,7 +114,7 @@ test('dbTop2Concentration matches top2Concentration on every sample', () => {
       assert.equal(a, b, `concentration gate disagreed on [${sample}]`);
       continue;
     }
-    for (const key of ['top2', 'total', 'concentration', 'baseline', 'multiple']) {
+    for (const key of ['top2', 'total', 'concentration']) {
       if (a[key] === null || b[key] === null) {
         assert.equal(a[key], b[key], `${key} null-ness disagreed on [${sample}]`);
         continue;
@@ -115,5 +133,6 @@ test('the ported copy does not mutate the caller array', () => {
   ported.dbMedian(plays);
   ported.dbExTop2Avg(plays);
   ported.dbTop2Concentration(plays);
+  ported.dbTopHeaviness(plays);
   assert.deepEqual(plays, copy, 'sorting must not reorder the row array it was built from');
 });

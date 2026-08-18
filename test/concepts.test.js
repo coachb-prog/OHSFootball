@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { median, exTop2Avg, top2Concentration } from '../src/stats.js';
+import { median, exTop2Avg, top2Concentration, topHeaviness, TOP_HEAVY_YDS } from '../src/stats.js';
 import { CONCEPTS, byName, mean } from './fixtures/concepts.js';
 
 /**
@@ -71,16 +71,13 @@ test('the headline finding: a 4-yard grinder beats an 8-yard explosive on ex-top
   );
 });
 
-test('concentration separates explosives from grinders with no overlap', () => {
-  const worstExplosive = Math.min(...explosives.map((c) => conc(c.name).multiple));
-  const bestGrinder = Math.max(...grinders.map((c) => conc(c.name).multiple));
+test('top-heaviness separates explosives from grinders with no overlap', () => {
+  const worstExplosive = Math.min(...explosives.map((c) => topHeaviness(c.plays)));
+  const bestGrinder = Math.max(...grinders.map((c) => topHeaviness(c.plays)));
 
-  assert.ok(worstExplosive > 4, `explosives should all clear 4x, worst was ${worstExplosive}`);
-  assert.ok(bestGrinder < 3, `grinders should all sit under 3x, best was ${bestGrinder}`);
-  assert.ok(
-    worstExplosive > bestGrinder,
-    'the two groups must not overlap on multiple',
-  );
+  assert.ok(worstExplosive >= TOP_HEAVY_YDS, `explosives should trip the flag, worst was ${worstExplosive}`);
+  assert.ok(bestGrinder < TOP_HEAVY_YDS, `grinders should not trip it, best was ${bestGrinder}`);
+  assert.ok(worstExplosive > bestGrinder, 'the two groups must not overlap');
 });
 
 test('GIANTS reads like GIANTS: top of the sheet on concentration', () => {
@@ -105,18 +102,21 @@ test('a negative-total concept refuses to print percentages', () => {
   const draw = conc('QB DRAW vs LOADED BOX');
   assert.ok(draw.total < 0, 'setup: total should be negative');
   assert.equal(draw.concentration, null);
-  assert.equal(draw.multiple, null);
 
   // the honest numbers still come through
   assert.equal(median(byName('QB DRAW vs LOADED BOX').plays), 0);
   assert.ok(exTop2Avg(byName('QB DRAW vs LOADED BOX').plays) < 0);
 });
 
-test('a thin sample stays silent on the top-two metrics but still medians', () => {
+test('a thin sample still answers where it honestly can', () => {
   const sweep = byName('SPEED SWEEP');
-  assert.equal(exTop2Avg(sweep.plays), null);
+  assert.equal(sweep.plays.length, 6);
+  // the share stays gated — two of six plays is most of the sample by construction
   assert.equal(top2Concentration(sweep.plays), null);
+  // but ex-top-2 and the median hold up at six reps, and used to be thrown away
   assert.equal(median(sweep.plays), 4.5);
+  assert.equal(exTop2Avg(sweep.plays), 3.5);
+  assert.ok(topHeaviness(sweep.plays) < TOP_HEAVY_YDS, 'a thin sweep is not boom-or-bust');
 });
 
 test('no concept produces a NaN or Infinity anywhere on the sheet', () => {
@@ -129,11 +129,10 @@ test('no concept produces a NaN or Infinity anywhere on the sheet', () => {
   for (const concept of CONCEPTS) {
     finiteOrNull(median(concept.plays), `${concept.name} median`);
     finiteOrNull(exTop2Avg(concept.plays), `${concept.name} exTop2Avg`);
+    finiteOrNull(topHeaviness(concept.plays), `${concept.name} topHeaviness`);
 
     const result = top2Concentration(concept.plays);
     if (result === null) continue;
     finiteOrNull(result.concentration, `${concept.name} concentration`);
-    finiteOrNull(result.baseline, `${concept.name} baseline`);
-    finiteOrNull(result.multiple, `${concept.name} multiple`);
   }
 });

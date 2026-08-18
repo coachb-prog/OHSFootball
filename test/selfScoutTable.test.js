@@ -8,7 +8,7 @@ const html = renderSelfScoutTable(CONCEPTS);
 
 test('renders one row per concept with the three columns', () => {
   assert.equal((html.match(/<tr>/g) ?? []).length, CONCEPTS.length + 1); // + header
-  for (const label of ['Median', 'Ex-Top-2', 'Top-2 Conc.']) {
+  for (const label of ['Median', 'Ex-Top-2', 'Top-2 Share', 'Mean-Med']) {
     assert.ok(html.includes(`>${label}</th>`), `missing column ${label}`);
   }
 });
@@ -23,7 +23,7 @@ test('every row shows its rep count next to the concept name', () => {
 });
 
 test('gated cells render a dash plus a visible reason', () => {
-  assert.ok(html.includes('6 / 10 reps'), 'thin concept shows reps out of the gate');
+  assert.ok(html.includes('6 / 10 reps'), 'the share gate names the reps it wants');
   assert.ok(html.includes('-11 yds total'), 'negative concept shows its total');
   // the two gate reasons carry different classes so they can be styled apart
   assert.ok(html.includes('note gate-no-yards'), 'no-yards gate is styled apart');
@@ -35,9 +35,11 @@ test('gated cells carry an assistive label spelling out the reason', () => {
   assert.ok(html.includes('No positive yardage to divide'));
 });
 
-test('concentration renders percent and multiple in one cell', () => {
-  assert.ok(html.includes('84% (5.0x)'), 'GIANTS concentration cell');
-  assert.ok(html.includes('26% (2.4x)'), 'INSIDE ZONE concentration cell');
+test('the share and the mean-median gap each get their own cell', () => {
+  assert.ok(html.includes('>84%<'), 'GIANTS share cell');
+  assert.ok(html.includes('>26%<'), 'INSIDE ZONE share cell');
+  assert.ok(html.includes('>+9.3<'), 'GIANTS mean-median gap');
+  assert.ok(html.includes('>+0.2<'), 'INSIDE ZONE mean-median gap');
 });
 
 test('concept names are escaped', () => {

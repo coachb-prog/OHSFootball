@@ -6,13 +6,16 @@
  * dash carries the reason it is a dash.
  */
 
-import { median, exTop2Avg, top2Concentration, MIN_REPS } from '../stats.js';
+import {
+  median, exTop2Avg, top2Concentration, topHeaviness,
+  MIN_REPS_EX_TOP2, MIN_REPS_SHARE, TOP_HEAVY_YDS,
+} from '../stats.js';
 
 export const DASH = '—';
 
 /** Reasons a cell declines to show a number. */
 export const GateReason = {
-  /** Fewer than MIN_REPS plays charted. */
+  /** Fewer plays charted than the metric's rep floor. */
   REPS: 'reps',
   /** Enough reps, but total yardage is zero or negative. */
   NO_YARDS: 'no-yards',
@@ -45,11 +48,11 @@ const gate = (reason, note, label) => ({
   label,
 });
 
-const repGate = (reps) =>
+const repGate = (reps, floor) =>
   gate(
     GateReason.REPS,
-    `${reps} / ${MIN_REPS} reps`,
-    `Not enough reps: ${reps} of ${MIN_REPS} charted`,
+    `${reps} / ${floor} reps`,
+    `Not enough reps: ${reps} of ${floor} charted`,
   );
 
 /**
@@ -77,9 +80,10 @@ export function selfScoutRow(concept) {
     reps,
     // Median is ungated by design — it stays honest on small samples — but an
     // empty sample still has nothing to show.
-    median: med === null ? repGate(reps) : value(yards(med)),
-    exTop2: ex === null ? repGate(reps) : value(yards(ex)),
+    median: med === null ? repGate(reps, 1) : value(yards(med)),
+    exTop2: ex === null ? repGate(reps, MIN_REPS_EX_TOP2) : value(yards(ex)),
     concentration: formatConcentration(conc, reps),
+    topHeavy: formatTopHeaviness(topHeaviness(plays)),
   };
 }
 
@@ -92,7 +96,7 @@ export function selfScoutRow(concept) {
  * which is a finding in its own right.
  */
 function formatConcentration(conc, reps) {
-  if (conc === null) return repGate(reps);
+  if (conc === null) return repGate(reps, MIN_REPS_SHARE);
 
   if (conc.concentration === null) {
     return gate(
@@ -102,9 +106,21 @@ function formatConcentration(conc, reps) {
     );
   }
 
-  const pct = Math.round(conc.concentration);
-  const mult = conc.multiple.toFixed(1);
-  return value(`${pct}% (${mult}x)`);
+  return value(`${Math.round(conc.concentration)}%`);
+}
+
+/**
+ * Mean-over-median, the comparable top-heaviness read. Ungated — it holds its
+ * meaning at 6 reps as well as at 60, which is the whole reason it replaced the
+ * top-two multiple.
+ */
+function formatTopHeaviness(gap) {
+  if (gap === null) return repGate(0, 1);
+  // A negative gap is real and readable: median above mean means a few bad
+  // plays are dragging the average down, not two good ones lifting it.
+  const cell = value(`${gap >= 0 ? '+' : ''}${yards(gap)}`);
+  cell.topHeavy = gap >= TOP_HEAVY_YDS;
+  return cell;
 }
 
 /**
@@ -119,5 +135,6 @@ export const SELF_SCOUT_COLUMNS = [
   { key: 'concept', label: 'Concept', numeric: false },
   { key: 'median', label: 'Median', numeric: true },
   { key: 'exTop2', label: 'Ex-Top-2', numeric: true },
-  { key: 'concentration', label: 'Top-2 Conc.', numeric: true },
+  { key: 'concentration', label: 'Top-2 Share', numeric: true },
+  { key: 'topHeavy', label: 'Mean-Med', numeric: true },
 ];
