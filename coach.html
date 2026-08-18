@@ -1850,9 +1850,10 @@ function dbRenderComboTable(rows, title) {
       <td>${blitzPct}%</td>
       <td>${stunt ? dbEscapeHTML(stunt.label) + ' <span style="color:var(--gold)">' + stunt.pct + '%</span>' : '—'}</td>
       <td>${dbSuccessCellHTML(rs)}</td>
+      <td>${dbShapeCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT / COVERAGE</th><th>SNAPS</th><th>BLITZ %</th><th>TOP STUNT</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
+  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT / COVERAGE</th><th>SNAPS</th><th>BLITZ %</th><th>TOP STUNT</th><th>OFF SUCCESS% ALLOWED</th><th>SHAPE ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLabel, title) {
@@ -1869,9 +1870,10 @@ function dbRenderPairTable(rows, groupFn, groupColLabel, otherField, otherColLab
       <td>${blitzPct}%</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
       <td>${dbSuccessCellHTML(rs)}</td>
+      <td>${dbShapeCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel} (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
+  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>${groupColLabel}</th><th>${otherColLabel} (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th><th>SHAPE ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbRenderTopBlitzesByFront(rows, topN) {
@@ -1887,9 +1889,10 @@ function dbRenderTopBlitzesByFront(rows, topN) {
       <td>${dbFreqDistHTML(dbFreqByFn(rs, dbBlitzLabel), 4)}</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'coverage'), 3)}</td>
       <td>${dbSuccessCellHTML(rs)}</td>
+      <td>${dbShapeCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap('TOP BLITZES BY FRONT', `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT</th><th>BLITZ CALLS (ALL)</th><th>COVERAGE BEHIND IT</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('TOP BLITZES BY FRONT', `<div class="db-table-wrap"><table class="db-table"><tr><th>FRONT</th><th>BLITZ CALLS (ALL)</th><th>COVERAGE BEHIND IT</th><th>OFF SUCCESS% ALLOWED</th><th>SHAPE ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 const DB_ZONE_ORDER = ['BACKED UP (OWN TERRITORY)', 'OPEN FIELD (MIDFIELD)', 'FRINGE (+35 TO +26)', 'REDZONE (+25 TO +11)', 'GOALLINE (+10 AND IN)'];
@@ -1909,9 +1912,10 @@ function dbRenderZoneTable(rows) {
       <td>${blitzPct}%</td>
       <td>${dbFreqDistHTML(dbFreq(rs, 'stunt'), 3)}</td>
       <td>${dbSuccessCellHTML(rs)}</td>
+      <td>${dbShapeCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap('BY FIELD ZONE', `<div class="db-table-wrap"><table class="db-table"><tr><th>ZONE</th><th>DOWN & DISTANCE (ALL)</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('BY FIELD ZONE', `<div class="db-table-wrap"><table class="db-table"><tr><th>ZONE</th><th>DOWN & DISTANCE (ALL)</th><th>FRONTS (ALL)</th><th>COVERAGES (ALL)</th><th>BLITZ %</th><th>STUNTS (ALL)</th><th>OFF SUCCESS% ALLOWED</th><th>SHAPE ALLOWED</th></tr>${trs}</table></div>`);
 }
 
 function dbBarRow(label, pct, isTop, count) {
@@ -2550,6 +2554,7 @@ function ssRPORowHTML(labelHTML, rs) {
     <td>${td}</td>
     <td>${to}</td>
     <td>${ssSuccessCellHTML(rs)}</td>
+    <td>${dbShapeCellHTML(rs)}</td>
   </tr>`;
 }
 
@@ -2602,6 +2607,7 @@ function ssRenderStats(overall) {
     <div class="db-stat"><div class="db-stat-num">${overall.totalTD}</div><div class="db-stat-label">OFFENSIVE TDs</div></div>
     <div class="db-stat"><div class="db-stat-num">${overall.thirdDown.pct != null ? overall.thirdDown.pct + '%' : '—'}</div><div class="db-stat-label">3RD DOWN CONV (${overall.thirdDown.conv}/${overall.thirdDown.att})</div></div>
     <div class="db-stat"><div class="db-stat-num">${overall.fourthDown.pct != null ? overall.fourthDown.pct + '%' : '—'}</div><div class="db-stat-label">4TH DOWN CONV (${overall.fourthDown.conv}/${overall.fourthDown.att})</div></div>
+    ${dbShapeTilesHTML(overall.successStats, { verb: 'GAINED', unit: 'PLAYS' })}
   </div>`;
 }
 
@@ -2630,9 +2636,10 @@ function ssRenderGroupTable(rows, groupFn, title, columnLabel, orderList) {
       <td>${td}</td>
       <td>${to}</td>
       <td>${ssSuccessCellHTML(rs)}</td>
+      <td>${dbShapeCellHTML(rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>${columnLabel}</th><th>RUN/PASS</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap(title, `<div class="db-table-wrap"><table class="db-table"><tr><th>${columnLabel}</th><th>RUN/PASS</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th><th>SHAPE</th></tr>${trs}</table></div>`);
 }
 
 function ssRenderCategoryTable(rows) {
@@ -2767,7 +2774,7 @@ function ssRenderRPOTable(rows) {
     }
     return html;
   }).join('');
-  return dbPanelWrap('RPO — CONCEPT + PASS TAG EFFICIENCY', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT + PASS TAG</th><th>GIVE / PULL</th><th>RUN RESULT</th><th>PASS RESULT</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('RPO — CONCEPT + PASS TAG EFFICIENCY', `<div class="db-table-wrap"><table class="db-table"><tr><th>CONCEPT + PASS TAG</th><th>GIVE / PULL</th><th>RUN RESULT</th><th>PASS RESULT</th><th>TD</th><th>TO</th><th>SUCCESS% / AVG YDS</th><th>SHAPE</th></tr>${trs}</table></div>`);
 }
 
 function ssRenderEffectivenessBarGroup(title, rows, groupFn, n, sortAsc) {
@@ -2906,9 +2913,10 @@ function ssRenderPredictabilityTable(rows) {
       <td>${e.runCount}R / ${e.passCount}P</td>
       <td>${flagged ? '<span style="color:var(--red)">⚠ ' + callLabel + ' — PREDICTABLE</span>' : callLabel}</td>
       <td>${ssSuccessCellHTML(e.rs)}</td>
+      <td>${dbShapeCellHTML(e.rs)}</td>
     </tr>`;
   }).join('');
-  return dbPanelWrap('SITUATIONAL PREDICTABILITY (RUN/PASS BY SITUATION + FORMATION)', `<div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION / FORMATION</th><th>RUN / PASS</th><th>TENDENCY</th><th>SUCCESS% / AVG YDS</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('SITUATIONAL PREDICTABILITY (RUN/PASS BY SITUATION + FORMATION)', `<div class="db-table-wrap"><table class="db-table"><tr><th>SITUATION / FORMATION</th><th>RUN / PASS</th><th>TENDENCY</th><th>SUCCESS% / AVG YDS</th><th>SHAPE</th></tr>${trs}</table></div>`);
 }
 
 function ssGenerateInsights(rows) {
@@ -3051,10 +3059,11 @@ function ssRenderCoverageFreqPanel(offRows) {
       <td>${rs.length} <span style="color:var(--gray);font-size:11px">(${pct}%)</span></td>
       <td style="${succStyle}"><strong>${stats ? stats.successPct + '%' : '—'}</strong></td>
       <td>${stats ? stats.avgYards : '—'}</td>
+      <td>${dbShapeCellHTML(rs)}</td>
       <td><span style="color:var(--gray);font-size:11px">${passN}P / ${runN}R</span></td>
     </tr>`;
   }).join('');
-  return dbPanelWrap('COVERAGE — FREQUENCY &amp; RESULTS', `<div class="db-table-wrap"><table class="db-table"><tr><th>SHELL</th><th># PLAYS</th><th>SUCCESS%</th><th>AVG YDS</th><th>PASS/RUN</th></tr>${trs}</table></div>`);
+  return dbPanelWrap('COVERAGE — FREQUENCY &amp; RESULTS', `<div class="db-table-wrap"><table class="db-table"><tr><th>SHELL</th><th># PLAYS</th><th>SUCCESS%</th><th>AVG YDS</th><th>SHAPE</th><th>PASS/RUN</th></tr>${trs}</table></div>`);
 }
 
 function ssRenderBeatSheetPanel(offRows) {
@@ -3115,10 +3124,10 @@ function ssRenderConceptByCoveragePanel(offRows, type) {
       if (shRs.length < SS_COV_MIN_N) return `<td style="color:var(--gray);font-size:11px" title="${shRs.length} plays">—</td>`;
       const st = dbSuccessStats(shRs);
       const col = st.successPct >= 60 ? 'var(--gold)' : st.successPct <= 35 ? 'var(--red)' : 'inherit';
-      return `<td style="color:${col};font-size:12px"><strong>${st.successPct}%</strong><br><span style="font-size:10px;color:var(--gray)">${st.avgYards}yds(${shRs.length})</span></td>`;
+      return `<td style="color:${col};font-size:12px"><strong>${st.successPct}%</strong><br><span style="font-size:10px;color:var(--gray)">${st.avgYards}yds(${shRs.length})</span><br><span style="font-size:10px;color:var(--gray)">med ${st.median === null ? '—' : dbYds1(st.median)}</span></td>`;
     }).join('');
     return `<tr>
-      <td><strong>${dbEscapeHTML(concept)}</strong><br><span style="color:var(--gray);font-size:11px">${overall.n} plays · ${overall.successPct}% overall</span></td>
+      <td><strong>${dbEscapeHTML(concept)}</strong><br><span style="color:var(--gray);font-size:11px">${overall.n} plays · ${overall.successPct}% overall</span><br><span style="font-size:10px">${dsShapeInlineHTML(allRs)}</span></td>
       ${cells}
     </tr>`;
   }).join('');
