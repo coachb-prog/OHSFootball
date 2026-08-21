@@ -2,8 +2,8 @@
 // open with zero connection after the first visit. Stale-while-revalidate so
 // new deploys propagate whenever a connection exists, without ever blocking
 // offline use.
-const CACHE = 'ohs-coach-v1';
-const SHELL = ['./', './coach.html', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+const CACHE = 'ohs-coach-v2';
+const SHELL = ['./', './coach.html', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './logo.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
